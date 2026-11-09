@@ -63,6 +63,7 @@ public sealed partial class SalesService(EbtDbContext db, StockService stock, Pr
             if (!products.TryGetValue(l.ProductId, out var p)) throw SalesException.Invalid($"{f}.productId", "Product not found");
             if (p.Blocked) throw SalesException.Invalid($"{f}.productId", $"Product {p.Code} is blocked");
             if (l.Quantity <= 0) throw SalesException.Invalid($"{f}.quantity", "Must be greater than zero");
+            if (SaleUnitOf(l.Spec) is { } su && su is not ("KG" or "PC")) throw SalesException.Invalid($"{f}.spec.saleUnit", "KG or PC");
             if (l.UnitPrice < 0) throw SalesException.Invalid($"{f}.unitPrice", "Cannot be negative");
             if (l.IpiPercent is < 0 or > 100) throw SalesException.Invalid($"{f}.ipiPercent", "Between 0 and 100");
             if (l.IcmsPercent is < 0 or > 100) throw SalesException.Invalid($"{f}.icmsPercent", "Between 0 and 100");
@@ -76,9 +77,15 @@ public sealed partial class SalesService(EbtDbContext db, StockService stock, Pr
         return result;
     }
 
+    /// <summary>The unit the item is sold by (KG or PC) when the form chose one; null keeps the product's own unit.</summary>
+    internal static string? SaleUnitOf(LineSpec? s) => string.IsNullOrWhiteSpace(s?.SaleUnit) ? null : s!.SaleUnit!.Trim().ToUpperInvariant();
+
+    /// <summary>What a quote line's unit becomes on the order: the sale unit, so the order keeps selling by kilo or by piece as quoted.</summary>
+    internal static LineSpec? SaleUnitSpec(string unit) => unit is "KG" or "PC" ? new LineSpec(SaleUnit: unit) : null;
+
     private static QuoteLine ToQuoteLine(ResolvedLine l, int n) => new()
     {
-        Sequence = (n + 1) * 10, ProductId = l.ProductId, CustomerPartNumber = l.CustomerPartNumber, Description = l.Description, Quantity = l.Quantity, Unit = l.Unit,
+        Sequence = (n + 1) * 10, ProductId = l.ProductId, CustomerPartNumber = l.CustomerPartNumber, Description = l.Description, Quantity = l.Quantity, Unit = SaleUnitOf(l.Spec) ?? l.Unit,
         UnitPrice = l.UnitPrice, ListPrice = l.ListPrice, IpiPercent = l.IpiPercent, IcmsPercent = l.IcmsPercent, LeadTimeDays = l.LeadTimeDays, DeliveryDate = l.DeliveryDate
     };
 

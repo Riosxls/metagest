@@ -74,7 +74,7 @@ void main() {
         ..overrides['GET /api/sales/certificates'] = ((_) => http.Response('', 500));
       await pumpMore(tester, fake, (s) => SalesOrderScreen(session: s, id: 9));
       expect(find.text('PV 9 · BTS Tubos'), findsOneWidget);
-      expect(find.textContaining('Pedido digitado sem orçamento'), findsOneWidget);
+      expect(find.textContaining('Anexe o pedido de compra do cliente na seção'), findsOneWidget);
     });
 
     testWidgets('shows measures, standard and material need of the item', (tester) async {

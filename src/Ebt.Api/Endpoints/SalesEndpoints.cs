@@ -55,7 +55,7 @@ public record DeliverySummaryOut(int Id, int Number, string Reference, int Order
 public record SalesOrderOut(int Id, int Number, string Reference, int CustomerId, string CustomerName, int AddressId, string AddressText, string? CustomerPo, int? PaymentTermId, string? PaymentTermName, string? CustomPaymentTerm, FreightTerms Freight,
     SalesOrderStatus Status, string? StatusReason, string? Notes, int? QuoteId, string? QuoteReference, string? CreatedBy, DateTimeOffset CreatedAt, string? ReleasedBy, DateTimeOffset? ReleasedAt,
     decimal Products, decimal Ipi, decimal Total, decimal Progress, bool Ready, bool Late, CreditCheck Credit, IReadOnlyList<SalesOrderLineOut> Lines, IReadOnlyList<DeliverySummaryOut> Deliveries, IReadOnlyList<SalesEventOut> History, bool CertificateWaived = false,
-    BillTo BillTo = BillTo.Ebt, OrderOrigin Origin = OrderOrigin.System, string? Salesperson = null);
+    BillTo BillTo = BillTo.Ebt, OrderOrigin Origin = OrderOrigin.System, string? Salesperson = null, string? RequestFileName = null, string? RequestFileType = null, long? RequestFileSize = null);
 public record DeliveryLineOut(int Id, int OrderLineId, int Sequence, int ProductId, string ProductCode, string Description, decimal Quantity, string Unit, int Packages);
 public record DeliveryOut(int Id, int Number, string Reference, int OrderId, string OrderReference, int CustomerId, string CustomerName, int AddressId, string AddressText, DateOnly PlannedDate, DeliveryStatus Status,
     string? Carrier, string? VehiclePlate, string? InvoiceNumber, int Packages, decimal? GrossWeightKg, int? StockDocumentId, string? Notes, string? CreatedBy, DateTimeOffset CreatedAt, string? ShippedBy, DateTimeOffset? ShippedAt,
@@ -387,6 +387,9 @@ public static class SalesEndpoints
     private static void QuoteEvent(EbtDbContext db, Quote q, string action, string note, string? user) =>
         db.SalesEvents.Add(new SalesEvent { Kind = SalesRecordKind.Quote, RecordId = q.Id, Action = action, FromStatus = q.Status.ToString(), ToStatus = q.Status.ToString(), Note = note, User = user, At = DateTimeOffset.UtcNow });
 
+    private static void OrderEvent(EbtDbContext db, SalesOrder o, string action, string note, string? user) =>
+        db.SalesEvents.Add(new SalesEvent { Kind = SalesRecordKind.Order, RecordId = o.Id, Action = action, FromStatus = o.Status.ToString(), ToStatus = o.Status.ToString(), Note = note, User = user, At = DateTimeOffset.UtcNow });
+
     private static bool PoOpen(Quote q) => q.Status is QuoteStatus.Accepted or QuoteStatus.PurchaseOrder;
 
     private static IResult PoClosed(Quote q) => Results.Conflict(new { message = $"Pedido de compra só pode ser anexado após a aprovação do cliente (status atual: {q.Status})" });
@@ -468,6 +471,49 @@ public static class SalesEndpoints
         {
             var o = await svc.CreateOrderAsync(new SalesOrderInput(i.CustomerId, i.AddressId, i.Lines, i.CustomerPo, i.PaymentTermId, i.Freight, i.Notes, i.Company, i.CustomPaymentTerm, i.BillTo, i.Origin, i.Salesperson), i.OverrideCredit && IsManager(user), Who(user), ct, IsManager(user));
             return Results.Created($"/api/sales/orders/{o.Id}", await LoadOrder(db, svc, o.Id, ct));
+        }).RequireAuthorization(SalesPolicies.Sell);
+
+        // The customer's purchase order (PDF, image or text) attached to the order itself, for orders typed without a quote.
+        g.MapPost("/{id:int}/request-file", async (int id, IFormFile file, EbtDbContext db, SalesService svc, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            var o = await db.SalesOrders.FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (o is null) return Results.NotFound();
+            if (o.Status == SalesOrderStatus.Cancelled) return Results.Conflict(new { message = "Pedido cancelado: não é possível anexar arquivos" });
+            if (file.Length is 0 or > MaxRequestFileBytes) return Results.BadRequest(new { message = "Arquivo vazio ou maior que 10 MB", field = "file" });
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!RequestFileTypes.TryGetValue(ext, out var type)) return Results.BadRequest(new { message = "Formato não aceito (PDF, imagem ou texto)", field = "file" });
+            await using var ms = new MemoryStream();
+            await file.CopyToAsync(ms, ct);
+            var stored = await db.SalesOrderRequestFiles.FirstOrDefaultAsync(x => x.OrderId == id, ct);
+            if (stored is null) db.SalesOrderRequestFiles.Add(new SalesOrderRequestFile { OrderId = id, Data = ms.ToArray() });
+            else stored.Data = ms.ToArray();
+            o.RequestFileName = Path.GetFileName(file.FileName);
+            o.RequestFileType = type;
+            o.RequestFileSize = file.Length;
+            OrderEvent(db, o, "po-file", $"Pedido de compra anexado: {o.RequestFileName}", Who(user));
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(await LoadOrder(db, svc, id, ct));
+        }).RequireAuthorization(SalesPolicies.Sell).DisableAntiforgery();
+
+        g.MapGet("/{id:int}/request-file", async (int id, EbtDbContext db, CancellationToken ct) =>
+        {
+            var o = await db.SalesOrders.AsNoTracking().Where(x => x.Id == id).Select(x => new { x.RequestFileName, x.RequestFileType }).FirstOrDefaultAsync(ct);
+            var data = o?.RequestFileName is null ? null : await db.SalesOrderRequestFiles.AsNoTracking().Where(x => x.OrderId == id).Select(x => x.Data).FirstOrDefaultAsync(ct);
+            return data is null ? Results.NotFound() : Results.File(data, o!.RequestFileType ?? "application/octet-stream", o.RequestFileName);
+        });
+
+        g.MapDelete("/{id:int}/request-file", async (int id, EbtDbContext db, SalesService svc, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            var o = await db.SalesOrders.FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (o is null) return Results.NotFound();
+            if (o.RequestFileName is null) return Results.Ok(await LoadOrder(db, svc, id, ct));
+            OrderEvent(db, o, "po-file-removed", $"Arquivo removido: {o.RequestFileName}", Who(user));
+            await db.SalesOrderRequestFiles.Where(x => x.OrderId == id).ExecuteDeleteAsync(ct);
+            o.RequestFileName = null;
+            o.RequestFileType = null;
+            o.RequestFileSize = null;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(await LoadOrder(db, svc, id, ct));
         }).RequireAuthorization(SalesPolicies.Sell);
 
         g.MapPut("/{id:int}", async (int id, SalesOrderIn i, EbtDbContext db, SalesService svc, ClaimsPrincipal user, CancellationToken ct) =>
@@ -727,7 +773,7 @@ public static class SalesEndpoints
         var deliveries = await DeliverySummaries(db, db.Deliveries.AsNoTracking().Where(d => d.OrderId == id).OrderBy(d => d.Number), ct);
         return new SalesOrderOut(o.Id, o.Number, o.Reference, o.CustomerId, o.Customer!.Name, o.AddressId, AddressText(o.Address), o.CustomerPo, o.PaymentTermId, o.PaymentTerm?.Name, o.CustomPaymentTerm, o.Freight, o.Status, o.StatusReason, o.Notes,
             o.QuoteId, o.Quote?.Reference, o.CreatedBy, o.CreatedAt, o.ReleasedBy, o.ReleasedAt, totals.Products, totals.Ipi, totals.Total, progress?.Progress ?? 0, progress?.Ready ?? false, progress?.Late ?? false,
-            credit, lines, deliveries, await History(db, SalesRecordKind.Order, id, ct), o.CertificateWaived, o.BillTo, o.Origin, o.Salesperson);
+            credit, lines, deliveries, await History(db, SalesRecordKind.Order, id, ct), o.CertificateWaived, o.BillTo, o.Origin, o.Salesperson, o.RequestFileName, o.RequestFileType, o.RequestFileSize);
     }
 
     private static async Task<DeliveryOut> LoadDelivery(EbtDbContext db, int id, CancellationToken ct)

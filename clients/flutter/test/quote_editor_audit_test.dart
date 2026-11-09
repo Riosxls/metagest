@@ -214,10 +214,10 @@ void main() {
     await pumpMore(tester, f, (s) => QuoteEditorScreen(session: s, asOrder: true));
     await _pickCustomer(tester);
     await _startItem(tester);
-    for (final key in ['quantity', 'unitPrice', 'leadTimeDays', 'deliveryDate', 'description']) {
+    for (final key in ['quantity', 'saleUnit', 'unitPrice', 'leadTimeDays', 'deliveryDate', 'description']) {
       expect(find.byKey(ValueKey('field-$key')), findsOneWidget, reason: key);
     }
-    for (final key in ['outsideDiameter', 'thickness', 'length', 'standard', 'condition', 'saleUnit', 'pieceWeightKg', 'materialNeedKg', 'toleranceDiameter', 'feasibilityId']) {
+    for (final key in ['outsideDiameter', 'thickness', 'length', 'standard', 'condition', 'pieceWeightKg', 'materialNeedKg', 'toleranceDiameter', 'feasibilityId']) {
       expect(find.byKey(ValueKey('field-$key')), findsNothing, reason: key);
     }
     expect(find.text('Novo item'), findsOneWidget);
@@ -238,7 +238,13 @@ void main() {
     expect(find.text('Deste cliente'), findsOneWidget);
     await tester.tap(find.text('TB-25 · Tubo 25,4 x 1,5').first);
     await tester.pumpAndSettle();
-    expect(find.text('KG'), findsOneWidget); // beside the quantity
+    expect(find.text('Kg'), findsOneWidget); // the unit selector beside the quantity, on the product's unit
+    expect(find.text('Pç'), findsOneWidget);
+    expect(tester.widget<SegmentedButton<String>>(find.byKey(const ValueKey('field-saleUnit'))).selected, {'KG'});
     expect(find.text('/KG'), findsOneWidget); // beside the price
+    await tester.tap(find.text('Pç'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<SegmentedButton<String>>(find.byKey(const ValueKey('field-saleUnit'))).selected, {'PC'});
+    expect(find.text('/PÇ'), findsOneWidget); // the price follows the unit
   });
 }

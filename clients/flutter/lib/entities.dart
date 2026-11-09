@@ -59,7 +59,11 @@ class FieldSpec {
     this.positive = false,
     this.digitsOnly = false,
     this.money = false,
+    this.unitOf,
   });
+
+  /// A choice drawn as a small selector beside the field with this key instead of a field of its own ("Kg | Pç" next to a quantity).
+  final String? unitOf;
 
   final String key;
   final String label;

@@ -15,6 +15,7 @@ public partial class EbtDbContext
     public DbSet<Quote> Quotes => Set<Quote>();
     public DbSet<QuoteLine> QuoteLines => Set<QuoteLine>();
     public DbSet<QuoteRequestFile> QuoteRequestFiles => Set<QuoteRequestFile>();
+    public DbSet<SalesOrderRequestFile> SalesOrderRequestFiles => Set<SalesOrderRequestFile>();
     public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
     public DbSet<SalesOrderLine> SalesOrderLines => Set<SalesOrderLine>();
     public DbSet<Delivery> Deliveries => Set<Delivery>();
@@ -116,6 +117,13 @@ public partial class EbtDbContext
             e.HasKey(x => x.QuoteId);
             e.HasOne(x => x.Quote).WithOne().HasForeignKey<QuoteRequestFile>(x => x.QuoteId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<SalesOrderRequestFile>(e =>
+        {
+            e.HasKey(x => x.OrderId);
+            e.HasOne(x => x.Order).WithOne().HasForeignKey<SalesOrderRequestFile>(x => x.OrderId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<SalesOrder>().Property(x => x.RequestFileName).HasMaxLength(255);
+        b.Entity<SalesOrder>().Property(x => x.RequestFileType).HasMaxLength(100);
         b.Entity<Quote>().Property(x => x.RequestFileName).HasMaxLength(255);
         b.Entity<Quote>().Property(x => x.RequestFileType).HasMaxLength(100);
         b.Entity<QuoteLine>(e =>

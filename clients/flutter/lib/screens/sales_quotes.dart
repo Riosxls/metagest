@@ -54,9 +54,13 @@ Future<({String name, Uint8List bytes})?> pickRequestFile() async {
 }
 
 /// Item of a quote: the price is always typed, and the lead time is a number of working days counted from the day the customer approves the quote (there is no fixed date yet).
+/// Quilo or peça, drawn beside the quantity: the price is per this unit.
+const _unitChoice = FieldSpec('saleUnit', 'Unidade de venda', type: FieldType.choice, choices: {'KG': 'Kg', 'PC': 'Pç'}, unitOf: 'quantity');
+
 const quoteLineFields = [
   FieldSpec('productId', 'Produto', type: FieldType.lookup, required: true, lookup: LookupSpec('/api/products')),
   FieldSpec('quantity', 'Quantidade', type: FieldType.decimal, required: true, positive: true),
+  _unitChoice,
   FieldSpec(
     'unitPrice',
     'Preço unitário (R\$)',
@@ -82,6 +86,7 @@ const quoteLineFields = [
 const salesLineFields = [
   FieldSpec('productId', 'Produto', type: FieldType.lookup, required: true, lookup: LookupSpec('/api/products')),
   FieldSpec('quantity', 'Quantidade', type: FieldType.decimal, required: true, positive: true),
+  _unitChoice,
   FieldSpec('unitPrice', 'Preço unitário (R\$)', type: FieldType.decimal, min: 0, money: true, hint: 'Vazio = tabela de preços do cliente'),
   FieldSpec('leadTimeDays', 'Prazo de entrega (dias úteis)', type: FieldType.integer, daysFor: 'deliveryDate', digitsOnly: true, min: 0, max: 365),
   FieldSpec('deliveryDate', 'Data de entrega', type: FieldType.date, dateFor: 'leadTimeDays'),
@@ -119,6 +124,14 @@ final orderLineColumns = <ColumnSpec>[
   ColumnSpec('Norma', (e) => [e['standard'], if (e['condition'] != null) deliveryConditions[e['condition']]].whereType<Object>().join(' · ')),
 ];
 
+/// "KG" or "PC" for a unit written as the product or an old line has it (kg, KG, pç, PC, UN...); null for anything else.
+String? kgOrPc(Object? unit) {
+  final u = '${unit ?? ''}'.trim().toUpperCase();
+  if (u == 'KG') return 'KG';
+  if (u == 'PC' || u == 'PÇ' || u == 'PCS' || u == 'UN') return 'PC';
+  return null;
+}
+
 Map<String, dynamic> packSpec(Map<String, dynamic> line) {
   final spec = {
     for (final k in specKeys)
@@ -131,7 +144,7 @@ Map<String, dynamic> packSpec(Map<String, dynamic> line) {
 
 final salesLineColumns = [
   ColumnSpec('Produto', (e) => lbl(e, 'productId')),
-  ColumnSpec('Quantidade', (e) => fmt(e['quantity']), numeric: true),
+  ColumnSpec('Quantidade', (e) => [fmt(e['quantity']), saleUnits['${e['saleUnit'] ?? e['_unit'] ?? ''}'.toUpperCase()]].whereType<String>().join(' '), numeric: true),
   ColumnSpec('Preço unitário', (e) => e['unitPrice'] == null ? 'tabela' : fmtUnitPrice(e['unitPrice']), numeric: true),
   ColumnSpec('IPI %', (e) => fmt(e['ipiPercent']), numeric: true),
   // Quantity × price plus IPI and ICMS; the quote's printed total is products + IPI only (the bottom bar and the detail page say so).
@@ -385,6 +398,32 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   late final _conditions = TextEditingController(text: widget.quote?['conditions'] as String? ?? '');
   late final _notes = TextEditingController(text: widget.quote?['notes'] as String? ?? '');
   late final _po = TextEditingController(text: widget.quote?['customerPo'] as String? ?? '');
+
+  /// The purchase order file chosen in this form; it is sent right after the order is saved.
+  ({String name, Uint8List bytes})? _poFile;
+
+  /// The file already on the order being edited, and whether the user took it off.
+  late final String? _poExisting = widget.asOrder ? (widget.quote?['requestFileName'] as String?) : null;
+  bool _poRemoved = false;
+
+  String? get _poName => _poFile?.name ?? (_poRemoved ? null : _poExisting);
+
+  Future<void> _pickPo() async {
+    final f = await requestFilePicker();
+    if (f == null || !mounted) return;
+    setState(() {
+      _poFile = f;
+      _poRemoved = false;
+    });
+  }
+
+  void _dropPo() => setState(() {
+    if (_poFile != null) {
+      _poFile = null;
+    } else {
+      _poRemoved = true;
+    }
+  });
   late final _salesperson = TextEditingController(text: widget.quote?['salesperson'] as String? ?? widget.session.username ?? '');
   late String _billTo = '${widget.quote?['billTo'] ?? 'Ebt'}';
   late String _origin = '${widget.quote?['origin'] ?? 'Email'}';
@@ -400,6 +439,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
         'deliveryDate': l['deliveryDate'] ?? l['dueDate'],
         'description': l['description'],
         ...?(l['spec'] as Map<String, dynamic>?),
+        'saleUnit': ((l['spec'] as Map?)?['saleUnit']) ?? kgOrPc(l['unit']),
         'feasibilityId': l['feasibilityId'],
         '_unit': l['unit'], // local (never sent): the unit of this very line, for the price simulator
         '_labels': {'productId': '${l['productCode']} · ${l['description']}', if (l['feasibilityId'] != null) 'feasibilityId': '${l['feasibilityReference']}'},
@@ -451,6 +491,8 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     _billTo,
     _origin,
     _lines,
+    _poFile?.name,
+    _poRemoved,
     for (final c in [_validity, _contact, _email, _ref, _conditions, _notes, _po, _salesperson]) c.text,
   ]);
 
@@ -621,7 +663,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     if (!context.mounted) return;
     num? n(Object? v) => v is num ? v : null;
     // The unit of this very line when it has one (an item being edited), else the product's sale unit.
-    final byKg = '${values['unit'] ?? product?['saleUnit'] ?? product?['stockUnit'] ?? ''}'.toUpperCase() == 'KG';
+    final byKg = '${values['saleUnit'] ?? values['unit'] ?? kgOrPc(product?['saleUnit'] ?? product?['stockUnit']) ?? ''}'.toUpperCase() == 'KG';
     final quantity = n(values['quantity']);
     final customer = _customerId;
     final measures = _simulatorMeasures(product);
@@ -697,27 +739,32 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   Future<Map<String, Object?>?> _onPick(String key, int? id, Map<String, dynamic>? entity) async {
     final customer = _customerId;
     if (key == 'productId' && id != null && entity != null) _productInfo[id] = entity;
-    if (key != 'productId' || id == null || customer == null) return null;
-    await _lookupPrice(id, customer);
-    final price = _listPrice(id);
-    return price == null ? null : {'unitPrice': fmtDecimalInput(price)};
+    if (key != 'productId' || id == null) return null;
+    final unit = kgOrPc(entity?['saleUnit'] ?? entity?['stockUnit']);
+    num? price;
+    if (customer != null) {
+      await _lookupPrice(id, customer);
+      price = _listPrice(id);
+    }
+    final fill = <String, Object?>{'saleUnit': ?unit, if (price != null) 'unitPrice': fmtDecimalInput(price)};
+    return fill.isEmpty ? null : fill;
   }
 
   /// Unit of the item being typed: its own (a line being edited) or the product's, so the quantity and the price say "kg" or "pç" instead of a bare number.
   String? _lineUnit(Map<String, dynamic> values) {
     final id = values['productId'];
     final product = id == null ? null : _productInfo[id];
-    final unit = values['unit'] ?? product?['saleUnit'] ?? product?['stockUnit'];
+    final unit = values['saleUnit'] ?? values['unit'] ?? kgOrPc(product?['saleUnit'] ?? product?['stockUnit']) ?? product?['stockUnit'];
     final text = '$unit'.trim();
-    return unit == null || text.isEmpty ? null : text;
+    return unit == null || text.isEmpty ? null : (saleUnits[text.toUpperCase()] ?? text);
   }
 
   /// "kg" inside the quantity and "/kg" inside the price.
   String? _unitSuffix(String key, Map<String, dynamic> values) {
-    if (key != 'quantity' && key != 'unitPrice') return null;
+    // The quantity has the Kg | Pç selector beside it; only the price needs the unit written in.
+    if (key != 'unitPrice') return null;
     final unit = _lineUnit(values);
-    if (unit == null) return null;
-    return key == 'quantity' ? unit : '/$unit';
+    return unit == null ? null : '/$unit';
   }
 
   final _boughtBefore = <int, List<Map<String, dynamic>>>{};
@@ -920,7 +967,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
       'customerReference': _t(_ref),
       'conditions': _t(_conditions),
       'notes': _t(_notes),
-      'lines': [for (final l in _lines) widget.asOrder ? packSpec(stripLocal(l)) : stripLocal(l)],
+      'lines': [for (final l in _lines) packSpec(stripLocal(l))],
     };
     if (widget.asOrder) {
       body['customerPo'] = _t(_po);
@@ -930,9 +977,27 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     }
     final path = widget.asOrder ? '/api/sales/orders' : '/api/sales/quotes';
     try {
-      final q = (widget.quote == null ? await api.post(path, body) : await api.put('$path/${widget.quote!['id']}', body)) as Map<String, dynamic>;
+      var q = (widget.quote == null ? await api.post(path, body) : await api.put('$path/${widget.quote!['id']}', body)) as Map<String, dynamic>;
       _lockSaved = false;
-      if (mounted) Navigator.pop(context, q);
+      // The order exists now: its purchase order file goes up next. A failure here must not leave the form open (saving again would type the order twice).
+      String? attachFailed;
+      if (widget.asOrder) {
+        try {
+          if (_poFile != null) {
+            q = await api.upload('/api/sales/orders/${q['id']}/request-file', 'file', _poFile!.name, _poFile!.bytes) as Map<String, dynamic>;
+          } else if (_poRemoved && _poExisting != null) {
+            q = await api.delete('/api/sales/orders/${q['id']}/request-file') as Map<String, dynamic>;
+          }
+        } catch (e) {
+          attachFailed = friendlyError(e);
+        }
+      }
+      if (mounted) {
+        if (attachFailed != null) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pedido salvo, mas o anexo não foi enviado: $attachFailed. Anexe pela tela do pedido.'), duration: const Duration(seconds: 10)));
+        }
+        Navigator.pop(context, q);
+      }
     } on ApiException catch (e) {
       if (mounted) setState(() => _message = describeError(e));
       _showFirstError();
@@ -1097,7 +1162,41 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   List<Widget> _orderFields(double w) => [
     SizedBox(
       width: w,
-      child: TextField(controller: _po, decoration: _dec('Pedido de compra do cliente')),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(controller: _po, decoration: _dec('Pedido de compra do cliente')),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Anexar o pedido de compra do cliente (PDF, imagem ou texto)',
+                child: OutlinedButton.icon(
+                  key: const ValueKey('order-attach-po'),
+                  onPressed: _busy ? null : _pickPo,
+                  icon: const Icon(Icons.attach_file, size: 18),
+                  label: Text(_poName == null ? 'Anexar' : 'Trocar'),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+                ),
+              ),
+            ],
+          ),
+          if (_poName != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: InputChip(
+                key: const ValueKey('order-po-chip'),
+                avatar: const Icon(Icons.description_outlined, size: 16),
+                label: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 260), child: Text(_poName!, overflow: TextOverflow.ellipsis)),
+                onDeleted: _busy ? null : _dropPo,
+                deleteButtonTooltipMessage: 'Remover anexo',
+              ),
+            ),
+        ],
+      ),
     ),
     SizedBox(
       width: w,

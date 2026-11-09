@@ -376,6 +376,47 @@ public class SalesTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task Item_can_be_sold_by_kg_or_by_piece_on_quote_and_order()
+    {
+        var admin = await api.AdminAsync();
+        var s = await Arrange(admin);
+        var quote = await (await admin.Post("/api/sales/quotes", new QuoteInput(s.Customer.Id, [new SalesLineInput(s.Tube.Id, 100m, 8m, LeadTimeDays: 5, Spec: new LineSpec(SaleUnit: "kg")), new SalesLineInput(s.Other.Id, 10m, 20m, LeadTimeDays: 5)], s.Address.Id, s.Term.Id))).Read<QuoteOut>();
+        Assert.Equal("KG", quote.Lines[0].Unit); // the product is stocked by the piece, the item is sold by the kilo
+        Assert.Equal("PC", quote.Lines[1].Unit); // no choice: the product's own unit
+
+        var bad = await admin.Post("/api/sales/quotes", new QuoteInput(s.Customer.Id, [new SalesLineInput(s.Tube.Id, 1m, 8m, LeadTimeDays: 5, Spec: new LineSpec(SaleUnit: "M"))], s.Address.Id, s.Term.Id));
+        Assert.False(bad.IsSuccessStatusCode);
+
+        var order = await (await admin.Post("/api/sales/orders", new SalesOrderIn(s.Customer.Id, s.Address.Id, [new SalesLineInput(s.Tube.Id, 100m, 8m, Spec: new LineSpec(SaleUnit: "KG"))], "PO-9", s.Term.Id))).Read<SalesOrderOut>();
+        Assert.Equal("KG", order.Lines[0].Spec?.SaleUnit);
+    }
+
+    [Fact]
+    public async Task Order_keeps_the_customer_purchase_order_file()
+    {
+        var admin = await api.AdminAsync();
+        var reader = await api.UserAsync(UserRole.Reader);
+        var s = await Arrange(admin);
+        var order = await (await admin.Post("/api/sales/orders", new SalesOrderIn(s.Customer.Id, s.Address.Id, [new SalesLineInput(s.Tube.Id, 5m)], "PO-F", s.Term.Id))).Read<SalesOrderOut>();
+        Assert.Null(order.RequestFileName);
+
+        static MultipartFormDataContent Upload(string name, byte[] data) => new() { { new ByteArrayContent(data), "file", name } };
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.PostAsync($"/api/sales/orders/{order.Id}/request-file", Upload("po.pdf", [1, 2, 3]))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsync($"/api/sales/orders/{order.Id}/request-file", Upload("po.exe", [1, 2, 3]))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync($"/api/sales/orders/{order.Id}/request-file")).StatusCode);
+
+        var withFile = await (await admin.PostAsync($"/api/sales/orders/{order.Id}/request-file", Upload("po-cliente.pdf", [1, 2, 3, 4]))).Read<SalesOrderOut>();
+        Assert.Equal("po-cliente.pdf", withFile.RequestFileName);
+        Assert.Equal(4, withFile.RequestFileSize);
+        Assert.Equal(new byte[] { 1, 2, 3, 4 }, await (await admin.GetAsync($"/api/sales/orders/{order.Id}/request-file")).Content.ReadAsByteArrayAsync());
+        Assert.Contains(withFile.History, h => h.Action == "po-file");
+
+        var removed = await (await admin.DeleteAsync($"/api/sales/orders/{order.Id}/request-file")).Read<SalesOrderOut>();
+        Assert.Null(removed.RequestFileName);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync($"/api/sales/orders/{order.Id}/request-file")).StatusCode);
+    }
+
+    [Fact]
     public async Task Issued_certificate_teaches_the_next_one_of_the_same_customer_and_product()
     {
         var admin = await api.AdminAsync();

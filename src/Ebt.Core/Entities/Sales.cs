@@ -155,7 +155,19 @@ public class SalesOrder : IHasSource
     public DateTimeOffset CreatedAt { get; set; }
     public string? ReleasedBy { get; set; }
     public DateTimeOffset? ReleasedAt { get; set; }
+    /// <summary>The customer's purchase order attached straight to the order (orders typed without a quote have no quote to hold it); bytes in <see cref="SalesOrderRequestFile"/>.</summary>
+    public string? RequestFileName { get; set; }
+    public string? RequestFileType { get; set; }
+    public long? RequestFileSize { get; set; }
     public List<SalesOrderLine> Lines { get; set; } = new();
+}
+
+/// <summary>Bytes of the customer's purchase order attached to a sales order, kept apart so order loads stay light.</summary>
+public class SalesOrderRequestFile
+{
+    public int OrderId { get; set; }
+    public SalesOrder? Order { get; set; }
+    public required byte[] Data { get; set; }
 }
 
 public class SalesOrderLine

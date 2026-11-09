@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -529,21 +530,78 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     if (r != null && mounted) setState(() => _o = r);
   }
 
-  Future<void> _printCustomerPo() async {
-    final q = _quote!;
+  /// The purchase order typed straight on the order (an order without a quote has no quote to hold it).
+  String? get _ownPoFile => _o?['requestFileName'] as String?;
+
+  Future<void> _attachPo() async {
+    final f = await requestFilePicker();
+    if (f == null || !mounted) return;
+    final r = await runAction(context, () => api.upload('$base/request-file', 'file', f.name, f.bytes), success: 'Pedido de compra anexado');
+    if (r is Map<String, dynamic> && mounted) setState(() => _o = r);
+  }
+
+  Future<void> _removePo() async {
+    final r = await runAction(context, () => api.delete('$base/request-file'), success: 'Anexo removido');
+    if (r is Map<String, dynamic> && mounted) setState(() => _o = r);
+  }
+
+  Future<void> _savePoFile() async {
     try {
-      final fileName = q['requestFileName'] as String?;
+      final bytes = await api.download('$base/request-file');
+      final saved = await FilePicker.saveFile(fileName: '$_ownPoFile', bytes: bytes, dialogTitle: 'Salvar pedido de compra');
+      if (saved != null) await PrintLog.mark('order:${widget.id}:po');
+      if (saved != null && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Arquivo salvo')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Falha: ${friendlyError(e)}')));
+    }
+  }
+
+  /// Customer's purchase order of an order typed without a quote: attach it here (the quote keeps its own when there is one).
+  Widget _poSection(Map<String, dynamic> o) {
+    final name = _ownPoFile;
+    return Section(
+      title: 'Pedido de compra do cliente',
+      actions: [
+        if (s.canSell)
+          TextButton.icon(
+            key: const ValueKey('order-po-attach'),
+            onPressed: _attachPo,
+            icon: const Icon(Icons.attach_file),
+            label: Text(name == null ? 'Anexar pedido de compra' : 'Substituir arquivo'),
+          ),
+      ],
+      child: name == null
+          ? const Text('Nenhum arquivo anexado (PDF, imagem ou texto).')
+          : Row(
+              children: [
+                const Icon(Icons.description_outlined, size: 18),
+                const SizedBox(width: 6),
+                Expanded(child: Text('$name · ${fmtFileSize(o['requestFileSize'])}', overflow: TextOverflow.ellipsis)),
+                TextButton.icon(key: const ValueKey('order-po-print'), onPressed: _printCustomerPo, icon: const Icon(Icons.print_outlined), label: const Text('Imprimir')),
+                TextButton.icon(onPressed: _savePoFile, icon: const Icon(Icons.download_outlined), label: const Text('Baixar')),
+                if (s.canSell) IconButton(tooltip: 'Remover anexo', icon: const Icon(Icons.delete_outline), onPressed: _removePo),
+              ],
+            ),
+    );
+  }
+
+  Future<void> _printCustomerPo() async {
+    final own = _ownPoFile;
+    final q = _quote;
+    try {
+      final fileName = own ?? q?['requestFileName'] as String?;
+      final path = own != null ? '$base/request-file' : (q == null ? null : '/api/sales/quotes/${q['id']}/request-file');
       final bytes = await customerOrderPdf(
         fileName: fileName,
-        file: fileName == null ? null : await api.download('/api/sales/quotes/${q['id']}/request-file'),
-        text: q['requestText'] as String?,
+        file: fileName == null || path == null ? null : await api.download(path),
+        text: own != null ? null : q?['requestText'] as String?,
         title: 'Pedido de compra do cliente ${_ref()}',
       );
       if (bytes == null) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Este tipo de arquivo não imprime daqui. Baixe-o no orçamento e imprima pelo programa que o abre.')));
         return;
       }
-      if (mounted) await printPdf(context, 'Pedido de compra ${_ref()}', () async => bytes, doneKey: 'quote:${q['id']}:po');
+      if (mounted) await printPdf(context, 'Pedido de compra ${_ref()}', () async => bytes, doneKey: own != null || q == null ? 'order:${widget.id}:po' : 'quote:${q['id']}:po');
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Falha ao imprimir: ${friendlyError(e)}')));
     }
@@ -568,7 +626,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     final lines = (o['lines'] as List).cast<Map<String, dynamic>>();
     final deliveries = (o['deliveries'] as List).cast<Map<String, dynamic>>();
     final q = _quote;
-    final hasPo = q != null && (q['requestFileName'] != null || '${q['requestText'] ?? ''}'.trim().isNotEmpty);
+    final hasPo = _ownPoFile != null || (q != null && (q['requestFileName'] != null || '${q['requestText'] ?? ''}'.trim().isNotEmpty));
     final ofs = lines.where((l) => l['productionOrderId'] != null).fold(<int, String>{}, (m, l) => m..[l['productionOrderId'] as int] = '${l['productionReference']}');
     final shipped = deliveries.where((d) => ['Shipped', 'Delivered'].contains(d['status'])).toList();
     final issued = _certs.where((c) => c['status'] != 'Cancelled').toList();
@@ -576,11 +634,11 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       PrintDoc(
         id: 'customer-po',
         label: 'Pedido de compra do cliente',
-        detail: q?['requestFileName'] != null ? '${q?['requestFileName']}' : 'Texto registrado no orçamento',
+        detail: _ownPoFile ?? (q?['requestFileName'] != null ? '${q?['requestFileName']}' : 'Texto registrado no orçamento'),
         ready: hasPo,
-        waiting: q == null ? 'Pedido digitado sem orçamento: não há pedido de compra anexado' : 'Anexe o pedido de compra no orçamento ${o['quoteReference']}',
+        waiting: q == null ? 'Anexe o pedido de compra do cliente na seção "Pedido de compra do cliente" desta tela' : 'Anexe o pedido de compra no orçamento ${o['quoteReference']}',
         onPrint: _printCustomerPo,
-        doneKey: q == null ? null : 'quote:${q['id']}:po',
+        doneKey: _ownPoFile != null || q == null ? 'order:${widget.id}:po' : 'quote:${q['id']}:po',
       ),
       PrintDoc(id: 'sales-order', label: 'Pedido interno de venda', detail: _ref(), onPrint: _printSalesOrder, doneKey: _salesKey),
       if (ofs.isEmpty)
@@ -861,19 +919,22 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     final deliveries = (o['deliveries'] as List).cast<Map<String, dynamic>>();
     final credit = o['credit'] as Map<String, dynamic>;
     final released = !['Created', 'Cancelled'].contains(o['status']);
+    final skip = o['quoteId'] == null ? 3 : 0;
     return SideBySide(
       main: [
         _orderHeader(o, credit),
         if (credit['exceeded'] == true && _openOrderStatuses.contains(o['status'])) ...[gap, _creditBanner(o, credit)],
         gap,
+        // An order typed directly never had a quote: the Orçamento / Enviada / Aprovada steps would only show three ticks it never earned.
         StagePath(
-          steps: flowSteps,
-          current: step,
+          steps: flowSteps.sublist(skip),
+          current: (step - skip).clamp(0, flowSteps.length - skip - 1),
           failedLabel: failed,
-          onStep: (i) => _stepLink(i, o, lines, deliveries),
+          onStep: (i) => _stepLink(i + skip, o, lines, deliveries),
         ),
         gap,
         _nextStep(o),
+        if (o['quoteId'] == null && o['status'] != 'Cancelled') ...[gap, _poSection(o)],
         // Same order as the quote (header, path, next step, items, details); the papers come after the records they belong to.
         gap,
         _itemsSection(o, lines),

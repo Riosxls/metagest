@@ -5344,6 +5344,20 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("released_by");
 
+                    b.Property<string>("RequestFileName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("request_file_name");
+
+                    b.Property<long?>("RequestFileSize")
+                        .HasColumnType("bigint")
+                        .HasColumnName("request_file_size");
+
+                    b.Property<string>("RequestFileType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("request_file_type");
+
                     b.Property<string>("Salesperson")
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)")
@@ -5551,6 +5565,23 @@ namespace Ebt.Core.Data.Migrations
                         {
                             t.HasCheckConstraint("ck_sales_order_lines_values", "quantity > 0 AND unit_price >= 0 AND from_stock >= 0");
                         });
+                });
+
+            modelBuilder.Entity("Ebt.Core.Entities.SalesOrderRequestFile", b =>
+                {
+                    b.Property<int>("OrderId")
+                        .HasColumnType("integer")
+                        .HasColumnName("order_id");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("data");
+
+                    b.HasKey("OrderId")
+                        .HasName("pk_sales_order_request_files");
+
+                    b.ToTable("sales_order_request_files", (string)null);
                 });
 
             modelBuilder.Entity("Ebt.Core.Entities.SalesSettings", b =>
@@ -7812,6 +7843,18 @@ namespace Ebt.Core.Data.Migrations
                     b.Navigation("ProductionOrder");
 
                     b.Navigation("Reservation");
+                });
+
+            modelBuilder.Entity("Ebt.Core.Entities.SalesOrderRequestFile", b =>
+                {
+                    b.HasOne("Ebt.Core.Entities.SalesOrder", "Order")
+                        .WithOne()
+                        .HasForeignKey("Ebt.Core.Entities.SalesOrderRequestFile", "OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_sales_order_request_files_sales_orders_order_id");
+
+                    b.Navigation("Order");
                 });
 
             modelBuilder.Entity("Ebt.Core.Entities.SalesSettings", b =>

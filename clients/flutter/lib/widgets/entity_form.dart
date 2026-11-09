@@ -444,7 +444,12 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
     setState(() {
       fill.forEach((k, v) {
         final c = _text[k];
-        if (c != null && c.text.trim().isEmpty && v != null) c.text = v is String ? v : fmt(v);
+        if (c != null && c.text.trim().isEmpty && v != null) {
+          c.text = v is String ? v : fmt(v);
+        } else if (c == null && v != null && widget.fields.any((u) => u.key == k && u.unitOf != null)) {
+          // A new product starts with its own unit; the user can still change it.
+          _values[k] = v;
+        }
       });
     });
   }
@@ -461,6 +466,38 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
         _lookupKeys[target] = (_lookupKeys[target] ?? 0) + 1;
       }
     });
+  }
+
+  /// The field plus, when a choice is drawn beside it ([FieldSpec.unitOf]), that choice as a small "Kg | Pç" selector.
+  Widget _fieldWithUnit(FieldSpec f) {
+    final field = _field(f);
+    final unit = widget.fields.where((u) => u.unitOf == f.key).firstOrNull;
+    if (unit == null) return field;
+    final current = _values[unit.key] as String?;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: field),
+        const SizedBox(width: 8),
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: SegmentedButton<String>(
+            key: ValueKey('field-${unit.key}'),
+            showSelectedIcon: false,
+            emptySelectionAllowed: true,
+            style: const ButtonStyle(visualDensity: VisualDensity.compact, padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 6))),
+            segments: [for (final e in unit.choices.entries) ButtonSegment<String>(value: e.key, label: Text(e.value), tooltip: unit.label)],
+            selected: {?current},
+            onSelectionChanged: widget.readOnly
+                ? null
+                : (s) => setState(() {
+                    // Tapping the chosen unit again keeps it: an item always has one.
+                    if (s.isNotEmpty) _values[unit.key] = s.first;
+                  }),
+          ),
+        ),
+      ],
+    );
   }
 
   /// The field with the small action the caller put under it ([EntityFormDialog.fieldActions]), if any.
@@ -614,8 +651,8 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
         final w = c.maxWidth >= 560 ? (c.maxWidth - 12) / 2 : c.maxWidth;
         // Fields marked advanced stay folded until asked for, unless they already hold a value or an error.
         bool folded(FieldSpec f) => f.advanced && !_more && !_hasValue(f);
-        final extra = [for (final f in widget.fields) if (folded(f)) f];
-        _shown = [for (final f in widget.fields) if (!folded(f)) f.key];
+        final extra = [for (final f in widget.fields) if (folded(f) && f.unitOf == null) f];
+        _shown = [for (final f in widget.fields) if (!folded(f) && f.unitOf == null) f.key];
         return SingleChildScrollView(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Wrap(
@@ -623,7 +660,7 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
             runSpacing: 14,
             children: [
               for (final f in widget.fields)
-                if (!folded(f)) SizedBox(key: _boxKeys.putIfAbsent(f.key, GlobalKey.new), width: w, child: _withAction(f, _field(f))),
+                if (!folded(f) && f.unitOf == null) SizedBox(key: _boxKeys.putIfAbsent(f.key, GlobalKey.new), width: w, child: _withAction(f, _fieldWithUnit(f))),
               if (extra.isNotEmpty)
                 TextButton.icon(
                   key: const ValueKey('form-more'),
