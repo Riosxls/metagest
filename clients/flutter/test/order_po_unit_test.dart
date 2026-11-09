@@ -81,6 +81,19 @@ void main() {
     expect(f.called('POST', '/api/sales/orders/9/request-file'), isFalse);
   });
 
+  testWidgets('on a wide screen the order form is a grid: rows end on the same edge and the purchase order field is not squeezed', (tester) async {
+    final f = MoreFake();
+    await pumpMore(tester, f, (s) => QuoteEditorScreen(session: s, asOrder: true), size: const Size(1800, 900));
+    final origin = tester.getRect(find.byKey(const ValueKey('order-origin')));
+    final notes = tester.getRect(find.widgetWithText(TextField, 'Observações'));
+    final customer = tester.getRect(find.byKey(const ValueKey('quote-customer')));
+    expect(origin.right, closeTo(notes.right, 0.5)); // second and third rows end together
+    expect(notes.left, greaterThan(customer.left)); // the notes start after the salesperson
+    final po = tester.getRect(find.widgetWithText(TextField, 'Pedido de compra do cliente'));
+    expect(po.width, greaterThan(300));
+    expect(tester.takeException(), isNull);
+  });
+
   group('order typed without a quote', () {
     MoreFake direct() => MoreFake()..order['quoteId'] = null;
 

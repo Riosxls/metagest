@@ -1014,61 +1014,101 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
       InputDecoration(labelText: label, hintText: hint, helperText: helper, border: const OutlineInputBorder(), isDense: true);
 
   /// Customer, delivery, terms and notes fields; an order shows its PO and billing fields, a quote its contact and validity.
-  Widget _conditionsSection({required bool wide, required double w}) => Section(
-    title: 'Cliente e condições',
-    child: Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        _customerField(w),
-        SizedBox(
-          width: wide ? 460 : w,
-          child: DropdownButtonFormField<int?>(
-            initialValue: _addresses.any((a) => a['id'] == _addressId) ? _addressId : null,
-            key: ValueKey('addr-${_addresses.length}-$_addressId'),
-            isExpanded: true,
-            decoration: _dec('Local de entrega', hint: _customerId == null ? 'Escolha o cliente' : 'Sem endereço cadastrado'),
-            items: [
-              for (final a in _addresses)
-                DropdownMenuItem(
-                  value: a['id'] as int,
-                  child: Text(
-                    [a['street'], a['number'], a['city'], a['uf']].where((x) => x != null && '$x'.isNotEmpty).join(', '),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-            ],
-            onChanged: (v) => setState(() {
-              _addressId = v;
-              // The contact follows the address, unless the user typed one.
-              final a = _addresses.where((x) => x['id'] == v).firstOrNull;
-              if (a != null && !_contactEdited) {
-                _contact.text = '${a['buyer'] ?? ''}';
-                _email.text = '${a['email'] ?? ''}';
-              }
-            }),
+  Widget _addressField(double w) => SizedBox(
+    width: w,
+    child: DropdownButtonFormField<int?>(
+      initialValue: _addresses.any((a) => a['id'] == _addressId) ? _addressId : null,
+      key: ValueKey('addr-${_addresses.length}-$_addressId'),
+      isExpanded: true,
+      decoration: _dec('Local de entrega', hint: _customerId == null ? 'Escolha o cliente' : 'Sem endereço cadastrado'),
+      items: [
+        for (final a in _addresses)
+          DropdownMenuItem(
+            value: a['id'] as int,
+            child: Text(
+              [a['street'], a['number'], a['city'], a['uf']].where((x) => x != null && '$x'.isNotEmpty).join(', '),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-        ),
-        _termField(w),
-        SizedBox(
-          width: w,
-          child: DropdownButtonFormField<String>(
-            initialValue: _freight,
-            isExpanded: true,
-            decoration: _dec('Frete'),
-            items: [for (final e in freightTerms.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
-            onChanged: (v) => setState(() => _freight = v ?? 'Cif'),
-          ),
-        ),
-        if (widget.asOrder) ..._orderFields(w),
-        if (!widget.asOrder) ..._quoteFields(wide, w),
-        SizedBox(
-          width: wide ? 612 : w,
-          child: TextField(controller: _notes, maxLines: 3, minLines: 1, decoration: _dec('Observações')),
-        ),
       ],
+      onChanged: (v) => setState(() {
+        _addressId = v;
+        // The contact follows the address, unless the user typed one.
+        final a = _addresses.where((x) => x['id'] == v).firstOrNull;
+        if (a != null && !_contactEdited) {
+          _contact.text = '${a['buyer'] ?? ''}';
+          _email.text = '${a['email'] ?? ''}';
+        }
+      }),
     ),
   );
+
+  Widget _freightField(double w) => SizedBox(
+    width: w,
+    child: DropdownButtonFormField<String>(
+      initialValue: _freight,
+      isExpanded: true,
+      decoration: _dec('Frete'),
+      items: [for (final e in freightTerms.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
+      onChanged: (v) => setState(() => _freight = v ?? 'Cif'),
+    ),
+  );
+
+  Widget _notesField(double w) => SizedBox(
+    width: w,
+    child: TextField(controller: _notes, maxLines: 3, minLines: 1, decoration: _dec('Observações')),
+  );
+
+  Widget _conditionsSection({required bool wide, required double w}) => Section(
+    title: 'Cliente e condições',
+    child: widget.asOrder && wide
+        ? _orderGrid()
+        : Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _customerField(w),
+              _addressField(wide ? 460 : w),
+              _termField(w),
+              _freightField(w),
+              if (widget.asOrder) ..._orderFields(w),
+              if (!widget.asOrder) ..._quoteFields(wide, w),
+              _notesField(wide ? 612 : w),
+            ],
+          ),
+  );
+
+  /// Wide order form: three rows of 13 parts each, so the fields fill the card and every row ends on the same edge.
+  /// Who and where first, then the customer's purchase order and billing, then who answers for it and the notes.
+  Widget _orderGrid() {
+    const fill = double.infinity;
+    final o = _orderParts(fill);
+    Widget row(List<(int, Widget)> cells) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (i, c) in cells.indexed) ...[
+          if (i > 0) const SizedBox(width: 12),
+          Expanded(flex: c.$1, child: c.$2),
+        ],
+      ],
+    );
+    return Align(
+      alignment: Alignment.topLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1500),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            row([(5, _customerField(fill)), (5, _addressField(fill)), (3, _termField(fill))]),
+            const SizedBox(height: 12),
+            row([(5, o.po), (3, _freightField(fill)), (2, o.billTo), (3, o.origin)]),
+            const SizedBox(height: 12),
+            row([(3, o.salesperson), (10, _notesField(fill))]),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// Customer picker; an order keeps its customer, a draft quote can change it.
   Widget _customerField(double w) => SizedBox(
@@ -1159,8 +1199,13 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   );
 
   /// Fields exclusive to a sales order: customer PO, billing, origin and salesperson.
-  List<Widget> _orderFields(double w) => [
-    SizedBox(
+  List<Widget> _orderFields(double w) {
+    final o = _orderParts(w);
+    return [o.po, o.billTo, o.origin, o.salesperson];
+  }
+
+  ({Widget po, Widget billTo, Widget origin, Widget salesperson}) _orderParts(double w) => (
+    po: SizedBox(
       width: w,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1174,12 +1219,13 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
               const SizedBox(width: 8),
               Tooltip(
                 message: 'Anexar o pedido de compra do cliente (PDF, imagem ou texto)',
-                child: OutlinedButton.icon(
+                child: FilledButton.tonalIcon(
                   key: const ValueKey('order-attach-po'),
                   onPressed: _busy ? null : _pickPo,
                   icon: const Icon(Icons.attach_file, size: 18),
                   label: Text(_poName == null ? 'Anexar' : 'Trocar'),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+                  // Same height as the fields beside it.
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
                 ),
               ),
             ],
@@ -1198,7 +1244,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
         ],
       ),
     ),
-    SizedBox(
+    billTo: SizedBox(
       width: w,
       child: DropdownButtonFormField<String>(
         key: const ValueKey('order-bill-to'),
@@ -1208,7 +1254,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
         onChanged: (v) => setState(() => _billTo = v ?? 'Ebt'),
       ),
     ),
-    SizedBox(
+    origin: SizedBox(
       width: w,
       child: DropdownButtonFormField<String>(
         key: const ValueKey('order-origin'),
@@ -1218,11 +1264,11 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
         onChanged: (v) => setState(() => _origin = v ?? 'Email'),
       ),
     ),
-    SizedBox(
+    salesperson: SizedBox(
       width: w,
       child: TextField(key: const ValueKey('order-salesperson'), controller: _salesperson, decoration: _dec('Responsável de vendas')),
     ),
-  ];
+  );
 
   /// What the validity field says below it: the default when empty, the end date when typed.
   String _validityHelp() {
