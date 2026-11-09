@@ -6,6 +6,7 @@ import 'package:ebt_engenharia/screens/sales_quotes.dart';
 import 'package:ebt_engenharia/widgets/pipeline.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 
 import 'sales_more_support.dart';
 
@@ -94,6 +95,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the person responsible for a new order is the signed-in profile and cannot be edited', (tester) async {
+    final f = MoreFake();
+    await pumpMore(tester, f, (s) => QuoteEditorScreen(session: s, asOrder: true));
+    final field = tester.widget<TextField>(find.byKey(const ValueKey('order-salesperson')));
+    expect(field.readOnly, isTrue);
+    expect(field.controller!.text, 'ana');
+  });
+
+  testWidgets('when the file cannot be sent the user is told, and can try again', (tester) async {
+    final f = MoreFake();
+    var attempts = 0;
+    f.overrides['POST /api/sales/orders/9/request-file'] = (r) {
+      attempts++;
+      if (attempts == 1) return http.Response('{"message":"falhou"}', 500, headers: {'content-type': 'application/json'});
+      return jsonResp({...f.order, 'id': 9, 'requestFileName': 'po-cliente.pdf', 'requestFileSize': 3});
+    };
+    final old = requestFilePicker;
+    requestFilePicker = () async => (name: 'po-cliente.pdf', bytes: Uint8List.fromList([1, 2, 3]));
+    addTearDown(() => requestFilePicker = old);
+    await pumpMore(tester, f, (s) => QuoteEditorScreen(session: s, asOrder: true));
+    await _pickCustomer(tester);
+    await _addItem(tester);
+    await tapKey(tester, 'order-attach-po');
+    await tapKey(tester, 'quote-save');
+    expect(find.byKey(const ValueKey('po-upload-failed')), findsOneWidget); // not a message that fades away
+    expect(f.where('POST', '/api/sales/orders').length, 1);
+    await tapKey(tester, 'po-upload-retry');
+    expect(attempts, 2);
+    expect(find.byKey(const ValueKey('po-upload-failed')), findsNothing);
+    expect(f.where('POST', '/api/sales/orders').length, 1); // retrying never types the order twice
+  });
+
   group('order typed without a quote', () {
     MoreFake direct() => MoreFake()..order['quoteId'] = null;
 
@@ -117,8 +150,11 @@ void main() {
       expect(find.text('Nenhum arquivo anexado (PDF, imagem ou texto).'), findsOneWidget);
       await tapKey(tester, 'order-po-attach');
       expect(f.called('POST', '/api/sales/orders/9/request-file'), isTrue);
-      expect(find.textContaining('po-cliente.pdf'), findsWidgets);
-      expect(find.byKey(const ValueKey('order-po-print')), findsOneWidget);
+      // Once a file is attached the section is gone and the print panel no longer asks for it.
+      expect(find.byKey(const ValueKey('order-po-attach')), findsNothing);
+      expect(find.text('Nenhum arquivo anexado (PDF, imagem ou texto).'), findsNothing);
+      expect(find.textContaining('Anexe o pedido de compra do cliente na seção'), findsNothing);
+      expect(find.text('po-cliente.pdf'), findsWidgets);
     });
 
     testWidgets('an order that came from a quote keeps the whole path and no attach section', (tester) async {
@@ -129,7 +165,7 @@ void main() {
     });
   });
 
-  testWidgets('the step in progress is drawn in the amber of the theme, not in the primary blue', (tester) async {
+  testWidgets('the step in progress is drawn in yellow, not in the primary blue', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue)),
@@ -140,7 +176,7 @@ void main() {
     );
     final box = tester.widget<Container>(find.byKey(const ValueKey('path-4')));
     final ctx = tester.element(find.byKey(const ValueKey('path-4')));
-    expect(box.color, toneAccent(ctx, Tone.warning));
+    expect(box.color, stepInProgress);
     expect(box.color, isNot(Theme.of(ctx).colorScheme.primary));
   });
 }

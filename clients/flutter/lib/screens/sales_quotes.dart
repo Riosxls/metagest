@@ -424,7 +424,8 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
       _poRemoved = true;
     }
   });
-  late final _salesperson = TextEditingController(text: widget.quote?['salesperson'] as String? ?? widget.session.username ?? '');
+  // The person who types the order is the one who answers for it: the signed-in profile, not editable. An order being edited keeps the one it has.
+  late final _salesperson = TextEditingController(text: widget.quote?['salesperson'] as String? ?? widget.session.shownName);
   late String _billTo = '${widget.quote?['billTo'] ?? 'Ebt'}';
   late String _origin = '${widget.quote?['origin'] ?? 'Email'}';
   late List<Map<String, dynamic>> _lines = [
@@ -979,25 +980,40 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     try {
       var q = (widget.quote == null ? await api.post(path, body) : await api.put('$path/${widget.quote!['id']}', body)) as Map<String, dynamic>;
       _lockSaved = false;
-      // The order exists now: its purchase order file goes up next. A failure here must not leave the form open (saving again would type the order twice).
-      String? attachFailed;
-      if (widget.asOrder) {
-        try {
-          if (_poFile != null) {
-            q = await api.upload('/api/sales/orders/${q['id']}/request-file', 'file', _poFile!.name, _poFile!.bytes) as Map<String, dynamic>;
-          } else if (_poRemoved && _poExisting != null) {
-            q = await api.delete('/api/sales/orders/${q['id']}/request-file') as Map<String, dynamic>;
+      // The order exists now: its purchase order file goes up next. A failure here must not leave the form open (saving again would type the order twice),
+      // and it must not pass unnoticed either: the order would look as if it had no purchase order. So the user is asked, and can try again.
+      if (widget.asOrder && _poFile != null) {
+        final file = _poFile!;
+        while (mounted) {
+          try {
+            q = await api.upload('/api/sales/orders/${q['id']}/request-file', 'file', file.name, file.bytes) as Map<String, dynamic>;
+            break;
+          } catch (e) {
+            if (!mounted) break;
+            final retry = await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (c) => AlertDialog(
+                key: const ValueKey('po-upload-failed'),
+                title: const Text('Pedido salvo, anexo não enviado'),
+                content: Text('O pedido ${q['reference']} foi salvo, mas o pedido de compra do cliente não foi enviado: ${friendlyError(e)}\n\nTente de novo ou abra o pedido e anexe por lá.'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Abrir o pedido')),
+                  FilledButton(key: const ValueKey('po-upload-retry'), onPressed: () => Navigator.pop(c, true), child: const Text('Tentar de novo')),
+                ],
+              ),
+            );
+            if (retry != true) break;
           }
+        }
+      } else if (widget.asOrder && _poRemoved && _poExisting != null) {
+        try {
+          q = await api.delete('/api/sales/orders/${q['id']}/request-file') as Map<String, dynamic>;
         } catch (e) {
-          attachFailed = friendlyError(e);
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pedido salvo, mas o anexo não foi removido: ${friendlyError(e)}.')));
         }
       }
-      if (mounted) {
-        if (attachFailed != null) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pedido salvo, mas o anexo não foi enviado: $attachFailed. Anexe pela tela do pedido.'), duration: const Duration(seconds: 10)));
-        }
-        Navigator.pop(context, q);
-      }
+      if (mounted) Navigator.pop(context, q);
     } on ApiException catch (e) {
       if (mounted) setState(() => _message = describeError(e));
       _showFirstError();
@@ -1266,7 +1282,12 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     ),
     salesperson: SizedBox(
       width: w,
-      child: TextField(key: const ValueKey('order-salesperson'), controller: _salesperson, decoration: _dec('Responsável de vendas')),
+      child: TextField(
+        key: const ValueKey('order-salesperson'),
+        controller: _salesperson,
+        readOnly: true,
+        decoration: _dec('Responsável de vendas').copyWith(suffixIcon: const Icon(Icons.lock_outline, size: 18), filled: true),
+      ),
     ),
   );
 

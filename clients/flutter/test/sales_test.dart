@@ -509,7 +509,7 @@ void main() {
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
-      expect(find.text('Liberar PV 9 para produção?'), findsOneWidget);
+      expect(find.text('Criar a Ordem de Fabricação de PV 9?'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('confirm-step')));
       await tester.pumpAndSettle();
       expect(fake.body(fake.last('POST', '/api/sales/orders/9/release'))['useStock'], isTrue);
@@ -529,14 +529,14 @@ void main() {
     await tester.pump();
     await swipe.up();
     await tester.pumpAndSettle();
-    expect(find.text('Liberar PV 9 para produção?'), findsNothing);
+    expect(find.text('Criar a Ordem de Fabricação de PV 9?'), findsNothing);
     final held = await tester.startGesture(tester.getCenter(card));
     await tester.pump(const Duration(milliseconds: 700));
     await held.moveTo(target);
     await tester.pump();
     await held.up();
     await tester.pumpAndSettle();
-    expect(find.text('Liberar PV 9 para produção?'), findsOneWidget);
+    expect(find.text('Criar a Ordem de Fabricação de PV 9?'), findsOneWidget);
   });
 
   testWidgets('discounted draft goes to approval and a manager approves it', (tester) async {
@@ -775,7 +775,7 @@ void main() {
       expect(enabled(tester, 'doc-print-nf'), isFalse);
       expect(find.text('Disponível depois de expedir a entrega'), findsOneWidget);
       expect(enabled(tester, 'doc-print-certificate'), isFalse);
-      expect(find.byKey(const ValueKey('order-print-of-12')), findsNothing); // OF prints are in the panel, not the step card
+      expect(find.byKey(const ValueKey('order-print-of-12')), findsOneWidget); // the step card has it too
     });
 
     testWidgets('a new order says what unlocks each paper', (tester) async {
@@ -784,7 +784,7 @@ void main() {
       expect(find.textContaining('1 de 5 prontos'), findsOneWidget);
       expect(enabled(tester, 'doc-print-customer-po'), isFalse);
       expect(find.textContaining('Anexe o pedido de compra no orçamento PROP 31'), findsOneWidget);
-      expect(find.text('Libere o pedido para a produção'), findsOneWidget);
+      expect(find.text('Crie a Ordem de Fabricação'), findsOneWidget);
       expect(enabled(tester, 'doc-print-sales-order'), isTrue);
       expect(find.byKey(const ValueKey('order-print-card')), findsOneWidget);
     });

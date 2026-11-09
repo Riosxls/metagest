@@ -132,6 +132,10 @@ class StatusBadge extends StatelessWidget {
   }
 }
 
+/// Yellow of the step in progress (light and dark themes); the text on it is near black (above 10:1).
+const stepInProgress = Color(0xFFFFCC00);
+const stepInProgressDark = Color(0xFFF2C94C);
+
 /// A step of a [StagePath].
 class PathStep {
   const PathStep(this.label, {this.icon, this.short});
@@ -159,9 +163,10 @@ class StagePath extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final done = toneAccent(context, Tone.success);
     final failed = failedLabel != null;
-    // The step in progress is amber: next to the green of the finished steps and the grey of the ones to come it is the one that stands out (blue was too close to both).
-    final active = failed ? toneAccent(context, Tone.danger) : toneAccent(context, Tone.warning);
-    final onActive = failed ? toneOnAccent(context, Tone.danger) : toneOnAccent(context, Tone.warning);
+    // The step in progress is Brazil yellow: next to the green of the finished steps and the grey of the ones to come it is the one that stands out (blue was too close to both).
+    final dark = cs.brightness == Brightness.dark;
+    final active = failed ? toneAccent(context, Tone.danger) : (dark ? stepInProgressDark : stepInProgress);
+    final onActive = failed ? toneOnAccent(context, Tone.danger) : const Color(0xFF2B2300);
     final onDone = toneOnAccent(context, Tone.success);
     // White on the green and red accents measures 4.96:1 and 5.62:1 (WCAG AA is 4.5:1) in both themes, because the accents do not change.
     return LayoutBuilder(

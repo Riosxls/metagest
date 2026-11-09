@@ -172,7 +172,7 @@ void main() {
       await tapKey(tester, 'confirm-step');
       expect(fake.body(fake.last('POST', '/api/sales/orders/9/release')), {'useStock': true});
       expect(find.text('Crédito: Limite excedido'), findsOneWidget);
-      expect(find.text('Liberar para produção'), findsWidgets); // still created
+      expect(find.text('Criar Ordem de Fabricação'), findsWidgets); // still created
     });
 
     testWidgets('a role that cannot release has no release button', (tester) async {
@@ -302,7 +302,8 @@ void main() {
       expect(find.text('30 do estoque + 70 na OF 500'), findsOneWidget);
       expect(find.text('50/100 · exp. 0'), findsOneWidget);
       expect(find.byKey(const ValueKey('print-menu')), findsOneWidget); // OFs in production: one print menu with the pedido and the OF
-      expect(find.byKey(const ValueKey('order-print-of-12')), findsNothing); // the OF prints live in the print menu and panel, not in the step card
+      expect(find.byKey(const ValueKey('order-print-of-12')), findsOneWidget); // and the step card prints it too, left of "Programar entrega"
+      expect(tester.getTopLeft(find.byKey(const ValueKey('order-print-of-12'))).dx, lessThan(tester.getTopLeft(find.byKey(const ValueKey('order-deliver'))).dx));
     });
 
     testWidgets('two OFs get a print button each and the cards name them', (tester) async {

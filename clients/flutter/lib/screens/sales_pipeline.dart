@@ -248,9 +248,9 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
       case 'order':
         if (!await confirmStep(
           context,
-          title: 'Liberar $ref para produção?',
+          title: 'Criar a Ordem de Fabricação de $ref?',
           message: 'Reserva o estoque livre e cria OFs para o restante.',
-          confirmLabel: 'Liberar',
+          confirmLabel: 'Criar',
           icon: Icons.precision_manufacturing,
         )) {
           return;

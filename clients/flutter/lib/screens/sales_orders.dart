@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -306,7 +305,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       context,
       doneKey: _salesKey,
       title: 'Imprimir o pedido interno de venda?',
-      message: 'Antes de liberar ${_ref()} para a produção, imprima ou baixe o pedido interno de venda. Você também encontra todos os documentos no fim do fluxo.',
+      message: 'Antes de criar a Ordem de Fabricação de ${_ref()}, imprima ou baixe o pedido interno de venda. Você também encontra todos os documentos no fim do fluxo.',
       onPrint: _printSalesOrder,
       onDownload: () => savePdf(context, 'Pedido de venda ${_ref()}.pdf', () => buildSalesOrderPdf(api, _o!), doneKey: _salesKey),
     );
@@ -319,7 +318,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       builder: (c) => StatefulBuilder(
         builder: (c, set) => AlertDialog(
           icon: const Icon(Icons.precision_manufacturing_outlined),
-          title: Text('Liberar ${_o!['reference']} para produção?'),
+          title: Text('Criar a Ordem de Fabricação de ${_o!['reference']}?'),
           content: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 460),
             child: Column(
@@ -351,7 +350,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancelar')),
-            FilledButton(key: const ValueKey('confirm-step'), onPressed: () => Navigator.pop(c, true), child: const Text('Liberar')),
+            FilledButton(key: const ValueKey('confirm-step'), onPressed: () => Navigator.pop(c, true), child: const Text('Criar')),
           ],
         ),
       ),
@@ -540,50 +539,23 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     if (r is Map<String, dynamic> && mounted) setState(() => _o = r);
   }
 
-  Future<void> _removePo() async {
-    final r = await runAction(context, () => api.delete('$base/request-file'), success: 'Anexo removido');
-    if (r is Map<String, dynamic> && mounted) setState(() => _o = r);
-  }
-
-  Future<void> _savePoFile() async {
-    try {
-      final bytes = await api.download('$base/request-file');
-      final saved = await FilePicker.saveFile(fileName: '$_ownPoFile', bytes: bytes, dialogTitle: 'Salvar pedido de compra');
-      if (saved != null) await PrintLog.mark('order:${widget.id}:po');
-      if (saved != null && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Arquivo salvo')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Falha: ${friendlyError(e)}')));
-    }
-  }
-
-  /// Customer's purchase order of an order typed without a quote: attach it here (the quote keeps its own when there is one).
-  Widget _poSection(Map<String, dynamic> o) {
-    final name = _ownPoFile;
-    return Section(
-      title: 'Pedido de compra do cliente',
-      actions: [
-        if (s.canSell)
-          TextButton.icon(
-            key: const ValueKey('order-po-attach'),
-            onPressed: _attachPo,
-            icon: const Icon(Icons.attach_file),
-            label: Text(name == null ? 'Anexar pedido de compra' : 'Substituir arquivo'),
-          ),
+  /// Asks for the customer's purchase order of an order typed without a quote. It only shows while nothing is attached; once there is a file
+  /// the print panel carries it and "Editar" replaces or removes it.
+  Widget _poSection(Map<String, dynamic> o) => Section(
+    title: 'Pedido de compra do cliente',
+    actions: [
+      if (s.canSell)
+        TextButton.icon(key: const ValueKey('order-po-attach'), onPressed: _attachPo, icon: const Icon(Icons.attach_file), label: const Text('Anexar pedido de compra')),
+    ],
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Nenhum arquivo anexado (PDF, imagem ou texto).'),
+        // The number typed on the order is not the paper: it cannot be printed, so say that it is the file that is missing.
+        if ('${o['customerPo'] ?? ''}'.trim().isNotEmpty) Text('Só o número do pedido (${o['customerPo']}) foi informado.', style: Theme.of(context).textTheme.bodySmall),
       ],
-      child: name == null
-          ? const Text('Nenhum arquivo anexado (PDF, imagem ou texto).')
-          : Row(
-              children: [
-                const Icon(Icons.description_outlined, size: 18),
-                const SizedBox(width: 6),
-                Expanded(child: Text('$name · ${fmtFileSize(o['requestFileSize'])}', overflow: TextOverflow.ellipsis)),
-                TextButton.icon(key: const ValueKey('order-po-print'), onPressed: _printCustomerPo, icon: const Icon(Icons.print_outlined), label: const Text('Imprimir')),
-                TextButton.icon(onPressed: _savePoFile, icon: const Icon(Icons.download_outlined), label: const Text('Baixar')),
-                if (s.canSell) IconButton(tooltip: 'Remover anexo', icon: const Icon(Icons.delete_outline), onPressed: _removePo),
-              ],
-            ),
-    );
-  }
+    ),
+  );
 
   Future<void> _printCustomerPo() async {
     final own = _ownPoFile;
@@ -636,7 +608,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         label: 'Pedido de compra do cliente',
         detail: _ownPoFile ?? (q?['requestFileName'] != null ? '${q?['requestFileName']}' : 'Texto registrado no orçamento'),
         ready: hasPo,
-        waiting: q == null ? 'Anexe o pedido de compra do cliente na seção "Pedido de compra do cliente" desta tela' : 'Anexe o pedido de compra no orçamento ${o['quoteReference']}',
+        waiting: q == null ? 'Anexe o pedido de compra do cliente na seção "Pedido de compra do cliente" desta tela${'${o['customerPo'] ?? ''}'.trim().isEmpty ? '' : ' (só o número ${o['customerPo']} foi informado)'}' : 'Anexe o pedido de compra no orçamento ${o['quoteReference']}',
         onPrint: _printCustomerPo,
         doneKey: _ownPoFile != null || q == null ? 'order:${widget.id}:po' : 'quote:${q['id']}:po',
       ),
@@ -647,7 +619,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
           label: 'Ordem de fabricação',
           ready: false,
           notApplicable: status != 'Created',
-          waiting: status == 'Created' ? 'Libere o pedido para a produção' : 'Este pedido saiu do estoque, sem OF',
+          waiting: status == 'Created' ? 'Crie a Ordem de Fabricação' : 'Este pedido saiu do estoque, sem OF',
         )
       else
         for (final e in ofs.entries)
@@ -697,6 +669,19 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
   Widget _cardPrint(String key, String label, Future<void> Function() onPressed) =>
       TextButton.icon(key: ValueKey(key), onPressed: onPressed, icon: const Icon(Icons.print_outlined), label: Text(label));
 
+  /// One print button per production order of the order ("Imprimir Ordem de Fabricação" when there is one), shown to the left of the delivery button.
+  List<Widget> _printOfButtons(Map<String, dynamic> o) {
+    final ofs = <int, String>{};
+    for (final l in (o['lines'] as List).cast<Map<String, dynamic>>()) {
+      final id = l['productionOrderId'];
+      if (id is int) ofs[id] = '${l['productionReference']}';
+    }
+    return [
+      for (final e in ofs.entries)
+        _cardPrint('order-print-of-${e.key}', ofs.length == 1 ? 'Imprimir Ordem de Fabricação' : 'Imprimir OF ${e.value}', () => _printOf(e.key, e.value)),
+    ];
+  }
+
   /// The earliest Planned delivery when it already carries everything still open: planning another would be refused, the next move is to ship it.
   Map<String, dynamic>? _plannedCoversBalance(Map<String, dynamic> o) {
     final lines = (o['lines'] as List).cast<Map<String, dynamic>>();
@@ -726,9 +711,9 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         FilledButton.icon(key: ValueKey(key), onPressed: onPressed, icon: Icon(icon), label: Text(label));
     return switch (o['status']) {
       'Created' => NextStepCard(
-        title: 'Liberar para produção',
+        title: 'Criar Ordem de Fabricação',
         message: 'O estoque livre é reservado para o pedido e as OFs do restante vão para o PCP.',
-        actions: [if (s.canReleaseSales) primary('order-release', 'Liberar para produção', Icons.play_arrow, _release), _cardPrint('order-print-card', 'Imprimir pedido interno', _printSalesOrder)],
+        actions: [if (s.canReleaseSales) primary('order-release', 'Criar Ordem de Fabricação', Icons.play_arrow, _release), _cardPrint('order-print-card', 'Imprimir pedido interno', _printSalesOrder)],
       ),
       'Released' || 'PartiallyShipped' when o['ready'] == true && !_certified => NextStepCard(
         title: 'Produção pronta · falta o certificado',
@@ -737,6 +722,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         actions: [
           // One filled action, one outlined; the rare ones live under "Mais".
           if (s.canCertificate) primary('order-certificate', 'Emitir certificado', Icons.verified_outlined, _newCertificate),
+          ..._printOfButtons(o),
           ..._deliverButton(o, primary: false),
           if (s.canIssueCertificate || (s.canSell && status == 'PartiallyShipped'))
             _moreMenu([
@@ -761,7 +747,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
             ? 'Há produto acabado para os itens em aberto. Programe a entrega.'
             : 'Há produto acabado e a entrega ${_plannedCoversBalance(o)!['reference']} já está programada. Expeça quando a mercadoria sair.',
         tone: Tone.success,
-        actions: [..._deliverButton(o, primary: true), ..._closeAction()],
+        actions: [..._printOfButtons(o), ..._deliverButton(o, primary: true), ..._closeAction()],
       ),
       'Released' || 'PartiallyShipped' => NextStepCard(
         title: 'Em produção · $pct pronto',
@@ -769,7 +755,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
             ? 'Há itens com data de entrega vencida.'
             : 'Acompanhe as OFs abaixo. Dá para programar uma entrega parcial do que já está pronto.',
         tone: o['late'] == true ? Tone.danger : Tone.progress,
-        actions: [..._deliverButton(o, primary: false), ..._closeAction()],
+        actions: [..._printOfButtons(o), ..._deliverButton(o, primary: false), ..._closeAction()],
       ),
       'Shipped' => NextStepCard(
         title: 'Tudo expedido',
@@ -934,7 +920,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         ),
         gap,
         _nextStep(o),
-        if (o['quoteId'] == null && o['status'] != 'Cancelled') ...[gap, _poSection(o)],
+        if (o['quoteId'] == null && o['status'] != 'Cancelled' && _ownPoFile == null) ...[gap, _poSection(o)],
         // Same order as the quote (header, path, next step, items, details); the papers come after the records they belong to.
         gap,
         _itemsSection(o, lines),
@@ -963,7 +949,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     title: 'Limite de crédito excedido',
     message:
         'Pedidos em aberto ${fmtMoney(credit['open'])} + a receber ${fmtMoney(credit['receivable'] ?? 0)} passam do limite de ${fmtMoney(credit['limit'])} '
-        '${credit['limitSource'] == 'customer' ? 'do cliente' : 'do prazo'}. Liberar para a produção e expedir exigem a autorização do gerente comercial'
+        '${credit['limitSource'] == 'customer' ? 'do cliente' : 'do prazo'}. Criar a Ordem de Fabricação e expedir exigem a autorização do gerente comercial'
         '${(o['history'] as List).any((h) => h['action'] == 'credit-override') ? ' (este pedido já foi autorizado)' : ''}.',
     tone: Tone.warning,
   );

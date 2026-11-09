@@ -83,7 +83,7 @@ void main() {
     test('an order snapshot says where the order stands and what comes next', () {
       final created = orderSnapshot({'reference': 'PV 9', 'status': 'Created'});
       expect(created.title, 'PV 9 · Criado');
-      expect(created.message, 'Falta liberar para a produção.');
+      expect(created.message, 'Falta criar a Ordem de Fabricação.');
       final running = orderSnapshot({'reference': 'PV 9', 'status': 'Released', 'progress': 0.4, 'ready': false});
       expect(running.message, 'Em produção, 40% pronto.');
       expect(running.tone, Tone.progress);
@@ -276,7 +276,7 @@ void main() {
         ..['salesOrderReference'] = 'PV 9';
       await _open(tester, f);
       expect(f.called('GET', '/api/sales/orders/9'), isTrue);
-      expect(find.textContaining('Este orçamento virou o pedido PV 9 · Criado. Falta liberar para a produção.'), findsOneWidget);
+      expect(find.textContaining('Este orçamento virou o pedido PV 9 · Criado. Falta criar a Ordem de Fabricação.'), findsOneWidget);
     });
 
     testWidgets('registering the send is named as such, and the PDF is one click away', (tester) async {

@@ -217,7 +217,7 @@ Future<List<Map<String, dynamic>>?> issuedCertificateCoverage(ApiClient api, Lis
   final status = '${o['status']}';
   final pct = '${(((o['progress'] as num?) ?? 0) * 100).round()}%';
   final (situation, next, tone) = switch (status) {
-    'Created' => ('Criado', 'Falta liberar para a produção.', Tone.info),
+    'Created' => ('Criado', 'Falta criar a Ordem de Fabricação.', Tone.info),
     'Released' || 'PartiallyShipped' when o['ready'] == true && certified == false => (salesOrderStatuses[status]!, 'Produção pronta, falta o certificado de qualidade (emitir ou dispensar).', Tone.warning),
     'Released' || 'PartiallyShipped' when o['ready'] == true => (salesOrderStatuses[status]!, 'Pronto para expedir: programe a entrega.', Tone.success),
     'Released' || 'PartiallyShipped' => (salesOrderStatuses[status]!, 'Em produção, $pct pronto.', o['late'] == true ? Tone.danger : Tone.progress),
