@@ -16,6 +16,7 @@ public partial class EbtDbContext
     public DbSet<FiscalInutilization> FiscalInutilizations => Set<FiscalInutilization>();
     public DbSet<FiscalEvent> FiscalEvents => Set<FiscalEvent>();
     public DbSet<FiscalCarrier> FiscalCarriers => Set<FiscalCarrier>();
+    public DbSet<IcmsUfRate> IcmsUfRates => Set<IcmsUfRate>();
 
     partial void ConfigureFiscal(ModelBuilder b)
     {
@@ -132,6 +133,13 @@ public partial class EbtDbContext
             e.Property(x => x.Text).HasMaxLength(1000);
             e.Property(x => x.Protocol).HasMaxLength(20);
             e.HasOne(x => x.Document).WithMany(x => x.Events).HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<IcmsUfRate>(e =>
+        {
+            e.ToTable("icms_uf_rates");
+            e.HasKey(x => x.Uf);
+            e.Property(x => x.Uf).HasMaxLength(2);
+            e.Property(x => x.Percent).HasPrecision(5, 2);
         });
         b.Entity<FiscalCarrier>(e =>
         {

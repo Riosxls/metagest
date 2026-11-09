@@ -139,7 +139,10 @@ foreach ($p in $best.Values) {
     }
 }
 
-$bundle = [ordered]@{ source = $Source; generatedAt = (Get-Date).ToString('s'); issuer = $issuer; cfops = $cfops; carriers = $carriers; taxRules = $rules; monthlyPrices = $prices }
+$ufRates = @()
+foreach ($k in $ufRate.Keys) { if ($ufRate[$k] -gt 0) { $ufRates += [ordered]@{ uf = $k; percent = $ufRate[$k] } } }
+
+$bundle = [ordered]@{ source = $Source; ufRates = $ufRates; generatedAt = (Get-Date).ToString('s'); issuer = $issuer; cfops = $cfops; carriers = $carriers; taxRules = $rules; monthlyPrices = $prices }
 $json = $bundle | ConvertTo-Json -Depth 6
 [IO.File]::WriteAllText($Out, $json, (New-Object Text.UTF8Encoding($false)))
 Write-Host "Wrote $Out"

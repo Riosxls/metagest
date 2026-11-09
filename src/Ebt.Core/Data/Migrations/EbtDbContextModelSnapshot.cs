@@ -2297,6 +2297,24 @@ namespace Ebt.Core.Data.Migrations
                     b.ToTable("holidays", (string)null);
                 });
 
+            modelBuilder.Entity("Ebt.Core.Entities.IcmsUfRate", b =>
+                {
+                    b.Property<string>("Uf")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("uf");
+
+                    b.Property<decimal>("Percent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("percent");
+
+                    b.HasKey("Uf")
+                        .HasName("pk_icms_uf_rates");
+
+                    b.ToTable("icms_uf_rates", (string)null);
+                });
+
             modelBuilder.Entity("Ebt.Core.Entities.IdempotencyKey", b =>
                 {
                     b.Property<long>("Id")

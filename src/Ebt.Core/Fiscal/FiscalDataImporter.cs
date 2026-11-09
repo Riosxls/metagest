@@ -12,13 +12,15 @@ public sealed record BundleCarrier(string Name, string? Document, string? StateR
 
 public sealed record BundleTaxRule(string ProductCode, string CustomerCode, string Cfop, string? IcmsCst, decimal IcmsPercent, string? IpiCst, decimal IpiPercent, decimal? PisPercent, decimal? CofinsPercent);
 
+public sealed record BundleUfRate(string Uf, decimal Percent);
+
 public sealed record BundlePrice(string ProductCode, string CustomerCode, string Cfop, int Year, int Month, decimal UnitPrice);
 
 public sealed record BundleCfop(string Code, string Description, bool Taxed, string IcmsCst, string IpiCst, string PisCst, string CofinsCst, decimal DefaultPisPercent, decimal DefaultCofinsPercent,
     string? IpiFramingCode, bool GeneratesInstallments);
 
 /// <summary>The file built by <c>scripts/export-fiscal-data.ps1</c> from the legacy DBFs: everything the NF needs that MetaGest did not import with the registers.</summary>
-public sealed record FiscalBundle(string? Source, BundleIssuer? Issuer, List<BundleCarrier>? Carriers, List<BundleTaxRule>? TaxRules, List<BundlePrice>? MonthlyPrices, List<BundleCfop>? Cfops);
+public sealed record FiscalBundle(string? Source, BundleIssuer? Issuer, List<BundleCarrier>? Carriers, List<BundleTaxRule>? TaxRules, List<BundlePrice>? MonthlyPrices, List<BundleCfop>? Cfops, List<BundleUfRate>? UfRates = null);
 
 /// <param name="Section">issuer, cfops, carriers, taxRules or monthlyPrices.</param>
 /// <param name="Notes">Why rows were left out or what deserves a look.</param>
@@ -58,6 +60,7 @@ public sealed class FiscalDataImporter(EbtDbContext db)
         {
             await IssuerAsync(bundle.Issuer, ct),
             await CfopsAsync(bundle.Cfops ?? [], ct),
+            await UfRatesAsync(bundle.UfRates ?? [], ct),
             await CarriersAsync(bundle.Carriers ?? [], ct),
             await TaxRulesAsync(bundle.TaxRules ?? [], ct),
             await PricesAsync(bundle.MonthlyPrices ?? [], ct)
@@ -127,6 +130,22 @@ public sealed class FiscalDataImporter(EbtDbContext db)
             notes.Add($"CFOP {code} criado (venda): confira os CSTs com o contador.");
         }
         return new("cfops", "CFOPs que faltavam", rows.Count, added, 0, unchanged, skipped, notes);
+    }
+
+    private async Task<FiscalImportSection> UfRatesAsync(List<BundleUfRate> rows, CancellationToken ct)
+    {
+        var existing = await db.IcmsUfRates.ToListAsync(ct);
+        int added = 0, updated = 0, unchanged = 0, skipped = 0;
+        foreach (var r in rows)
+        {
+            var uf = (r.Uf ?? "").Trim().ToUpperInvariant();
+            if (!NfeKey.UfCodes.ContainsKey(uf) || r.Percent is <= 0 or > 100) { skipped++; continue; }
+            var row = existing.FirstOrDefault(x => x.Uf == uf);
+            if (row is null) { row = new IcmsUfRate { Uf = uf, Percent = r.Percent }; db.IcmsUfRates.Add(row); existing.Add(row); added++; }
+            else if (row.Percent == r.Percent) unchanged++;
+            else { row.Percent = r.Percent; updated++; }
+        }
+        return new("ufRates", "ICMS padrão por estado", rows.Count, added, updated, unchanged, skipped, ["Usado quando não há regra de imposto nem alíquota no pedido. Confirme as alíquotas com o contador."]);
     }
 
     private async Task<FiscalImportSection> CarriersAsync(List<BundleCarrier> rows, CancellationToken ct)

@@ -29,13 +29,13 @@ public class FiscalPreviewTests(ApiFixture api)
         return await (await admin.Put("/api/fiscal/settings", next)).Read<FiscalSettingsDto>();
     }
 
-    private async Task<(SalesOrderOut Order, ProductOut Product)> NewOrderAsync(HttpClient admin, string uf, string? ncm = "73063010")
+    private async Task<(SalesOrderOut Order, ProductOut Product)> NewOrderAsync(HttpClient admin, string uf, string? ncm = "73063010", decimal icms = 18m)
     {
         var customer = await (await admin.Post("/api/customers", new CustomerIn("Cliente " + Code("C"), null, null, ConsumerType.Normal))).Read<CustomerOut>();
         var address = await (await admin.Post($"/api/customers/{customer.Id}/addresses", new CustomerAddressIn("26133636000103", uf, null, "148061942112", true, "Av. Brasil", "100", null, "Centro", "Embu", "3515004", "06800000", null, "Edilto", "compras@cliente.com", null))).Read<CustomerAddressOut>();
         var tube = await (await admin.Post("/api/products", Tube(Code("T"), ncm))).Read<ProductOut>();
         var term = await (await admin.Post("/api/sales/payment-terms", new PaymentTermIn(Code("P", 8), "28 DDL", "28", 1_000_000m))).Read<PaymentTermOut>();
-        (await admin.Post("/api/sales/price-list", new PriceListIn(tube.Id, null, 100m, 5m, 18m, Today.AddDays(-1), null))).EnsureSuccessStatusCode();
+        (await admin.Post("/api/sales/price-list", new PriceListIn(tube.Id, null, 100m, 5m, icms, Today.AddDays(-1), null))).EnsureSuccessStatusCode();
         var order = await (await admin.Post("/api/sales/orders", new SalesOrderIn(customer.Id, address.Id, [new SalesLineInput(tube.Id, 10m)], "PO-9", term.Id))).Read<SalesOrderOut>();
         return (order, tube);
     }
@@ -90,6 +90,22 @@ public class FiscalPreviewTests(ApiFixture api)
         Assert.Equal("6101", nf.Cfop);
         Assert.Contains(nf.Problems, p => p.Blocking && p.Area == "CFOP");
         Assert.False(nf.Ready);
+    }
+
+    [Fact]
+    public async Task Preview_uses_the_icms_of_the_customers_state_when_the_order_line_has_none()
+    {
+        var admin = await api.AdminAsync();
+        await SetIssuer(admin, complete: true);
+        var bundle = new { source = "EBT", ufRates = new[] { new { uf = "SP", percent = 12m } } };
+        Assert.True((await UploadAsync(admin, bundle, apply: true)).IsSuccessStatusCode);
+        var (order, _) = await NewOrderAsync(admin, "SP", icms: 0m);
+
+        var nf = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}")).Read<NfPreview>();
+
+        Assert.Equal(12m, nf.Lines[0].IcmsPercent);
+        Assert.Equal(120m, nf.Lines[0].IcmsValue); // 12% of 1000 (the buyer is an ICMS contributor)
+        Assert.Contains("ICMS de SP", nf.Lines[0].TaxSource);
     }
 
     private static IEnumerable<JsonElement> Items(JsonElement e) => e.ValueKind == JsonValueKind.Array ? e.EnumerateArray() : e.GetProperty("items").EnumerateArray();

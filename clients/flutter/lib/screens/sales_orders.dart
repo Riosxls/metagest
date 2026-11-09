@@ -682,12 +682,12 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     ];
   }
 
-  /// Opens the Nota Fiscal step: a simulation of the order's NF and the checklist of what is missing before the real emission.
+  /// Opens the Emitir nota fiscal step: a simulation of the order's NF and the checklist of what is missing before the real emission.
   Widget _invoiceButton(Map<String, dynamic> o) => OutlinedButton.icon(
     key: const ValueKey('order-invoice'),
     onPressed: () => unawaited(openOrderInvoice(context, s, o['id'] as int).then((_) => _load())),
     icon: const Icon(Icons.request_quote_outlined),
-    label: const Text('Nota Fiscal'),
+    label: const Text('Emitir nota fiscal'),
   );
 
   /// The earliest Planned delivery when it already carries everything still open: planning another would be refused, the next move is to ship it.

@@ -20,7 +20,7 @@ const flowSteps = [
   PathStep('Pedido de compra', icon: Icons.assignment_turned_in_outlined, short: 'Ped. compra'),
   PathStep('Pedido de venda', icon: Icons.receipt_long_outlined, short: 'Ped. venda'),
   PathStep('Ordem de Fabricação', icon: Icons.precision_manufacturing_outlined, short: 'OF'),
-  PathStep('Nota Fiscal', icon: Icons.request_quote_outlined, short: 'NF'),
+  PathStep('Emitir nota fiscal', icon: Icons.request_quote_outlined, short: 'Emitir NF'),
   PathStep('Certificado', icon: Icons.verified_outlined),
   PathStep('Entrega', icon: Icons.local_shipping_outlined),
 ];

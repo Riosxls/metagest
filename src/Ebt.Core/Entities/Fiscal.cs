@@ -249,6 +249,13 @@ public class FiscalEvent
     public string? CreatedBy { get; set; }
 }
 
+/// <summary>Default ICMS rate for sales to a state (legacy NF050). Used when no tax rule and no rate on the order line say otherwise.</summary>
+public class IcmsUfRate
+{
+    public required string Uf { get; set; }
+    public decimal Percent { get; set; }
+}
+
 /// <summary>Carrier registry (transportadora): matched by name against the delivery's free-text carrier to fill the NF-e transport group.</summary>
 public class FiscalCarrier
 {

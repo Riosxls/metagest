@@ -61,7 +61,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     final o = _order, nf = _nf;
     return Scaffold(
       appBar: AppBar(
-        title: Text(o == null ? 'Nota fiscal' : 'Nota fiscal · ${o['reference']}', overflow: TextOverflow.ellipsis),
+        title: Text(o == null ? 'Emitir nota fiscal' : 'Emitir nota fiscal · ${o['reference']}', overflow: TextOverflow.ellipsis),
         actions: [IconButton(key: const ValueKey('invoice-refresh'), tooltip: 'Atualizar a simulação', icon: const Icon(Icons.refresh), onPressed: _loading ? null : _load)],
       ),
       body: _error != null && nf == null

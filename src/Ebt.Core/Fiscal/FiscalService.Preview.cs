@@ -80,6 +80,7 @@ public sealed partial class FiscalService
         var products = await db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
         var rules = await db.TaxRules.AsNoTracking().Where(r => r.CfopCode == cfop.Code && productIds.Contains(r.ProductId) && (r.CustomerId == customer.Id || r.CustomerId == null)).ToListAsync(ct);
         var local = DateTimeOffset.UtcNow.ToOffset(BrazilOffset);
+        var ufIcms = await UfIcmsAsync(recipientUf, ct);
         var doc = new FiscalDocument
         {
             Kind = FiscalKind.Sale, Status = FiscalStatus.Pending, CfopCode = cfop.Code, Series = s.Series, Number = s.NextNumber, AccessKey = "", Environment = s.Environment, Protocol = "", IssuedAt = local,
@@ -102,8 +103,8 @@ public sealed partial class FiscalService
             {
                 Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = ol.Description, Ncm = Digits(p.Ncm), Unit = p.StockUnit,
                 Quantity = ol.Quantity, UnitPrice = price, Total = Money(ol.Quantity * price), IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
-            }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent));
-            sources.Add((monthly is not null ? "Tabela mensal" : "Pedido", rule is not null ? (rule.CustomerId is null ? "Regra do produto" : "Regra do cliente") : $"Padrão do CFOP {cfop.Code}"));
+            }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent, ufIcms));
+            sources.Add((monthly is not null ? "Tabela mensal" : "Pedido", rule is not null ? (rule.CustomerId is null ? "Regra do produto" : "Regra do cliente") : ol.IcmsPercent > 0 ? $"Alíquota do pedido, CST do CFOP {cfop.Code}" : ufIcms is not null ? $"ICMS de {recipientUf}, CST do CFOP {cfop.Code}" : $"Padrão do CFOP {cfop.Code}"));
         }
         if (noNcm.Count > 0) Add("Produtos", $"Sem NCM válido (8 dígitos): {string.Join(", ", noNcm)}.", "Engenharia > Produtos > NCM");
         if (noPrice.Count > 0) Add("Preço", $"Sem preço: {string.Join(", ", noPrice)}.", "Pedido de venda ou tabela mensal de preços");
@@ -117,7 +118,11 @@ public sealed partial class FiscalService
         var installments = new List<NfPreviewInstallment>();
         if (cfop.GeneratesInstallments)
         {
-            try { installments = (await InstallmentsAsync(order, customer, doc.InvoiceTotal, local, ct)).Select(i => new NfPreviewInstallment(i.Sequence, i.DueDate, i.Amount)).ToList(); }
+            try
+            {
+                doc.Installments = await InstallmentsAsync(order, customer, doc.InvoiceTotal, local, ct);
+                installments = doc.Installments.Select(i => new NfPreviewInstallment(i.Sequence, i.DueDate, i.Amount)).ToList();
+            }
             catch (FiscalException) { Add("Duplicatas", "O pedido e o cliente não têm prazo de pagamento para gerar as duplicatas.", "Pedido de venda > Prazo de pagamento"); }
         }
         var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, null, null, 0, null, doc.Lines.Select(l => (products[l.ProductId!.Value].NetWeightKg, l.Quantity)).ToList(), ct);
@@ -126,6 +131,19 @@ public sealed partial class FiscalService
         var ofIds = order.Lines.Where(l => l.ProductionOrderId != null).Select(l => l.ProductionOrderId!.Value).ToList();
         var ofs = await db.ProductionOrders.AsNoTracking().Where(o => ofIds.Contains(o.Id)).Select(o => o.Reference).ToListAsync(ct);
         var info = Join(order.Reference, ofs.Count > 0 ? string.Join(", ", ofs) : null, order.CustomerPo is { } po ? $"Pedido cliente {po}" : null, cfop.LegalText);
+        doc.AdditionalInfo = info;
+
+        // The real check: build the NF-e XML and validate it against the official schema, so a layout problem shows here and not at the shipment.
+        if (problems.All(p => !p.Blocking) && address is not null)
+        {
+            try
+            {
+                doc.AccessKey = NfeKey.Build(NfeKey.UfCodes[s.Uf], local, s.Cnpj!, s.Series, s.NextNumber, NfeKey.NewCodeNumber(s.NextNumber));
+                var party = new NfeParty(customer.Name, address.Document, address.StateRegistration, address.IcmsContributor, address.Street, address.Number, address.Complement, address.District, address.City, address.CityIbgeCode, address.Uf, address.ZipCode, address.Email ?? customer.Email, address.Phone);
+                NfeSchema.ValidateNfe(NfeXml.Build(s, doc, cfop, party, transport, interstate));
+            }
+            catch (FiscalException e) { Add("Layout da NF-e", e.Message, "Cadastros indicados na mensagem (o XML não passou na validação do layout 4.00)"); }
+        }
         var issuer = new NfPreviewParty(s.CompanyName ?? "", s.Cnpj, s.StateRegistration, $"{s.Street}, {s.Number} - {s.District}", s.City, s.Uf, s.ZipCode, s.CityIbgeCode);
         var lines = doc.Lines.Select((l, i) => new NfPreviewLine(l.Sequence, l.Code, l.Description, l.Ncm, l.Unit, l.Quantity, l.UnitPrice, l.Total, sources[i].Price, l.IcmsCst, l.IcmsPercent, l.IcmsValue, l.IpiCst, l.IpiPercent, l.IpiValue, l.PisValue, l.CofinsValue, sources[i].Tax)).ToList();
         return new NfPreview(s.Enabled, sefaz.IsSimulated, s.Environment.ToString(), s.Series, s.NextNumber, cfop.Code, cfop.Description, issuer, recipient, lines, doc.ProductsTotal, doc.FreightTotal, doc.IcmsBase, doc.IcmsTotal,

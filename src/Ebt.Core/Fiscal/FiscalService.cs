@@ -27,6 +27,9 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
         await db.MonthlyPrices.AsNoTracking().Where(p => p.ProductId == productId && p.CustomerId == customerId && p.CfopCode == cfop && p.Year == year && p.Month == month)
             .Select(p => (decimal?)p.UnitPrice).FirstOrDefaultAsync(ct);
 
+    private async Task<decimal?> UfIcmsAsync(string? uf, CancellationToken ct) =>
+        string.IsNullOrWhiteSpace(uf) ? null : await db.IcmsUfRates.AsNoTracking().Where(r => r.Uf == uf.ToUpper()).Select(r => (decimal?)r.Percent).FirstOrDefaultAsync(ct);
+
     /// <summary>Venda (default CFOP 5101) for a delivery being shipped. Needs the order and delivery lines loaded.</summary>
     public async Task<FiscalDocument> IssueSaleAsync(Delivery delivery, SalesOrder order, SaleInvoiceOptions opt, string? user, CancellationToken ct = default)
     {
@@ -46,6 +49,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
             var productIds = delivery.Lines.Select(l => order.Lines.First(x => x.Id == l.OrderLineId).ProductId).Distinct().ToList();
             var products = await db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
             var rules = await db.TaxRules.AsNoTracking().Where(r => r.CfopCode == cfop.Code && productIds.Contains(r.ProductId) && (r.CustomerId == customer.Id || r.CustomerId == null)).ToListAsync(ct);
+            var ufIcms = await UfIcmsAsync(recipient.Uf, ct);
 
             var doc = NewDocument(settings, cfop, FiscalKind.Sale, issuedAt, user, recipient, customerId: customer.Id, supplierId: null);
             doc.DeliveryId = delivery.Id;
@@ -65,7 +69,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
                     Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = ol.Description, Ncm = RequireNcm(p), Unit = p.StockUnit,
                     Quantity = dl.Quantity, UnitPrice = price, Total = Money(dl.Quantity * price),
                     IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
-                }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent));
+                }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent, ufIcms));
             }
             doc.ProductsTotal = doc.Lines.Sum(l => l.Total);
             doc.FreightTotal = Money(opt.Freight);
@@ -589,10 +593,11 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
 internal static class FiscalLineExtensions
 {
     /// <summary>Fills CSTs and rates: tax rule first, then the CFOP defaults, then the rates already on the order line.</summary>
-    public static FiscalDocumentLine WithRates(this FiscalDocumentLine l, Cfop cfop, TaxRule? rule, decimal orderIcms, decimal orderIpi)
+    public static FiscalDocumentLine WithRates(this FiscalDocumentLine l, Cfop cfop, TaxRule? rule, decimal orderIcms, decimal orderIpi, decimal? ufIcms = null)
     {
         l.IcmsCst = rule?.IcmsCst ?? cfop.IcmsCst;
-        l.IcmsPercent = rule?.IcmsPercent ?? orderIcms;
+        // Rule first, then the rate on the order line, then the default of the customer's state (legacy NF050).
+        l.IcmsPercent = rule?.IcmsPercent ?? (orderIcms > 0 ? orderIcms : ufIcms ?? 0m);
         l.IcmsBaseReductionPercent = rule?.IcmsBaseReductionPercent ?? 0m;
         l.IpiCst = rule?.IpiCst ?? cfop.IpiCst;
         l.IpiPercent = rule?.IpiPercent ?? orderIpi;

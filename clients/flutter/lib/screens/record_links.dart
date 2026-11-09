@@ -25,7 +25,7 @@ import 'viability.dart';
 const recordLabels = {
   'quote': 'Orçamento',
   'sales-order': 'Pedido de venda',
-  'order-invoice': 'Nota fiscal do pedido',
+  'order-invoice': 'Emitir nota fiscal',
   'delivery': 'Entrega',
   'production-order': 'Ordem de fabricação',
   'certificate': 'Certificado',

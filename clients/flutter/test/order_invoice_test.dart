@@ -71,11 +71,11 @@ Map<String, dynamic> _preview({bool ready = true, List<Map<String, dynamic>> pro
 http.Response _json(Object? body) => http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json; charset=utf-8'});
 
 void main() {
-  testWidgets('the order in production has a Nota Fiscal step and a button that opens the simulation', (tester) async {
+  testWidgets('the order in production has an Emitir nota fiscal step and a button that opens the simulation', (tester) async {
     final f = MoreFake()..order['status'] = 'Released';
     f.overrides['GET /api/fiscal/preview/order/9'] = (r) => _json(_preview());
     await pumpMore(tester, f, (s) => SalesOrderScreen(session: s, id: 9), size: const Size(1400, 2200));
-    expect(find.text('Nota Fiscal'), findsWidgets); // the step in the path and the button
+    expect(find.text('Emitir nota fiscal'), findsWidgets); // the step in the path and the button
     await tapKey(tester, 'order-invoice');
     expect(f.called('GET', '/api/fiscal/preview/order/9'), isTrue);
     expect(find.byKey(const ValueKey('invoice-simulation')), findsOneWidget);
@@ -145,8 +145,8 @@ void main() {
     expect(line['deliveryDate'], isNotNull);
   });
 
-  testWidgets('the order path has the Nota Fiscal step between the production order and the certificate', (tester) async {
-    expect(flowSteps.map((s) => s.label).toList().sublist(5, 8), ['Ordem de Fabricação', 'Nota Fiscal', 'Certificado']);
+  testWidgets('the order path has the Emitir nota fiscal step between the production order and the certificate', (tester) async {
+    expect(flowSteps.map((s) => s.label).toList().sublist(5, 8), ['Ordem de Fabricação', 'Emitir nota fiscal', 'Certificado']);
     expect(orderPath('Released', ready: true, certified: false).$1, 7); // certificate is the current step
     expect(orderPath('Released', ready: true, certified: true).$1, 8); // delivery
     expect(deliveryPath('Shipped').$1, 8);
