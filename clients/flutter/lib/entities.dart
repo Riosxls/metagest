@@ -60,7 +60,11 @@ class FieldSpec {
     this.digitsOnly = false,
     this.money = false,
     this.unitOf,
+    this.fallback,
   });
+
+  /// Value used when the field is left empty (a lead time of 7 days when the user types none). [defaultValue] only prefills.
+  final Object? fallback;
 
   /// A choice drawn as a small selector beside the field with this key instead of a field of its own ("Kg | Pç" next to a quantity).
   final String? unitOf;

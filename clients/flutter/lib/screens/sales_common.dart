@@ -9,6 +9,7 @@ import '../session.dart';
 import '../widgets/pipeline.dart';
 import '../widgets/record_nav.dart';
 import 'deliveries.dart';
+import 'order_invoice.dart';
 import 'sales_orders.dart';
 import 'sales_quotes.dart';
 
@@ -19,6 +20,7 @@ const flowSteps = [
   PathStep('Pedido de compra', icon: Icons.assignment_turned_in_outlined, short: 'Ped. compra'),
   PathStep('Pedido de venda', icon: Icons.receipt_long_outlined, short: 'Ped. venda'),
   PathStep('Ordem de Fabricação', icon: Icons.precision_manufacturing_outlined, short: 'OF'),
+  PathStep('Nota Fiscal', icon: Icons.request_quote_outlined, short: 'NF'),
   PathStep('Certificado', icon: Icons.verified_outlined),
   PathStep('Entrega', icon: Icons.local_shipping_outlined),
 ];
@@ -88,16 +90,17 @@ Tone quoteToneOf(Map<String, dynamic> q) => isSuperseded(q) ? Tone.neutral : quo
 
 (int, String?) orderPath(Object? s, {bool ready = false, bool certified = false}) => switch (s) {
   'Created' => (4, null),
-  'Released' || 'PartiallyShipped' => (ready ? (certified ? 7 : 6) : 5, null),
-  'Shipped' => (7, null),
-  'Delivered' => (8, null),
+  // The Nota Fiscal step (6) is a simulation page reached from a button; the order itself goes on to the certificate (7) and the delivery (8).
+  'Released' || 'PartiallyShipped' => (ready ? (certified ? 8 : 7) : 5, null),
+  'Shipped' => (8, null),
+  'Delivered' => (9, null),
   _ => (4, 'Cancelado'),
 };
 
 (int, String?) deliveryPath(Object? s) => switch (s) {
-  'Planned' || 'Shipped' => (7, null),
-  'Delivered' => (8, null),
-  _ => (7, 'Cancelada'),
+  'Planned' || 'Shipped' => (8, null),
+  'Delivered' => (9, null),
+  _ => (8, 'Cancelada'),
 };
 
 /// Whether an NF is still owed for a shipped delivery: the server's `needsInvoice` when it sends one, else derived from the history
@@ -275,6 +278,13 @@ Future<void> openQuote(BuildContext context, Session session, int id) => pushRec
 
 Future<void> openSalesOrder(BuildContext context, Session session, int id) =>
     pushRecord<void>(context, 'sales-order', id, (_) => SalesOrderScreen(session: session, id: id));
+
+/// Index of the "Nota Fiscal" step in [flowSteps].
+const invoiceStep = 6;
+
+/// The simulation of the NF of an order (the Nota Fiscal step).
+Future<void> openOrderInvoice(BuildContext context, Session session, int id) =>
+    pushRecord<void>(context, 'order-invoice', id, (_) => OrderInvoiceScreen(session: session, id: id));
 
 Future<void> openDelivery(BuildContext context, Session session, int id) =>
     pushRecord<void>(context, 'delivery', id, (_) => DeliveryScreen(session: session, id: id));

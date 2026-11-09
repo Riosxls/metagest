@@ -155,10 +155,10 @@ void main() {
       requestFilePicker = () async => (name: 'po-cliente.pdf', bytes: Uint8List.fromList([1, 2, 3]));
       addTearDown(() => requestFilePicker = old);
       await pumpMore(tester, f, (s) => SalesOrderScreen(session: s, id: 9));
-      // Orçamento, Enviada and Aprovada never happened: only the five steps from the purchase order on are drawn.
+      // Orçamento, Enviada and Aprovada never happened: only the six steps from the purchase order on are drawn.
       expect(find.byKey(const ValueKey('path-0')), findsOneWidget);
-      expect(find.byKey(const ValueKey('path-4')), findsOneWidget);
-      expect(find.byKey(const ValueKey('path-5')), findsNothing);
+      expect(find.byKey(const ValueKey('path-5')), findsOneWidget);
+      expect(find.byKey(const ValueKey('path-6')), findsNothing);
       expect(find.textContaining('Aprovada pelo cliente'), findsNothing);
       expect(find.text('Nenhum arquivo anexado (PDF, imagem ou texto).'), findsOneWidget);
       await tapKey(tester, 'order-po-attach');
@@ -173,26 +173,26 @@ void main() {
     testWidgets('an order that came from a quote keeps the whole path and no attach section', (tester) async {
       final f = MoreFake();
       await pumpMore(tester, f, (s) => SalesOrderScreen(session: s, id: 9));
-      expect(find.byKey(const ValueKey('path-7')), findsOneWidget);
+      expect(find.byKey(const ValueKey('path-8')), findsOneWidget);
       expect(find.byKey(const ValueKey('order-po-attach')), findsNothing);
     });
   });
 
   group('delivery page path', () {
-    testWidgets('a delivery of an order typed without a quote shows the same five steps as the order', (tester) async {
+    testWidgets('a delivery of an order typed without a quote shows the same six steps as the order', (tester) async {
       final f = MoreFake();
       f.deliveryExtra = {'orderQuoteId': null};
       await pumpMore(tester, f, (s) => DeliveryScreen(session: s, id: 15));
-      expect(find.byKey(const ValueKey('path-4')), findsOneWidget);
-      expect(find.byKey(const ValueKey('path-5')), findsNothing);
+      expect(find.byKey(const ValueKey('path-5')), findsOneWidget);
+      expect(find.byKey(const ValueKey('path-6')), findsNothing);
       expect(find.textContaining('Aprovada pelo cliente'), findsNothing);
     });
 
-    testWidgets('a delivery of an order that came from a quote keeps the eight steps', (tester) async {
+    testWidgets('a delivery of an order that came from a quote keeps the nine steps', (tester) async {
       final f = MoreFake();
       f.deliveryExtra = {'orderQuoteId': 5};
       await pumpMore(tester, f, (s) => DeliveryScreen(session: s, id: 15));
-      expect(find.byKey(const ValueKey('path-7')), findsOneWidget);
+      expect(find.byKey(const ValueKey('path-8')), findsOneWidget);
     });
   });
 

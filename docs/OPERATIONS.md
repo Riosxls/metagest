@@ -239,6 +239,10 @@ suggestion learns from them:
    Created, standard, without shop-floor reports; only EMPTY tolerances/machines are filled (from the same suggestion), nothing written is overwritten, and the old "Visual/Dimensional" tolerance on the inspection
    becomes "-" with the inspection machine. The run is audited.
 
+### Fiscal data of the old system
+
+The NF needs data that the registers did not bring: issuer (CNPJ, IE, address, IBGE, CRT), carriers, the CFOP 6101, tax rules per product x customer and the monthly prices. Run `powershell -File scriptsexport-fiscal-data.ps1` (BST: `-Db C:UsersitaloDesktopEBTDHBSTDB -NfContr C:UsersitaloDesktopBSTDHBstSINFNFCONTR.DBF -Source BST -Out fiscal-data-bst.json`), then in the app open Configurações > Administração > "Dados fiscais do sistema antigo", choose `fiscal-data.json`, read the preview and confirm. It never overwrites a filled issuer field, never lowers the next NF number and never turns emission on. Afterwards open an order and use the "Nota Fiscal" button to see what is still missing for that customer and product. ICMS rates come from the legacy per-UF table (NF050: SP 18%, RJ/MG/SC/RS 12%, AM 7%, the other states are 0 there): have the accountant confirm them before enabling emission.
+
 ## E-mail (quote sending)
 
 The API sends the quote PDF to the customer from one company mailbox (`Ebt.Core/Mail`, `POST /api/sales/quotes/{id}/email`). Set it in `.env`, then recreate the `api` container (see CLAUDE.md, "Rebuilding the API container"):

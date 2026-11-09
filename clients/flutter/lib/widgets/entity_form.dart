@@ -236,6 +236,10 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
         _values[f.key] = f.type == FieldType.boolean ? (v as bool? ?? false) : v;
       }
     }
+    // A prefilled number of days (default lead time) also fills its linked date.
+    for (final f in widget.fields) {
+      if (f.daysFor != null && widget.initial?[f.key] == null && f.defaultValue != null) _syncLinked(f);
+    }
     final labels = widget.initial?['_labels'];
     if (labels is Map) _labels.addAll(labels.cast<String, String>());
     _initial = _signature();
@@ -256,6 +260,7 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
   Map<String, dynamic>? _body() {
     _clientErrors.clear();
     final body = <String, dynamic>{};
+    final fallbackDates = <String, String>{};
     for (final f in widget.fields) {
       Object? v;
       if (_isText(f)) {
@@ -280,6 +285,11 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
       } else {
         v = _values[f.key];
       }
+      if (v == null && f.fallback != null) {
+        v = f.fallback;
+        final days = f.daysFor;
+        if (days != null && v is int) fallbackDates[days] = isoDate(addWorkDays(_today, v));
+      }
       if (f.required && v == null) _clientErrors[f.key] = 'Obrigatório';
       if (v is num && !_clientErrors.containsKey(f.key)) {
         if (f.positive && v <= 0) {
@@ -292,6 +302,7 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
       }
       body[f.key] = v;
     }
+    fallbackDates.forEach((k, d) => body[k] ??= d);
     return _clientErrors.isEmpty ? body : null;
   }
 

@@ -64,6 +64,7 @@ public static class FiscalEndpoints
     public static IServiceCollection AddFiscal(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<FiscalService>();
+        services.AddScoped<FiscalDataImporter>();
         var sefaz = configuration.GetSection("Fiscal:Sefaz").Get<SefazOptions>() ?? new SefazOptions();
         if (sefaz.IsReal)
             services.AddSingleton<ISefazClient>(new SefazSpClient(sefaz, sefaz.LoadCertificate())); // Fiscal:Sefaz:Mode = Sp
@@ -80,7 +81,39 @@ public static class FiscalEndpoints
         MapDocuments(app);
         MapInutilizations(app);
         MapCarriers(app);
+        MapPreview(app);
+        MapLegacyImport(app);
     }
+
+    private const long MaxFiscalImportBytes = 20 * 1024 * 1024;
+
+    /// <summary>Fiscal data of the old system (issuer, CFOPs, carriers, tax rules, monthly prices) from the JSON of scripts/export-fiscal-data.ps1: preview first, then apply.</summary>
+    private static void MapLegacyImport(WebApplication app)
+    {
+        var g = app.MapGroup("/api/fiscal/legacy-import").WithTags("Fiscal");
+        g.MapGet("/summary", async (FiscalDataImporter importer, CancellationToken ct) => Results.Ok(await importer.SummaryAsync(ct))).RequireAuthorization(Policies.Read);
+        g.MapPost("/", async (IFormFile file, bool? apply, FiscalDataImporter importer, EbtDbContext db, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            if (file.Length is 0 or > MaxFiscalImportBytes) return Results.BadRequest(new { message = "Arquivo vazio ou maior que 20 MB", field = "file" });
+            await using var ms = new MemoryStream();
+            await file.CopyToAsync(ms, ct);
+            var result = await importer.ImportAsync(ms.ToArray(), apply == true, ct);
+            if (result.Applied)
+            {
+                db.AuditLog.Add(new AuditEntry
+                {
+                    At = DateTimeOffset.UtcNow, User = user.Identity?.Name, Entity = "FiscalData", EntityId = "import", Action = "Import",
+                    Changes = System.Text.Json.JsonSerializer.Serialize(new { file = Path.GetFileName(file.FileName), sections = result.Sections.Select(x => new { x.Section, x.Added, x.Updated, x.Skipped }) })
+                });
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok(result);
+        }).RequireAuthorization(Policies.Admin).DisableAntiforgery();
+    }
+
+    /// <summary>Dry run of the NF of a sales order (the "Nota fiscal" step of the order flow): nothing is reserved, saved or sent.</summary>
+    private static void MapPreview(WebApplication app) =>
+        app.MapGet("/api/fiscal/preview/order/{id:int}", async (int id, FiscalService fiscal, CancellationToken ct) => Results.Ok(await fiscal.PreviewSaleAsync(id, ct))).WithTags("Fiscal").RequireAuthorization(Policies.Read);
 
     private static void MapInutilizations(WebApplication app)
     {

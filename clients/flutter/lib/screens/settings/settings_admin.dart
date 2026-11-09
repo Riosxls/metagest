@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../session.dart';
 import '../data_reset.dart';
+import '../fiscal_import.dart';
 import '../legacy_cleanup.dart';
 import 'settings_backup.dart';
 import 'settings_data_source.dart';
@@ -168,7 +169,8 @@ class AdminSection extends StatelessWidget {
         ),
         SettingsGroup(
           title: 'Sistema antigo',
-          note: 'Ordens de fabricação do sistema antigo: preenche o processo das que estão vazias e cancela as vencidas que nunca andaram.',
+          note:
+              'Ordens de fabricação do sistema antigo: preenche o processo das que estão vazias e cancela as vencidas que nunca andaram. Dados fiscais: traz o que a emissão da nota fiscal precisa e não veio nos cadastros.',
           children: [
             Align(
               alignment: Alignment.centerLeft,
@@ -177,6 +179,15 @@ class AdminSection extends StatelessWidget {
                 onPressed: () => showLegacyCleanupDialog(context, session),
                 icon: const Icon(Icons.auto_fix_high_outlined),
                 label: const Text('Limpeza do legado…'),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const ValueKey('open-fiscal-import'),
+                onPressed: () => showFiscalImportDialog(context, session),
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('Dados fiscais do sistema antigo…'),
               ),
             ),
           ],

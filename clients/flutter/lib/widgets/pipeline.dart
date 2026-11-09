@@ -192,7 +192,8 @@ class StagePath extends StatelessWidget {
                         key: ValueKey('path-$i'),
                         height: 44,
                         margin: const EdgeInsets.only(right: 2),
-                        padding: EdgeInsets.only(left: i == 0 ? 8 : 16, right: 8),
+                        // Narrow bars hold up to nine steps: the padding shrinks so each icon still fits its chevron.
+                        padding: EdgeInsets.only(left: i == 0 ? 8 : (compact ? 10 : 16), right: compact ? 4 : 8),
                         color: i < current
                             ? done
                             : i == current

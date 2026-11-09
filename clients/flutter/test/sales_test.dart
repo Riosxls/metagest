@@ -385,10 +385,10 @@ void main() {
     expect(quotePath('Cancelled'), (0, 'Cancelada'));
     expect(quotePath('Cancelled', superseded: true), (0, 'Substituída'));
     expect(orderPath('Released'), (5, null));
-    expect(orderPath('Released', ready: true), (6, null));
-    expect(orderPath('Released', ready: true, certified: true), (7, null));
-    expect(orderPath('Delivered'), (8, null));
-    expect(deliveryPath('Cancelled'), (7, 'Cancelada'));
+    expect(orderPath('Released', ready: true), (7, null)); // the Nota Fiscal step (6) is a simulation page, the certificate is next
+    expect(orderPath('Released', ready: true, certified: true), (8, null));
+    expect(orderPath('Delivered'), (9, null));
+    expect(deliveryPath('Cancelled'), (8, 'Cancelada'));
   });
 
   testWidgets('pipeline shows the stages and advances a sent proposal to accepted', (tester) async {

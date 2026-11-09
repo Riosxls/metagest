@@ -96,7 +96,7 @@ void main() {
     testWidgets('a narrow StagePath keeps the step icons and says "Etapa n de N" under the bar', (tester) async {
       await tester.pumpWidget(_host(const StagePath(steps: flowSteps, current: 2), width: 400));
       expect(find.byKey(const ValueKey('path-caption')), findsOneWidget);
-      expect(find.text('Etapa 3 de 8 · Aprovada pelo cliente'), findsOneWidget);
+      expect(find.text('Etapa 3 de 9 · Aprovada pelo cliente'), findsOneWidget);
       expect(find.byIcon(Icons.send_outlined), findsOneWidget); // a finished step is its own icon, not a bare check
       expect(find.byIcon(Icons.check), findsNothing);
     });
@@ -107,9 +107,9 @@ void main() {
       expect(find.byIcon(Icons.check), findsWidgets);
     });
 
-    testWidgets('the last step of a finished record reads "Etapa 8 de 8"', (tester) async {
-      await tester.pumpWidget(_host(const StagePath(steps: flowSteps, current: 8), width: 400));
-      expect(find.textContaining('Etapa 8 de 8'), findsOneWidget);
+    testWidgets('the last step of a finished record reads "Etapa 9 de 9"', (tester) async {
+      await tester.pumpWidget(_host(const StagePath(steps: flowSteps, current: 9), width: 400));
+      expect(find.textContaining('Etapa 9 de 9'), findsOneWidget);
     });
 
     testWidgets('SimpleTable follows the width it is given, not the window', (tester) async {

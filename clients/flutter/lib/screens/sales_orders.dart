@@ -682,6 +682,14 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     ];
   }
 
+  /// Opens the Nota Fiscal step: a simulation of the order's NF and the checklist of what is missing before the real emission.
+  Widget _invoiceButton(Map<String, dynamic> o) => OutlinedButton.icon(
+    key: const ValueKey('order-invoice'),
+    onPressed: () => unawaited(openOrderInvoice(context, s, o['id'] as int).then((_) => _load())),
+    icon: const Icon(Icons.request_quote_outlined),
+    label: const Text('Nota Fiscal'),
+  );
+
   /// The earliest Planned delivery when it already carries everything still open: planning another would be refused, the next move is to ship it.
   Map<String, dynamic>? _plannedCoversBalance(Map<String, dynamic> o) {
     final lines = (o['lines'] as List).cast<Map<String, dynamic>>();
@@ -723,6 +731,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
           // One filled action, one outlined; the rare ones live under "Mais".
           if (s.canCertificate) primary('order-certificate', 'Emitir certificado', Icons.verified_outlined, _newCertificate),
           ..._printOfButtons(o),
+          _invoiceButton(o),
           ..._deliverButton(o, primary: false),
           if (s.canIssueCertificate || (s.canSell && status == 'PartiallyShipped'))
             _moreMenu([
@@ -747,14 +756,14 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
             ? 'Há produto acabado para os itens em aberto. Programe a entrega.'
             : 'Há produto acabado e a entrega ${_plannedCoversBalance(o)!['reference']} já está programada. Expeça quando a mercadoria sair.',
         tone: Tone.success,
-        actions: [..._printOfButtons(o), ..._deliverButton(o, primary: true), ..._closeAction()],
+        actions: [..._printOfButtons(o), _invoiceButton(o), ..._deliverButton(o, primary: true), ..._closeAction()],
       ),
       'Released' || 'PartiallyShipped' => NextStepCard(
         title: 'Em produção · $pct pronto',
         message: o['late'] == true ? 'Há itens com data de entrega vencida.' : 'Acompanhe as OFs abaixo. A entrega já tem a data definida no pedido.',
         tone: o['late'] == true ? Tone.danger : Tone.progress,
         // Nothing shipped yet: the delivery date came with the order, so there is no delivery to plan from here. After a partial shipment the button stays.
-        actions: [..._printOfButtons(o), if (o['status'] != 'Released') ..._deliverButton(o, primary: false), ..._closeAction()],
+        actions: [..._printOfButtons(o), _invoiceButton(o), if (o['status'] != 'Released') ..._deliverButton(o, primary: false), ..._closeAction()],
       ),
       'Shipped' => NextStepCard(
         title: 'Tudo expedido',
@@ -884,11 +893,13 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
           for (final e in ofs.entries) (label: e.value, open: () => openProductionOrder(context, s, e.key).then((_) => _load())),
         ]);
       case 6:
+        return () => unawaited(openOrderInvoice(context, s, o['id'] as int).then((_) => _load()));
+      case 7:
         return stepLink(context, 'Abrir qual certificado?', [
           for (final c in _certs.where((c) => c['status'] != 'Cancelled'))
             (label: '${c['reference']} · ${c['description']}', open: () => openCertificate(context, s, c['id'] as int).then((_) => _load())),
         ]);
-      case 7:
+      case 8:
         return stepLink(context, 'Abrir qual entrega?', [
           for (final d in deliveries.where((d) => d['status'] != 'Cancelled'))
             (label: '${d['reference']} · ${deliveryStatuses[d['status']] ?? d['status']}', open: () => openDelivery(context, s, d['id'] as int).then((_) => _load())),

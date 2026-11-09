@@ -6,6 +6,7 @@ import 'certificates.dart';
 import 'customers.dart';
 import 'deliveries.dart';
 import 'fiscal.dart';
+import 'order_invoice.dart';
 import 'orders.dart';
 import 'product_detail.dart';
 import 'production_orders.dart';
@@ -24,6 +25,7 @@ import 'viability.dart';
 const recordLabels = {
   'quote': 'Orçamento',
   'sales-order': 'Pedido de venda',
+  'order-invoice': 'Nota fiscal do pedido',
   'delivery': 'Entrega',
   'production-order': 'Ordem de fabricação',
   'certificate': 'Certificado',
@@ -46,6 +48,7 @@ const recordLabels = {
 Widget? recordScreen(Session s, String kind, int id) => switch (kind) {
   'quote' => QuoteScreen(session: s, id: id),
   'sales-order' => SalesOrderScreen(session: s, id: id),
+  'order-invoice' => OrderInvoiceScreen(session: s, id: id),
   'delivery' => DeliveryScreen(session: s, id: id),
   'production-order' => ProductionOrderScreen(session: s, id: id),
   'certificate' => CertificateScreen(session: s, id: id),

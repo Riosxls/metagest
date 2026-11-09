@@ -566,12 +566,12 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
           current: (step - skip).clamp(0, flowSteps.length - skip - 1),
           failedLabel: failed,
           // Everything before the shipment lives on the order; the certificates of this delivery open directly.
-          onStep: (n) => n + skip == 6
+          onStep: (n) => n + skip == 7
               ? stepLink(context, 'Abrir qual certificado?', [
                   for (final c in _certs.where((c) => c['status'] != 'Cancelled'))
                     (label: '${c['reference']} · ${c['description']}', open: () => openCertificate(context, s, c['id'] as int).then((_) => _load())),
                 ])
-              : n + skip <= 5
+              : n + skip <= 6
               ? () => unawaited(openSalesOrder(context, s, d['orderId'] as int).then((_) => _load()))
               : null,
         ),
