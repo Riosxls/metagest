@@ -14,6 +14,7 @@ Map<String, dynamic> _line0(MoreFake f) => (f.order['lines'] as List).first as M
 MoreFake _released() {
   final f = MoreFake();
   f.order['status'] = 'Released';
+  f.order['ready'] = true;
   f.order['releasedBy'] = 'joao';
   f.order['releasedAt'] = '2026-10-27T12:00:00Z';
   return f;

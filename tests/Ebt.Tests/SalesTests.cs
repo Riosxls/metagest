@@ -116,6 +116,7 @@ public class SalesTests(ApiFixture api)
         Assert.Equal(HttpStatusCode.BadRequest, tooMuch.StatusCode);
         var delivery = await (await sales.Post($"/api/sales/orders/{order.Id}/deliveries", new DeliveryInput(Today, Carrier: "Próprio", Lines: [new DeliveryLineInput(order.Lines[0].Id, 30m)]))).Read<DeliveryOut>();
         Assert.Equal(DeliveryStatus.Planned, delivery.Status);
+        Assert.Equal(quote.Id, delivery.OrderQuoteId); // the delivery page draws the same steps as its order: with a quote, all of them
         Assert.Equal(1, delivery.Packages);
         Assert.StartsWith("ENT ", delivery.Reference);
 
@@ -389,6 +390,16 @@ public class SalesTests(ApiFixture api)
 
         var order = await (await admin.Post("/api/sales/orders", new SalesOrderIn(s.Customer.Id, s.Address.Id, [new SalesLineInput(s.Tube.Id, 100m, 8m, Spec: new LineSpec(SaleUnit: "KG"))], "PO-9", s.Term.Id))).Read<SalesOrderOut>();
         Assert.Equal("KG", order.Lines[0].Spec?.SaleUnit);
+    }
+
+    [Fact]
+    public async Task Delivery_of_an_order_typed_without_a_quote_says_so()
+    {
+        var admin = await api.AdminAsync();
+        var s = await Arrange(admin, stock: 100m);
+        var order = await ReleasedOrder(admin, s, 10m);
+        var delivery = await (await admin.Post($"/api/sales/orders/{order.Id}/deliveries", new DeliveryInput(Today, Lines: [new DeliveryLineInput(order.Lines[0].Id, 5m)]))).Read<DeliveryOut>();
+        Assert.Null(delivery.OrderQuoteId);
     }
 
     [Fact]

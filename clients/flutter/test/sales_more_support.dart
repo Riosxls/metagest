@@ -285,7 +285,15 @@ class MoreFake {
     return jsonResp(pageOf([]));
   }
 
+  /// Extra keys merged into the delivery the fake serves (e.g. `orderQuoteId`).
+  Map<String, dynamic> deliveryExtra = {};
+
   Map<String, dynamic> _delivery() => {
+    ...deliveryBase(),
+    ...deliveryExtra,
+  };
+
+  Map<String, dynamic> deliveryBase() => {
     'id': 15,
     'number': 15,
     'reference': 'ENT 15',

@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:ebt_engenharia/screens/deliveries.dart';
 import 'package:ebt_engenharia/screens/sales_common.dart';
 import 'package:ebt_engenharia/screens/sales_orders.dart';
 import 'package:ebt_engenharia/screens/sales_quotes.dart';
@@ -127,6 +128,18 @@ void main() {
     expect(f.where('POST', '/api/sales/orders').length, 1); // retrying never types the order twice
   });
 
+  testWidgets('the footer keeps the totals on the left and Salvar pedido on the right edge, with what is missing beside it', (tester) async {
+    final f = MoreFake();
+    await pumpMore(tester, f, (s) => QuoteEditorScreen(session: s, asOrder: true), size: const Size(1800, 900));
+    final save = tester.getRect(find.byKey(const ValueKey('quote-save')));
+    final missing = tester.getRect(find.byKey(const ValueKey('quote-missing')));
+    final total = tester.getRect(find.byKey(const ValueKey('quote-estimate')));
+    expect(save.right, closeTo(1800 - 16, 1)); // pinned to the right edge
+    expect(missing.right, lessThan(save.left));
+    expect(total.left, lessThan(300));
+    expect(tester.getRect(find.byKey(const ValueKey('order-attach-po'))).top, lessThan(500)); // the form is still on screen: the footer does not take the page
+  });
+
   group('order typed without a quote', () {
     MoreFake direct() => MoreFake()..order['quoteId'] = null;
 
@@ -162,6 +175,24 @@ void main() {
       await pumpMore(tester, f, (s) => SalesOrderScreen(session: s, id: 9));
       expect(find.byKey(const ValueKey('path-7')), findsOneWidget);
       expect(find.byKey(const ValueKey('order-po-attach')), findsNothing);
+    });
+  });
+
+  group('delivery page path', () {
+    testWidgets('a delivery of an order typed without a quote shows the same five steps as the order', (tester) async {
+      final f = MoreFake();
+      f.deliveryExtra = {'orderQuoteId': null};
+      await pumpMore(tester, f, (s) => DeliveryScreen(session: s, id: 15));
+      expect(find.byKey(const ValueKey('path-4')), findsOneWidget);
+      expect(find.byKey(const ValueKey('path-5')), findsNothing);
+      expect(find.textContaining('Aprovada pelo cliente'), findsNothing);
+    });
+
+    testWidgets('a delivery of an order that came from a quote keeps the eight steps', (tester) async {
+      final f = MoreFake();
+      f.deliveryExtra = {'orderQuoteId': 5};
+      await pumpMore(tester, f, (s) => DeliveryScreen(session: s, id: 15));
+      expect(find.byKey(const ValueKey('path-7')), findsOneWidget);
     });
   });
 

@@ -228,7 +228,7 @@ void main() {
 
   group('deliveries', () {
     testWidgets('dialog validates the date and quantities, then posts and opens the delivery', (tester) async {
-      final fake = _released(certified: true);
+      final fake = _released(ready: true, certified: true);
       await pumpMore(tester, fake, (s) => SalesOrderScreen(session: s, id: 9));
       await tapKey(tester, 'order-deliver');
       expect(find.text('Programar entrega · PV 9'), findsOneWidget);
@@ -255,7 +255,7 @@ void main() {
     });
 
     testWidgets('going back from the dialog posts nothing', (tester) async {
-      final fake = _released(certified: true);
+      final fake = _released(ready: true, certified: true);
       await pumpMore(tester, fake, (s) => SalesOrderScreen(session: s, id: 9));
       await tapKey(tester, 'order-deliver');
       await tapText(tester, 'Cancelar');
@@ -263,7 +263,7 @@ void main() {
     });
 
     testWidgets('a planned delivery can be opened from the table', (tester) async {
-      final fake = _released(certified: true);
+      final fake = _released(ready: true, certified: true);
       fake.order['deliveries'] = [
         {'id': 15, 'reference': 'ENT 15', 'plannedDate': '2026-10-28', 'status': 'Shipped', 'invoiceNumber': '1234', 'packages': 1},
       ];
@@ -278,7 +278,7 @@ void main() {
     });
 
     testWidgets('a fully planned order refuses to open the delivery dialog', (tester) async {
-      final fake = _released(certified: true);
+      final fake = _released(ready: true, certified: true);
       _line0(fake)['planned'] = 100;
       await pumpMore(tester, fake, (s) => SalesOrderScreen(session: s, id: 9));
       await tapKey(tester, 'order-deliver');
@@ -303,7 +303,27 @@ void main() {
       expect(find.text('50/100 · exp. 0'), findsOneWidget);
       expect(find.byKey(const ValueKey('print-menu')), findsOneWidget); // OFs in production: one print menu with the pedido and the OF
       expect(find.byKey(const ValueKey('order-print-of-12')), findsOneWidget); // and the step card prints it too, left of "Programar entrega"
+      // Nothing shipped yet: the delivery date came with the order, so the production card has no "Programar entrega", and Entregas / Certificados stay out of the page.
+      expect(find.byKey(const ValueKey('order-deliver')), findsNothing);
+      expect(find.textContaining('Entregas ('), findsNothing);
+      expect(find.textContaining('Certificados de qualidade ('), findsNothing);
+    });
+
+    testWidgets('after a partial shipment the production card still plans the next delivery, with the OF print to its left', (tester) async {
+      final fake = _released();
+      fake.order['status'] = 'PartiallyShipped';
+      _line0(fake)
+        ..['productionOrderId'] = 12
+        ..['productionReference'] = 'OF 500';
+      await pumpMore(tester, fake, (s) => SalesOrderScreen(session: s, id: 9));
       expect(tester.getTopLeft(find.byKey(const ValueKey('order-print-of-12'))).dx, lessThan(tester.getTopLeft(find.byKey(const ValueKey('order-deliver'))).dx));
+    });
+
+    testWidgets('once the production is ready the delivery and certificate cards are back', (tester) async {
+      final fake = _released(ready: true);
+      await pumpMore(tester, fake, (s) => SalesOrderScreen(session: s, id: 9));
+      expect(find.textContaining('Entregas ('), findsOneWidget);
+      expect(find.textContaining('Certificados de qualidade ('), findsOneWidget);
     });
 
     testWidgets('two OFs get a print button each and the cards name them', (tester) async {

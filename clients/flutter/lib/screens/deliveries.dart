@@ -555,21 +555,23 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
 
   Widget _body(Map<String, dynamic> d) {
     final (step, failed) = deliveryPath(d['status']);
+    // Same steps as the order page: an order typed without a quote never had Orçamento, Enviada or Aprovada.
+    final skip = d['orderQuoteId'] == null ? 3 : 0;
     return SideBySide(
       main: [
         _header(d),
         gap,
         StagePath(
-          steps: flowSteps,
-          current: step,
+          steps: flowSteps.sublist(skip),
+          current: (step - skip).clamp(0, flowSteps.length - skip - 1),
           failedLabel: failed,
           // Everything before the shipment lives on the order; the certificates of this delivery open directly.
-          onStep: (i) => i == 6
+          onStep: (n) => n + skip == 6
               ? stepLink(context, 'Abrir qual certificado?', [
                   for (final c in _certs.where((c) => c['status'] != 'Cancelled'))
                     (label: '${c['reference']} · ${c['description']}', open: () => openCertificate(context, s, c['id'] as int).then((_) => _load())),
                 ])
-              : i <= 5
+              : n + skip <= 5
               ? () => unawaited(openSalesOrder(context, s, d['orderId'] as int).then((_) => _load()))
               : null,
         ),

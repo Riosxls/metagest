@@ -751,11 +751,10 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       ),
       'Released' || 'PartiallyShipped' => NextStepCard(
         title: 'Em produção · $pct pronto',
-        message: o['late'] == true
-            ? 'Há itens com data de entrega vencida.'
-            : 'Acompanhe as OFs abaixo. Dá para programar uma entrega parcial do que já está pronto.',
+        message: o['late'] == true ? 'Há itens com data de entrega vencida.' : 'Acompanhe as OFs abaixo. A entrega já tem a data definida no pedido.',
         tone: o['late'] == true ? Tone.danger : Tone.progress,
-        actions: [..._printOfButtons(o), ..._deliverButton(o, primary: false), ..._closeAction()],
+        // Nothing shipped yet: the delivery date came with the order, so there is no delivery to plan from here. After a partial shipment the button stays.
+        actions: [..._printOfButtons(o), if (o['status'] != 'Released') ..._deliverButton(o, primary: false), ..._closeAction()],
       ),
       'Shipped' => NextStepCard(
         title: 'Tudo expedido',
@@ -906,6 +905,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     final credit = o['credit'] as Map<String, dynamic>;
     final released = !['Created', 'Cancelled'].contains(o['status']);
     final skip = o['quoteId'] == null ? 3 : 0;
+    final producing = ['Created', 'Released'].contains(o['status']) && o['ready'] != true;
     return SideBySide(
       main: [
         _orderHeader(o, credit),
@@ -925,9 +925,10 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         gap,
         _itemsSection(o, lines),
         if (released) ...[gap, _production(lines)],
-        gap,
-        _deliveriesSection(o, deliveries),
-        if (released) ...[gap, _certificatesSection(o)],
+        // While the order is still being produced (or not released yet) there is nothing to deliver or to certify: those cards only appear once the OFs are done,
+        // or earlier if a delivery or certificate already exists.
+        if (!producing || deliveries.isNotEmpty) ...[gap, _deliveriesSection(o, deliveries)],
+        if (released && (!producing || _certs.isNotEmpty)) ...[gap, _certificatesSection(o)],
         if (o['status'] != 'Cancelled') ...[gap, PrintPanel(docs: _printDocs(o))],
         gap,
         _detailsSection(o),

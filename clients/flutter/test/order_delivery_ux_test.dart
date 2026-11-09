@@ -368,6 +368,7 @@ void main() {
     testWidgets('no banner within the limit', (tester) async {
       final fake = MoreFake();
       fake.order['status'] = 'Released';
+      fake.order['ready'] = true; // production done: the card offers the delivery
       await pumpMore(tester, fake, (s) => SalesOrderScreen(session: s, id: 9));
       expect(find.byKey(const ValueKey('order-credit-banner')), findsNothing);
     });
@@ -429,6 +430,7 @@ void main() {
     testWidgets('2,3 - 2,0 leaves 0,3 and typing 0,3 passes', (tester) async {
       final fake = MoreFake();
       fake.order['status'] = 'Released';
+      fake.order['ready'] = true; // production done: the card offers the delivery
       ((fake.order['lines'] as List).first as Map<String, dynamic>)
         ..['quantity'] = 2.3
         ..['remaining'] = 2.3
@@ -448,6 +450,7 @@ void main() {
     testWidgets('prefill is the smaller of the balance and the available; nothing available warns and starts empty', (tester) async {
       final fake = MoreFake();
       fake.order['status'] = 'Released';
+      fake.order['ready'] = true; // production done: the card offers the delivery
       ((fake.order['lines'] as List).first as Map<String, dynamic>)['available'] = 0;
       await pumpMore(tester, fake, (s) => SalesOrderScreen(session: s, id: 9));
       await tapKey(tester, 'order-deliver');

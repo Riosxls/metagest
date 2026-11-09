@@ -620,7 +620,7 @@ void main() {
   });
 
   testWidgets('order release without stock, then plan a delivery', (tester) async {
-    final fake = SalesFake();
+    final fake = SalesFake()..ready = true; // the OF is done by the time the delivery is planned: before that the card has no such button
     await pumpScreen(tester, fake, (s) => SalesOrderScreen(session: s, id: 9));
     await tester.tap(find.byKey(const ValueKey('order-release')));
     await tester.pumpAndSettle();
@@ -745,7 +745,9 @@ void main() {
     });
 
     testWidgets('planning a delivery first offers the production orders that were not printed', (tester) async {
-      final fake = SalesFake()..orderStatus = 'Released';
+      final fake = SalesFake()
+        ..orderStatus = 'Released'
+        ..ready = true;
       await pumpScreen(tester, fake, (s) => SalesOrderScreen(session: s, id: 9));
       await tester.tap(find.byKey(const ValueKey('order-deliver')));
       await tester.pumpAndSettle();

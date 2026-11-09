@@ -60,7 +60,7 @@ public record DeliveryLineOut(int Id, int OrderLineId, int Sequence, int Product
 public record DeliveryOut(int Id, int Number, string Reference, int OrderId, string OrderReference, int CustomerId, string CustomerName, int AddressId, string AddressText, DateOnly PlannedDate, DeliveryStatus Status,
     string? Carrier, string? VehiclePlate, string? InvoiceNumber, int Packages, decimal? GrossWeightKg, int? StockDocumentId, string? Notes, string? CreatedBy, DateTimeOffset CreatedAt, string? ShippedBy, DateTimeOffset? ShippedAt,
     DateTimeOffset? DeliveredAt, string? ReceivedBy, IReadOnlyList<DeliveryLineOut> Lines, IReadOnlyList<SalesEventOut> History,
-    string? LotNumber = null, decimal? InvoicedValue = null, decimal ValueExIpi = 0, decimal BalanceKg = 0, decimal BalanceValue = 0, bool NeedsInvoice = false, string InvoiceStatus = "None");
+    string? LotNumber = null, decimal? InvoicedValue = null, decimal ValueExIpi = 0, decimal BalanceKg = 0, decimal BalanceValue = 0, bool NeedsInvoice = false, string InvoiceStatus = "None", int? OrderQuoteId = null);
 
 public record PipelineCard(SalesRecordKind Kind, int Id, string Reference, int CustomerId, string CustomerName, decimal Value, string Status, DateOnly? Date, decimal? Progress, IReadOnlyList<string> Badges);
 public record PipelineStage(string Key, int Count, decimal Value, IReadOnlyList<PipelineCard> Cards);
@@ -793,7 +793,7 @@ public static class SalesEndpoints
             l.Quantity, l.OrderLine.Unit, l.Packages)).ToList();
         return new DeliveryOut(d.Id, d.Number, d.Reference, d.OrderId, d.Order!.Reference, d.Order.CustomerId, d.Order.Customer!.Name, d.AddressId, AddressText(d.Address), d.PlannedDate, d.Status, d.Carrier, d.VehiclePlate,
             d.InvoiceNumber, d.Packages, d.GrossWeightKg, d.StockDocumentId, d.Notes, d.CreatedBy, d.CreatedAt, d.ShippedBy, d.ShippedAt, d.DeliveredAt, d.ReceivedBy, lines, await History(db, SalesRecordKind.Delivery, id, ct),
-            d.LotNumber, d.InvoicedValue, valueExIpi, balanceKg, balanceValue, invoice.Needs, invoice.Status);
+            d.LotNumber, d.InvoicedValue, valueExIpi, balanceKg, balanceValue, invoice.Needs, invoice.Status, d.Order.QuoteId);
     }
 
     private static Task<bool> FiscalEnabled(EbtDbContext db, CancellationToken ct) => db.FiscalSettings.AsNoTracking().Select(s => s.Enabled).FirstOrDefaultAsync(ct);
