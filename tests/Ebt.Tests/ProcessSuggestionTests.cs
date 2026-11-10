@@ -126,10 +126,9 @@ public class ProcessSuggestionTests(ApiFixture api)
         Assert.Equal(OperationKind.Inspection, ProcessSuggester.KindOf("Inspeção Final"));
         Assert.Equal(OperationKind.Other, ProcessSuggester.KindOf("Beneficiamento"));
         Assert.Equal(OperationKind.Saw, ProcessSuggester.KindOf("Cortar as pontas"));
-        Assert.Equal("Rolo 14,00 x 0,75 mm", ProcessSuggester.FitWall("Rolo 14,00 x 0,90 mm", 0.75m));
-        Assert.Equal("Fita 0,75 x 41,00mm", ProcessSuggester.FitWall("Fita 0,70 x 41,00mm", 0.75m));
-        Assert.Equal("Rolo 14,00 x 0,75 mm", ProcessSuggester.FitWall("Rolo 14,00 x 0,75 mm", 0.75m));
-        Assert.Null(ProcessSuggester.FitWall(null, 0.75m));
+        Assert.False(ProcessSuggester.RollMatchesWall("Rolo 14,00 x 0,90 mm", 0.75m));
+        Assert.True(ProcessSuggester.RollMatchesWall("Rolo 14,00 x 0,75 mm", 0.75m));
+        Assert.True(ProcessSuggester.RollMatchesWall(null, 0.75m));
         Assert.Equal(OperationKind.Saw, ProcessSuggester.KindOf("Serra de fita"));
         Assert.Equal(OperationKind.StraightenCut, ProcessSuggester.KindOf("Endireitar e Cortar 3000"));
         Assert.Equal(OperationKind.Other, ProcessSuggester.KindOf("Tratamento térmico"));

@@ -134,32 +134,29 @@ public sealed class ProcessSuggester(EbtDbContext db)
         {
             var templates = await TemplatesAsync(product, ct);
             if (keys.Count > 0 && templates.Where(t => t.CustomerKey is not null && keys.Contains(t.CustomerKey)).OrderByDescending(t => t.SourceDate).ThenByDescending(t => t.Id).FirstOrDefault() is { } own)
-                return FromTemplate(ProcessSource.TemplateCustomer, own, machines, product.ThicknessMm);
+                return FromTemplate(ProcessSource.TemplateCustomer, own, machines);
             if (templates.Count > 0)
             {
+                // Another customer's process is borrowed: the sheets whose roll matches the wall come first (an old sheet may carry the roll of the order it was copied from).
+                var consistent = templates.Where(t => RollMatchesWall(t.PrimaryTube, product.ThicknessMm)).ToList();
+                if (consistent.Count > 0) templates = consistent;
                 var winner = templates.GroupBy(Signature).OrderByDescending(g => g.Count()).ThenByDescending(g => g.Max(t => t.SourceDate)).First()
                     .OrderByDescending(t => t.SourceDate).ThenByDescending(t => t.Id).First();
-                return FromTemplate(ProcessSource.TemplateDims, winner, machines, product.ThicknessMm);
+                return FromTemplate(ProcessSource.TemplateDims, winner, machines);
             }
         }
         return new ProcessSuggestion(ProcessSource.Rules, null, RuleOperations(product, primaryTube, machines));
     }
 
     /// <summary>
-    /// The wall written on a raw-material or primary-tube text follows the product: "Rolo 14,00 x 0,90 mm" for a 0,75 mm tube is a copy-paste slip of an old sheet (strip and roll are as thick as the finished wall).
-    /// "Rolo/Tubo D x T" has the wall second, "Fita T x W" first; the width (the strip is cut to the roll) is kept as written.
+    /// Whether the roll of a template ("Rolo 14,00 x 0,75 mm") is as thick as the finished wall. Not an error when it is not (drawing may thicken the wall), but when the process of
+    /// ANOTHER customer is borrowed, the ones whose roll matches the wall are the safer copy: some old sheets carry the roll of the previous order they were copied from.
     /// </summary>
-    public static string? FitWall(string? text, decimal? wall)
+    public static bool RollMatchesWall(string? primaryTube, decimal? wall)
     {
-        if (string.IsNullOrWhiteSpace(text) || wall is not > 0) return text;
-        var m = System.Text.RegularExpressions.Regex.Match(text, @"^(?<head>\s*(?<kind>[A-Za-zÀ-ú]+)\s+)(?<a>\d+(?:[.,]\d+)?)(?<mid>\s*[xX]\s*)(?<b>\d+(?:[.,]\d+)?)(?<tail>.*)$");
-        if (!m.Success) return text;
-        var pt = CultureInfo.GetCultureInfo("pt-BR");
-        var fita = Fold(m.Groups["kind"].Value) == "FITA";
-        var group = fita ? "a" : "b";
-        if (!decimal.TryParse(m.Groups[group].Value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var current) || Math.Abs(current - wall.Value) <= 0.001m) return text;
-        var fixedWall = wall.Value.ToString("0.00", pt);
-        return $"{m.Groups["head"].Value}{(fita ? fixedWall : m.Groups["a"].Value)}{m.Groups["mid"].Value}{(fita ? m.Groups["b"].Value : fixedWall)}{m.Groups["tail"].Value}";
+        if (wall is not > 0 || string.IsNullOrWhiteSpace(primaryTube)) return true;
+        var m = System.Text.RegularExpressions.Regex.Match(primaryTube, @"\d+(?:[.,]\d+)?\s*[xX]\s*(\d+(?:[.,]\d+)?)");
+        return !m.Success || !decimal.TryParse(m.Groups[1].Value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var t) || Math.Abs(t - wall.Value) <= 0.001m;
     }
 
     private static string Signature(ProcessTemplate t) =>
@@ -177,8 +174,8 @@ public sealed class ProcessSuggester(EbtDbContext db)
             t.Operations.Count > 0).ToList();
     }
 
-    private static ProcessSuggestion FromTemplate(ProcessSource source, ProcessTemplate t, MachineIndex machines, decimal? wall) =>
-        new(source, t.SourceRef, t.Operations.OrderBy(o => o.Sequence).Select((o, i) => Make(i, o.Description, o.Tolerance, o.MeasureStart, o.MeasureEnd, MachineFor(machines, o.Description, o.Resource))).ToList(), FitWall(t.RawMaterial, wall), FitWall(t.PrimaryTube, wall));
+    private static ProcessSuggestion FromTemplate(ProcessSource source, ProcessTemplate t, MachineIndex machines) =>
+        new(source, t.SourceRef, t.Operations.OrderBy(o => o.Sequence).Select((o, i) => Make(i, o.Description, o.Tolerance, o.MeasureStart, o.MeasureEnd, MachineFor(machines, o.Description, o.Resource))).ToList(), t.RawMaterial, t.PrimaryTube);
 
     private async Task<ProcessSuggestion?> FromPreviousOrderAsync(Product product, List<string> keys, int? excludeOrderId, MachineIndex machines, CancellationToken ct)
     {
@@ -203,6 +200,6 @@ public sealed class ProcessSuggester(EbtDbContext db)
             var swap = IsLegacySwap(o.Tolerance);
             var machine = o.Machine ?? MachineFor(machines, o.Description, swap ? LegacyInspectionResource : null);
             return Make(i, o.Description ?? "", swap ? Dash : o.Tolerance, o.MeasureStart, o.MeasureEnd, machine);
-        }).ToList(), FitWall(materials.RawMaterial, product.ThicknessMm), FitWall(materials.PrimaryTube, product.ThicknessMm));
+        }).ToList(), materials.RawMaterial, materials.PrimaryTube);
     }
 }
