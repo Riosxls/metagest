@@ -176,7 +176,7 @@ public sealed partial class ProductionService
         foreach (var p in products)
         {
             // Without a legacy sheet the generic rules need the roll the tube is profiled from: 14,00 for everything it can be drawn down from.
-            var suggestion = await Suggester.SuggestAsync(p, p.DiameterMm < 14 ? "Rolo 14,00" : null, null, ct, machines: machines);
+            var suggestion = await Suggester.SuggestAsync(p, p.DiameterMm < 14 ? "Rolo 14,00" : null, null, ct, machines: machines, stepDown: true);
             if (suggestion.Operations.Count == 0) continue;
             if (sample.Count < 30) sample.Add($"{p.Code} ({suggestion.Source}{(suggestion.SourceRef is null ? "" : " " + suggestion.SourceRef)}): {string.Join(" > ", suggestion.Operations.Select(o => o.Description))}");
             if (apply)

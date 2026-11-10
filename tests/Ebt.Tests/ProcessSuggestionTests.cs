@@ -619,4 +619,21 @@ public class ProcessSuggestionTests(ApiFixture api)
         await admin.Post("/api/production/orders/bulk/fill-routing", new BulkApplyIn(true));
         Assert.Equal(routing.Count, (await (await admin.GetAsync($"/api/products/{product.Id}/routing")).Read<List<RoutingOperationOut>>()).Count);
     }
+
+    [Fact]
+    public void The_rules_can_draw_down_in_passes_and_a_legacy_process_with_a_wrong_pass_is_not_sane()
+    {
+        var six = new Product { Code = "x", Name = "TUBO", Kind = ProductKind.Part, Ncm = "73063000", StockUnit = "PC", DiameterMm = 6m, ThicknessMm = 0.75m, LengthMm = 6000m };
+        Assert.Equal(["Perfilar 14,00mm", "Trefilar para 12,00mm", "Trefilar para 10,00mm", "Trefilar para 08,00mm", "Trefilar para 06,00mm", "Endireitar e Cortar 6000", "Inspeção Final"], ProcessSuggester.RuleDescriptions(six, "Rolo 14,00", stepDown: true));
+        // Without the option it stays one pass to the diameter.
+        Assert.Equal(["Perfilar 14,00mm", "Trefilar para 06,00mm", "Endireitar e Cortar 6000", "Inspeção Final"], ProcessSuggester.RuleDescriptions(six, "Rolo 14,00"));
+
+        ProcessTemplate T(params (string Description, int Sequence)[] ops) => new() { CustomerName = "x", DiameterMm = 6m, SourceRef = "t", Operations = ops.Select(o => new ProcessTemplateOperation { Description = o.Description, Sequence = o.Sequence }).ToList() };
+        var good = T(("Perfilar 14,00mm", 10), ("Trefilar para 12,00mm", 20), ("Trefilar para 06,00mm", 30), ("Endireitar e Cortar 6000", 40), ("Inspeção Final", 50));
+        Assert.True(ProcessSuggester.IsSane(good, six));
+        Assert.False(ProcessSuggester.IsSane(T(("Perfilar 14,00mm", 10), ("Perfilar 13,00mm", 15), ("Trefilar para 06,00mm", 30), ("Endireitar e Cortar 6000", 40)), six)); // two profilings
+        Assert.False(ProcessSuggester.IsSane(T(("Perfilar 14,00mm", 10), ("Trefilar para 10,00mm", 20), ("Trefilar para 12,00mm", 30), ("Endireitar e Cortar 6000", 40)), six)); // passes go up
+        Assert.False(ProcessSuggester.IsSane(T(("Perfilar 14,00mm", 10), ("Trefilar para 08,00mm", 20), ("Endireitar e Cortar 6000", 40)), six)); // does not end at the diameter
+        Assert.False(ProcessSuggester.IsSane(T(("Perfilar 14,00mm", 10), ("Trefilar para 06,00mm", 20), ("Endireitar e Cortar 3000", 40)), six)); // cut at another length
+    }
 }

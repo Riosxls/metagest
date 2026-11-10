@@ -90,15 +90,25 @@ public sealed class ProcessSuggester(EbtDbContext db)
     };
 
     /// <summary>Operation texts of the generic process: profile from the primary tube, draw to the diameter, straighten and cut to the length, final inspection.</summary>
-    public static List<string> RuleDescriptions(Product product, string? primaryTube)
+    public static List<string> RuleDescriptions(Product product, string? primaryTube, bool stepDown = false)
     {
-        string Mm(decimal v, string format = "0.00") => v.ToString(format, CultureInfo.GetCultureInfo("pt-BR"));
+        // Whole sizes are written with two digits ("08,00", "06,00", as on the old sheets), the others as they are ("9,52", "12,70").
+        string Mm(decimal v, string format = "") => v.ToString(format.Length > 0 ? format : (v == decimal.Truncate(v) ? "00.00" : "0.00"), CultureInfo.GetCultureInfo("pt-BR"));
         var ops = new List<string>();
         decimal? profile = null;
         var m = System.Text.RegularExpressions.Regex.Match(primaryTube ?? "", @"\d+(?:[.,]\d+)?");
         if (m.Success && decimal.TryParse(m.Value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var d)) profile = d;
         ops.Add(profile is { } p ? $"Perfilar {Mm(p)}mm" : "Perfilar");
-        if (product.DiameterMm is { } dia and > 0 && (profile is null || dia < profile)) ops.Add($"Trefilar para {Mm(dia)}mm");
+        if (product.DiameterMm is { } dia and > 0 && (profile is null || dia < profile))
+        {
+            // With [stepDown] the plant draws down in passes of about 2 mm (14 -> 12 -> 10 -> 8 -> 6 for a 6 mm tube): even sizes between the roll and the diameter, then the diameter itself.
+            // Only for the usual rolls (up to 16 mm); anything else is one pass to the diameter.
+            var from = profile ?? dia + 2;
+            if (stepDown && from <= 16m)
+                for (var step = Math.Floor(from / 2m) * 2m; step > dia; step -= 2m)
+                    if (step < from) ops.Add($"Trefilar para {Mm(step)}mm");
+            ops.Add($"Trefilar para {Mm(dia)}mm");
+        }
         ops.Add(product.LengthMm is { } len and > 0 ? $"Endireitar e Cortar {Mm(len, "0.##")}" : "Endireitar e Cortar");
         ops.Add("Inspeção Final");
         return ops;
@@ -115,8 +125,8 @@ public sealed class ProcessSuggester(EbtDbContext db)
         return machines.For(kind);
     }
 
-    public static IReadOnlyList<SuggestedOperation> RuleOperations(Product product, string? primaryTube, MachineIndex machines) =>
-        RuleDescriptions(product, primaryTube).Select((text, i) =>
+    public static IReadOnlyList<SuggestedOperation> RuleOperations(Product product, string? primaryTube, MachineIndex machines, bool stepDown = false) =>
+        RuleDescriptions(product, primaryTube, stepDown).Select((text, i) =>
         {
             var kind = KindOf(text);
             return Make(i, text, RuleTolerance(kind, product.LengthMm), null, null, machines.For(kind));
@@ -124,7 +134,7 @@ public sealed class ProcessSuggester(EbtDbContext db)
 
     /// <param name="excludeOrderId">The order the process is for (when it already exists): its own operations are never the source.</param>
     /// <param name="customerAlias">Second name of the customer (trade name): legacy sheets use either.</param>
-    public async Task<ProcessSuggestion> SuggestAsync(Product product, string? primaryTube, string? customerName, CancellationToken ct = default, int? excludeOrderId = null, string? customerAlias = null, MachineIndex? machines = null)
+    public async Task<ProcessSuggestion> SuggestAsync(Product product, string? primaryTube, string? customerName, CancellationToken ct = default, int? excludeOrderId = null, string? customerAlias = null, MachineIndex? machines = null, bool stepDown = false)
     {
         machines ??= await MachineIndex.LoadAsync(db, ct);
         var keys = new[] { customerName, customerAlias }.Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => PriceHistoryImporter.CustomerKey(n!).ToUpperInvariant()).Where(k => k.Length > 0).Distinct().ToList();
@@ -138,6 +148,8 @@ public sealed class ProcessSuggester(EbtDbContext db)
             if (templates.Count > 0)
             {
                 // Another customer's process is borrowed: the sheets whose roll matches the wall come first (an old sheet may carry the roll of the order it was copied from).
+                var sane = templates.Where(t => IsSane(t, product)).ToList();
+                if (sane.Count > 0) templates = sane;
                 var consistent = templates.Where(t => RollMatchesWall(t.PrimaryTube, product.ThicknessMm)).ToList();
                 if (consistent.Count > 0) templates = consistent;
                 var winner = templates.GroupBy(Signature).OrderByDescending(g => g.Count()).ThenByDescending(g => g.Max(t => t.SourceDate)).First()
@@ -145,7 +157,7 @@ public sealed class ProcessSuggester(EbtDbContext db)
                 return FromTemplate(ProcessSource.TemplateDims, winner, machines);
             }
         }
-        return new ProcessSuggestion(ProcessSource.Rules, null, RuleOperations(product, primaryTube, machines));
+        return new ProcessSuggestion(ProcessSource.Rules, null, RuleOperations(product, primaryTube, machines, stepDown));
     }
 
     /// <summary>
@@ -157,6 +169,28 @@ public sealed class ProcessSuggester(EbtDbContext db)
         if (wall is not > 0 || string.IsNullOrWhiteSpace(primaryTube)) return true;
         var m = System.Text.RegularExpressions.Regex.Match(primaryTube, @"\d+(?:[.,]\d+)?\s*[xX]\s*(\d+(?:[.,]\d+)?)");
         return !m.Success || !decimal.TryParse(m.Groups[1].Value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var t) || Math.Abs(t - wall.Value) <= 0.001m;
+    }
+
+    /// <summary>
+    /// Whether a legacy process makes sense for the tube: one profiling, drawing passes that only go down and end at the diameter, and a cut at the length. Some old sheets carry a pass
+    /// or a length of the order they were copied from; those are never the process a new product is given.
+    /// </summary>
+    public static bool IsSane(ProcessTemplate t, Product product)
+    {
+        static decimal? Last(string? text)
+        {
+            var m = System.Text.RegularExpressions.Regex.Matches(text ?? "", @"\d+(?:[.,]\d+)?");
+            return m.Count > 0 && decimal.TryParse(m[^1].Value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? v : null;
+        }
+        var ops = t.Operations.OrderBy(o => o.Sequence).ToList();
+        if (ops.Count(o => KindOf(o.Description) == OperationKind.Profile) > 1) return false;
+        var draws = ops.Where(o => KindOf(o.Description) == OperationKind.Draw).Select(o => Last(o.Description)).ToList();
+        if (draws.Any(d => d is null)) return false;
+        for (var i = 1; i < draws.Count; i++) if (draws[i] >= draws[i - 1]) return false;
+        if (product.DiameterMm is { } dia && draws.Count > 0 && Math.Abs(draws[^1]!.Value - dia) > 0.011m) return false;
+        if (product.LengthMm is { } len && ops.FirstOrDefault(o => (o.Description ?? "").Contains("cortar", StringComparison.OrdinalIgnoreCase) && KindOf(o.Description) == OperationKind.StraightenCut) is { } cut
+            && Last(cut.Description) is { } cutLen && Math.Abs(cutLen - len) > 1m) return false;
+        return true;
     }
 
     private static string Signature(ProcessTemplate t) =>
