@@ -213,5 +213,15 @@ void main() {
       await tapKey(tester, 'kpi-late');
       expect(find.text('PV 10'), findsOneWidget);
     });
+
+    testWidgets('the company chips and the period button narrow the board on the server', (tester) async {
+      final f = _fake({});
+      await _open(tester, f);
+      await tapKey(tester, 'pipeline-company-Bts');
+      expect(f.where('GET', '/api/sales/pipeline').last.url.queryParameters['billTo'], 'Bts');
+      await tapKey(tester, 'pipeline-company-all');
+      expect(f.where('GET', '/api/sales/pipeline').last.url.queryParameters.containsKey('billTo'), isFalse);
+      expect(find.byKey(const ValueKey('pipeline-period')), findsOneWidget);
+    });
   });
 }

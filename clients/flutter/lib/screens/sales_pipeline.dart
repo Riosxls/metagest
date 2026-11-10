@@ -67,6 +67,10 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
   /// Only the late orders (the "Atrasados" tile toggles it).
   bool _onlyLate = false;
 
+  /// Period (created from / to) and company (orders only) narrowing the board; sent to the server.
+  DateTimeRange? _range;
+  String? _billTo;
+
   /// Last data stays on screen while a reload runs, so the board does not blank and the scroll position is kept.
   Map<String, dynamic>? _data;
   Object? _error;
@@ -158,6 +162,16 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
   /// "1 orçamento", "3 orçamentos".
   static String _count(Object? n, String one, String many) => '$n ${n == 1 ? one : many}';
 
+  static String _day(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickRange() async {
+    final now = DateTime.now();
+    final r = await showDateRangePicker(context: context, firstDate: DateTime(now.year - 5), lastDate: DateTime(now.year + 1), initialDateRange: _range, helpText: 'Criados no período', saveText: 'Aplicar');
+    if (r == null || !mounted) return;
+    setState(() => _range = r);
+    unawaited(_reload());
+  }
+
   /// A phone or a touch tablet has no mouse: cards are held (long press) before they move, so a swipe still scrolls.
   bool get _touch => const {TargetPlatform.android, TargetPlatform.iOS}.contains(Theme.of(context).platform);
 
@@ -169,7 +183,7 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
       _error = null;
     });
     try {
-      final d = await api.get('/api/sales/pipeline', {'customerId': _customerId}) as Map<String, dynamic>;
+      final d = await api.get('/api/sales/pipeline', {'customerId': _customerId, 'from': _range == null ? null : _day(_range!.start), 'to': _range == null ? null : _day(_range!.end), 'billTo': _billTo}) as Map<String, dynamic>;
       if (mounted && seq == _seq) {
         setState(() {
           _data = d;
@@ -462,6 +476,40 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
                 _customerId = id;
                 unawaited(_reload());
               },
+            ),
+          ),
+          OutlinedButton.icon(
+            key: const ValueKey('pipeline-period'),
+            onPressed: _pickRange,
+            icon: const Icon(Icons.date_range, size: 18),
+            label: Text(_range == null ? 'Período' : '${fmtDay(_day(_range!.start))} a ${fmtDay(_day(_range!.end))}'),
+          ),
+          if (_range != null)
+            IconButton(
+              key: const ValueKey('pipeline-period-clear'),
+              tooltip: 'Limpar período',
+              onPressed: () {
+                setState(() => _range = null);
+                unawaited(_reload());
+              },
+              icon: const Icon(Icons.close, size: 18),
+            ),
+          Tooltip(
+            message: 'A empresa vale para os pedidos (orçamentos não têm empresa)',
+            child: Wrap(
+              spacing: 4,
+              children: [
+                for (final (value, label) in const [(null, 'Todas'), ('Ebt', 'EBT'), ('Bts', 'BST')])
+                  ChoiceChip(
+                    key: ValueKey('pipeline-company-${value ?? 'all'}'),
+                    label: Text(label),
+                    selected: _billTo == value,
+                    onSelected: (_) {
+                      setState(() => _billTo = value);
+                      unawaited(_reload());
+                    },
+                  ),
+              ],
             ),
           ),
           IconButton(tooltip: 'Atualizar', onPressed: _loading ? null : _reload, icon: const Icon(Icons.refresh)),

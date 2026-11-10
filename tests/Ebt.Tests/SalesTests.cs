@@ -145,6 +145,25 @@ public class SalesTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task The_pipeline_can_be_narrowed_by_period_and_by_company()
+    {
+        var admin = await api.AdminAsync();
+        var s = await Arrange(admin, stock: 40m);
+        var order = await (await admin.Post("/api/sales/orders", new SalesOrderIn(s.Customer.Id, s.Address.Id, [new SalesLineInput(s.Tube.Id, 10m)], "PO-F", s.Term.Id, BillTo: BillTo.Bts))).Read<SalesOrderOut>();
+        async Task<bool> Shows(string query)
+        {
+            var p = await (await admin.GetAsync($"/api/sales/pipeline?customerId={s.Customer.Id}{query}")).Read<PipelineOut>();
+            return p.Stages.SelectMany(x => x.Cards).Any(c => c.Kind == SalesRecordKind.Order && c.Id == order.Id);
+        }
+        Assert.True(await Shows(""));
+        Assert.True(await Shows($"&from={Today.AddDays(-1):yyyy-MM-dd}&to={Today:yyyy-MM-dd}"));
+        Assert.False(await Shows($"&from={Today.AddDays(2):yyyy-MM-dd}"));
+        Assert.False(await Shows($"&to={Today.AddDays(-2):yyyy-MM-dd}"));
+        Assert.True(await Shows("&billTo=Bts"));
+        Assert.False(await Shows("&billTo=Ebt"));
+    }
+
+    [Fact]
     public async Task Full_stock_order_ships_and_completes()
     {
         var admin = await api.AdminAsync();

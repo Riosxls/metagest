@@ -716,7 +716,27 @@ class _ShellState extends State<Shell> {
             child: InkWell(
               borderRadius: BorderRadius.circular(10),
               onTap: tap,
-              child: SizedBox(height: scaledHeight(context, 40), child: Icon(icon ?? d.icon, color: active ? cs.onSecondaryContainer : cs.onSurfaceVariant)),
+              // Icon with its name under it: the narrow sidebar is still readable without hovering for the tooltip.
+              child: SizedBox(
+                height: scaledHeight(context, 54),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon ?? d.icon, color: active ? cs.onSecondaryContainer : cs.onSurfaceVariant),
+                    const SizedBox(height: 2),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Text(
+                        title ?? d.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 10.5, height: 1.1, fontWeight: active ? FontWeight.w700 : FontWeight.w500, color: active ? cs.onSecondaryContainer : cs.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -1316,7 +1336,7 @@ class _ShellState extends State<Shell> {
             ? Row(
                 children: [
                   SizedBox(
-                    width: _collapsed ? 72 : 280,
+                    width: _collapsed ? 84 : 280,
                     child: _menu(rail: _collapsed),
                   ),
                   const VerticalDivider(width: 1),
