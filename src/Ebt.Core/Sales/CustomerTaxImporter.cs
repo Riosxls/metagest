@@ -126,15 +126,17 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
     }
 
     /// <summary>
-    /// The product code of an order sheet: the code cell when it looks like one ("080.100.60"), else the product of the cadastro with the dimensions written on the sheet.
-    /// Older sheets leave the code cell empty (or write "ITEM NOVO" in it), but the tube is always in the dimensions.
+    /// The product code of an order sheet: the product of the cadastro with the dimensions written on the sheet, else the code cell when it looks like one ("080.100.60").
+    /// Sheets leave the code cell empty, write "ITEM NOVO" in it or keep the code of the sheet they were copied from, but the tube is always in the dimensions.
     /// </summary>
     private string? ProductCodeOf(TaxOrderRow r)
     {
+        // The dimensions come first: the code cell is copied from the previous sheet and often left stale (a 1,00 sheet carrying the code of the 0,90 tube).
+        if (ParseDimensions(r.Dimensions) is { } dims && dims.L is { } len
+            && dimsIndex.FirstOrDefault(p => Math.Abs(p.D - dims.D) <= 0.005m && Math.Abs(p.W - dims.W) <= 0.0005m && Math.Abs(p.L - len) <= 1m).Code is { } byDims)
+            return byDims;
         var code = Clean(r.ProductCode);
-        if (code is not null && ProductCodeShape.IsMatch(code)) return code;
-        if (ParseDimensions(r.Dimensions) is not { } dims || dims.L is not { } len) return null;
-        return dimsIndex.FirstOrDefault(p => Math.Abs(p.D - dims.D) <= 0.005m && Math.Abs(p.W - dims.W) <= 0.0005m && Math.Abs(p.L - len) <= 1m).Code;
+        return code is not null && ProductCodeShape.IsMatch(code) ? code : null;
     }
 
     /// <summary>
