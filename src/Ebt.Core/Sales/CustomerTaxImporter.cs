@@ -158,7 +158,9 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
             if (t.Length is 0 or > 160 || !NoteWords.IsMatch(Letters(t))) continue;
             kept.TryAdd(Letters(t), t);
         }
-        return kept.Count == 0 ? null : string.Join("; ", kept.Values);
+        // The pedido and the OF sheets often say the same thing twice, one phrase inside the other: only the longer stays.
+        var texts = kept.Where(k => !kept.Any(o => o.Key != k.Key && o.Key.Contains(k.Key, StringComparison.Ordinal))).Select(k => k.Value).ToList();
+        return texts.Count == 0 ? null : string.Join("; ", texts);
     }
 
     private sealed class NoteTally
