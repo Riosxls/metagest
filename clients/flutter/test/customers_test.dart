@@ -296,4 +296,16 @@ void main() {
     expect(find.textContaining('a@alfa.com'), findsOneWidget);
     expect(find.text('NOME'), findsNothing);
   });
+
+  test('initials skip the words every company has, and a phone field with several numbers shows the first', () {
+    expect(contactInitials('ACOS IDEAL LTDA.'), 'AI');
+    expect(contactInitials('AMVIAN IND E COM DE PECAS AUTOMOTIVAS LTDA'), 'AP');
+    expect(contactInitials('Metalúrgica Gepela Ltda.'), 'MG');
+    expect(contactInitials('Alberto Ferreira Pacheco Filho'), 'AF');
+    expect(contactInitials('Ltda'), 'L');
+    expect(contactPhones('1129584633/26820000').more, 1);
+    expect(contactPhones('1129584633').more, 0);
+    expect(contactPhones('1129584633').first, '(11) 2958-4633');
+    expect(contactPhones('').first, '');
+  });
 }

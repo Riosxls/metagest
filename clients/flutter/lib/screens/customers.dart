@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import '../api.dart';
 import '../entities.dart';
 import '../labels.dart';
-import '../reports/pt_text.dart' show ptPhone;
+import '../reports/pt_text.dart' show ptEmail, ptPhone, ptText;
 import '../session.dart';
 import '../theme_tokens.dart';
 import '../widgets/entity_form.dart';
@@ -184,10 +184,27 @@ final _shippingFields = [
 String _orDash(String s) => s.trim().isEmpty ? '—' : s;
 
 /// Initials for the avatar: the first letters of the first two words ("Metalúrgica Gepela Ltda." -> "MG").
+@visibleForTesting
+String contactInitials(String name) => _initials(name);
+
+@visibleForTesting
+({String first, int more}) contactPhones(Object? raw) => _phones(raw);
+
 String _initials(String name) {
-  final words = name.trim().split(RegExp(r'\s+')).where((w) => RegExp(r'^[A-Za-zÀ-ú]').hasMatch(w)).toList();
-  if (words.isEmpty) return '?';
-  return (words.first[0] + (words.length > 1 ? words[1][0] : '')).toUpperCase();
+  const generic = {'de', 'da', 'do', 'das', 'dos', 'e', 'ind', 'industria', 'indústria', 'com', 'comercio', 'comércio', 'ltda', 'eireli', 'epp', 'me', 'sa', 's/a', 'cia'};
+  final all = name.trim().split(RegExp(r'\s+')).where((w) => RegExp(r'^[A-Za-zÀ-ú]').hasMatch(w)).toList();
+  // "ACOS IDEAL LTDA" and "AMVIAN IND E COM DE PECAS" would both be "AI" without this: the words every company has do not count.
+  final words = all.where((w) => !generic.contains(w.toLowerCase().replaceAll('.', ''))).toList();
+  final use = words.isEmpty ? all : words;
+  if (use.isEmpty) return '?';
+  return (use.first[0] + (use.length > 1 ? use[1][0] : '')).toUpperCase();
+}
+
+/// The first phone of a field that holds several ("(11) 2958-4633/2682-0000", "... ou ..."), formatted, and how many more there are.
+({String first, int more}) _phones(Object? raw) {
+  final parts = '${raw ?? ''}'.split(RegExp(r'\s*(?:/|;|,|\bou\b)\s*')).where((p) => RegExp(r'\d').hasMatch(p)).toList();
+  if (parts.isEmpty) return (first: '', more: 0);
+  return (first: ptPhone(parts.first), more: parts.length - 1);
 }
 
 /// The letter a customer is filed under ("Aços Divaltec" -> "A"); names that do not start with a letter go under "#".
@@ -212,7 +229,7 @@ class _ContactsHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final style = theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600, letterSpacing: 0.4);
-    Widget cell(int i, String text) => Expanded(flex: _contactFlex[i], child: Text(text, style: style, maxLines: 1, overflow: TextOverflow.ellipsis));
+    Widget cell(int i, String text) => Expanded(flex: _contactFlex[i], child: Padding(padding: const EdgeInsets.only(right: 12), child: Text(text, style: style, maxLines: 1, overflow: TextOverflow.ellipsis)));
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 8, 16, 8),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant))),
@@ -255,14 +272,16 @@ class _ContactRowState extends State<_ContactRow> {
     final theme = Theme.of(context);
     final c = widget.customer;
     final co = _company(c);
-    final name = '${c['name']}';
-    final trade = fmt(c['tradeName']);
+    // Names, cities and e-mails arrive in every case (CAPS from the old system, lower from typing): shown the same way on every row.
+    final name = ptText(c['name']);
+    final trade = ptText(c['tradeName']);
     final active = c['active'] == true;
-    final email = fmt(co?['email']);
-    final person = fmt(co?['contact']);
-    final phone = ptPhone(co?['phone']);
+    final email = ptEmail(co?['email']);
+    final person = ptText(co?['contact']);
+    final phones = _phones(co?['phone']);
+    final phone = phones.first;
     final doc = fmtDocument(co?['document']);
-    final city = fmt(co?['city']).isEmpty ? '' : '${co!['city']}/${fmt(co['uf'])}';
+    final city = fmt(co?['city']).isEmpty ? '' : '${ptText(co!['city'])}/${fmt(co['uf']).toUpperCase()}';
     final dark = theme.brightness == Brightness.dark;
     final hue = (name.codeUnits.fold<int>(7, (a, b) => (a * 31 + b) & 0xFFFFFF) % 360).toDouble();
     final avatarBg = HSLColor.fromAHSL(1, hue, 0.45, dark ? 0.32 : 0.84).toColor();
@@ -304,7 +323,9 @@ class _ContactRowState extends State<_ContactRow> {
     );
     if (!widget.wide) {
       final lines = [if (email.isNotEmpty) email, if (phone.isNotEmpty) phone, if (city.isNotEmpty) city];
-      return Padding(
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 68),
+        child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
@@ -318,12 +339,15 @@ class _ContactRowState extends State<_ContactRow> {
             ),
           ],
         ),
+      ),
       );
     }
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: Padding(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 68),
+        child: Padding(
         padding: const EdgeInsets.fromLTRB(28, 8, 16, 8),
         child: Row(
           children: [
@@ -332,7 +356,7 @@ class _ContactRowState extends State<_ContactRow> {
             Expanded(flex: _contactFlex[0], child: Padding(padding: const EdgeInsets.only(right: 12), child: title)),
             cell(1, doc),
             cell(2, email, second: person),
-            cell(3, phone),
+            cell(3, phone, second: phones.more > 0 ? '+${phones.more} número${phones.more > 1 ? 's' : ''}' : null),
             cell(4, city),
             SizedBox(
               width: 96,
@@ -353,6 +377,7 @@ class _ContactRowState extends State<_ContactRow> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
