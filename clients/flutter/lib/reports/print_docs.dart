@@ -435,10 +435,13 @@ class _CustomerBlock {
   /// [chosen] is the address picked on the order: when given it wins over the company/default address.
   _CustomerBlock(String rawName, Map<String, dynamic>? c, String addressText, {Map<String, dynamic>? chosen}) : name = ptText(rawName) {
     final co = c?['company'] as Map<String, dynamic>?;
-    final ad = chosen ?? c?['defaultAddress'] as Map<String, dynamic>?;
-    final first = chosen != null ? ad : co;
-    final second = chosen != null ? co : ad;
+    // The customer block is the customer's own (main) address and data; the address chosen on the order is only where to deliver (FRETE). A customer without a main
+    // address in the cadastro falls back to its default delivery address.
+    final ad = c?['defaultAddress'] as Map<String, dynamic>?;
+    final first = co;
+    final second = ad ?? chosen;
     String pick(String key) => _s(first?[key]).isNotEmpty ? _s(first?[key]) : _s(second?[key]);
+    String pickOf(Map<String, dynamic>? a, String key) => _s(a?[key]);
     final street = pick('street');
     address = street.isEmpty ? ptText(addressText) : ptStreet(street, pick('number'));
     district = ptText(pick('district'));
@@ -447,7 +450,18 @@ class _CustomerBlock {
     zip = ptZip(pick('zipCode'));
     cnpj = fmtDocument(first?['document'] ?? second?['document']);
     ie = ptIe(pick('stateRegistration'), uf);
-    final contactRaw = [chosen?['buyer'], co?['contact'], ad?['buyer']].map(_s).firstWhere((e) => e.isNotEmpty, orElse: () => '');
+    final contactRaw = [co?['contact'], chosen?['buyer'], ad?['buyer']].map(_s).firstWhere((e) => e.isNotEmpty, orElse: () => '');
+    // Where to deliver: the address chosen on the order when it is another place than the main address, else the main address.
+    final dStreet = pickOf(chosen, 'street');
+    final sameAsMain = chosen == null || dStreet.isEmpty || (ptText(dStreet) == ptText(pick('street')) && pickOf(chosen, 'number') == pick('number'));
+    delivery = sameAsMain
+        ? [address, district, city.isEmpty ? '' : (uf.isEmpty ? city : '$city-$uf'), zip].where((e) => e.isNotEmpty).join(' ')
+        : [
+            ptStreet(dStreet, pickOf(chosen, 'number')),
+            ptText(pickOf(chosen, 'district')),
+            ptText(pickOf(chosen, 'city')).isEmpty ? '' : (pickOf(chosen, 'uf').isEmpty ? ptText(pickOf(chosen, 'city')) : '${ptText(pickOf(chosen, 'city'))}-${pickOf(chosen, 'uf').toUpperCase()}'),
+            ptZip(pickOf(chosen, 'zipCode')),
+          ].where((e) => e.isNotEmpty).join(' ');
     contact = ptText(contactRaw);
     phone = ptPhone(pick('phone'));
     email = ptEmail(pick('email'));
@@ -455,7 +469,7 @@ class _CustomerBlock {
   }
 
   final String name;
-  late final String address, district, city, uf, zip, cnpj, ie, contact, phone, email, code;
+  late final String address, district, city, uf, zip, cnpj, ie, contact, phone, email, code, delivery;
 }
 
 pw.Widget _customerBox(_CustomerBlock c) => _frame([
@@ -468,20 +482,25 @@ pw.Widget _customerBox(_CustomerBlock c) => _frame([
   _formRow([(1, _lbl('E-MAIL:', c.email))], lastRow: true),
 ]);
 
-/// "FATURAR PARA": which of the two companies the order is invoiced by (chosen when the order is created).
-pw.Widget _billToBox(String billTo) => _frame([
-  _formRow([
-    (1, pw.Align(alignment: pw.Alignment.centerRight, child: pw.Padding(padding: const pw.EdgeInsets.only(right: 16), child: pw.Text('FATURAR PARA:', style: _t(9.5, bold: true))))),
-    (1, pw.Row(mainAxisAlignment: pw.MainAxisAlignment.center, children: [_checkItem('EBT', billTo == 'Ebt'), pw.SizedBox(width: 24), _checkItem('BST', billTo == 'Bts')])),
-  ], height: 22, lastRow: true),
-]);
-
 pw.Widget _specBox({required String dimensions, required String quantity, required String material, required String delivery, required String notes}) => _frame([
   _sectionTitle('ESPECIFICAÇÃO', size: 10),
   _formRow([(1, _lbl('DIMENSÕES DO TUBO (MM):', dimensions)), (1, _lbl('QUANTIDADE (KG/PÇ):', quantity))]),
   _formRow([(1, _lbl('ESPECIFICAÇÃO DO MATERIAL:', material)), (1, _lbl('DATA DE ENTREGA:', delivery))]),
   _formRow([(1, _lbl('OBSERVAÇÕES:', notes))], lastRow: true),
 ]);
+
+/// A form that may be longer than one sheet: its blocks flow onto a second page instead of being cut off at the bottom of the first.
+Future<Uint8List> _formsFlow(String title, List<pw.Widget> blocks) async {
+  final doc = pw.Document(title: title, theme: await _theme());
+  doc.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.fromLTRB(36, 28, 36, 28),
+      build: (_) => [for (final b in blocks) pw.SizedBox(width: double.infinity, child: b)],
+    ),
+  );
+  return savePdf(doc);
+}
 
 Future<Uint8List> _forms(String title, List<pw.Widget> pages) async {
   final doc = pw.Document(title: title, theme: await _theme());
@@ -552,8 +571,6 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
             _orderedBy(o['origin']),
             _customerBox(c),
             pw.SizedBox(height: 4),
-            _billToBox(billTo),
-            pw.SizedBox(height: 4),
             _specBox(
               dimensions: measures.isEmpty ? ptText(_s(product?['name']).isNotEmpty ? product!['name'] : description) : measures,
               quantity: _qty(qty, _s(l['unit'])),
@@ -562,9 +579,9 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
               notes: notes,
             ),
             pw.SizedBox(height: 4),
-            _salesTerms(price: fmtMoney(price), perKg: _s(l['unit']).toUpperCase() == 'KG', icms: fmt(l['icmsPercent']), ipi: '${fmt(ipi)}%', total: fmtMoney(total), term: term),
+            _salesTerms(price: fmtMoney(price), perKg: _s(l['unit']).toUpperCase() == 'KG', icms: fmt(l['icmsPercent']), ipi: '${fmt(ipi)}%', total: fmtMoney(total), term: term, billTo: billTo),
             pw.SizedBox(height: 4),
-            _freightBox(freight: freight, place: c.address),
+            _freightBox(freight: freight, place: c.delivery),
             pw.SizedBox(height: 22),
             pw.Padding(
               padding: const pw.EdgeInsets.symmetric(horizontal: 40),
@@ -584,7 +601,7 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
   return _forms('Pedido de venda ${o['reference']}', pages);
 }
 
-pw.Widget _salesTerms({required String price, required bool perKg, required String icms, required String ipi, required String total, required String term}) => pw.Container(
+pw.Widget _salesTerms({required String price, required bool perKg, required String icms, required String ipi, required String total, required String term, String billTo = ''}) => pw.Container(
   decoration: pw.BoxDecoration(border: pw.Border.all(color: _ink, width: 1.5)),
   padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 40),
   child: pw.Column(
@@ -637,6 +654,19 @@ pw.Widget _salesTerms({required String price, required bool perKg, required Stri
         decoration: pw.BoxDecoration(border: pw.Border.all(color: _ink, width: 1.2)),
         child: pw.Text('PRAZO DE PAGAMENTO: $term', style: _t(8.5, bold: true, color: _blue)),
       ),
+      // "FATURAR PARA": only the company chosen when the order was created (EBT or BST), ticked.
+      if (billTo == 'Ebt' || billTo == 'Bts') ...[
+        pw.SizedBox(height: 6),
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 40),
+          decoration: pw.BoxDecoration(border: pw.Border.all(color: _ink, width: 1.2)),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.center,
+            children: [pw.Text('FATURAR PARA:', style: _t(9, bold: true)), pw.SizedBox(width: 24), _checkItem(billTo == 'Ebt' ? 'EBT' : 'BST', true, size: 10)],
+          ),
+        ),
+      ],
       pw.SizedBox(height: 6),
     ],
   ),
@@ -769,7 +799,7 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
   var orderMaterial = orderLine == null ? '' : _materialFromDescription(_s(orderLine['description']));
   if (orderMaterial.isEmpty) orderMaterial = await _usualMaterial(api, o['customerId'], o['productId']);
   final materialText = _materialSpec(mats).isNotEmpty ? _materialSpec(mats) : orderMaterial;
-  final blankRows = ops.length >= 7 ? 1 : 14 - ops.length * 2;
+  final blankRows = ops.length >= 5 ? 0 : 10 - ops.length * 2;
   final none = pw.SizedBox();
   pw.Widget small(String t) => pw.Text(t, style: _t(8.5));
   pw.Widget head(String t, {bool left = true, double? height, double? width}) => pw.Container(
@@ -780,9 +810,7 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
     child: pw.Text(t, style: _t(8, bold: true), textAlign: pw.TextAlign.center),
   );
 
-  final page = pw.Column(
-    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-    children: [
+  final blocks = <pw.Widget>[
       _titleBar('ORDEM DE FABRICAÇÃO', _s(o['customerPo']).isNotEmpty ? _s(o['customerPo']) : _s(o['reference'])),
       pw.SizedBox(height: 4),
       _identBox(productCode: _s(o['productCode']), customerCode: c.code, novelty: novelty),
@@ -792,7 +820,7 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
       _specBox(dimensions: _tubeDimensions(product, _s(o['productName'])), quantity: _qty(qty, _s(o['productUnit'])), material: materialText, delivery: fmtDay(o['dueDate']), notes: _s(o['notes'])),
       _frame([
         _sectionTitle('PROCESSO', fill: true),
-        _formRow([(1, _centered(small('Matéria-Prima:'))), (2, small(rawMaterial.isEmpty ? orderMaterial : rawMaterial)), (1, _centered(small('Lote'))), (1, none)], height: 17),
+        _formRow([(1, _centered(small('Matéria-Prima:'))), (2, small(_s(o['rawMaterial']).isNotEmpty ? _s(o['rawMaterial']) : rawMaterial)), (1, _centered(small('Lote'))), (1, none)], height: 17),
         _formRow([(2, _lbl('Tubo Primário (Perfilar):', '', 8)), (3, pw.Center(child: pw.Text(_s(o['primaryTube']), style: _t(9.5, bold: true))))], height: 20, lastRow: true),
       ]),
       pw.SizedBox(height: 4),
@@ -879,9 +907,8 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
           (2, small('RNC:')),
         ], height: 20, lastRow: true),
       ]),
-    ],
-  );
-  return _forms('Ordem de fabricação ${o['reference']}', [page]);
+  ];
+  return _formsFlow('Ordem de fabricação ${o['reference']}', blocks);
 }
 
 /// Simulação de preço: one A4 sheet with the measures, the suggested price and the similar sales it came from. It is an internal working paper,

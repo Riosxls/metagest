@@ -104,6 +104,18 @@ public static class TaxReader
         return next == null || next.Text.Contains(":") ? "" : next.Text;
     }
     class Pattern { public string Re; public Pattern(string re) { Re = re; } }
+    // "... Endereco de entrega : Rua Lateral,810 Vila Nova York Sao Paulo-SP 03479-020" (a yellow note of the freight block): the text after the phrase.
+    static string Delivery(List<Cell> cells)
+    {
+        foreach (Cell x in cells)
+        {
+            Match m = Regex.Match(x.Fold, @"ENDERECO DE ENTREGA\s*:?\s*");
+            if (!m.Success) continue;
+            Match o = Regex.Match(x.Text, @"(?i)endere.o\s+de\s+entrega\s*:?\s*(.+)$");
+            if (o.Success && o.Groups[1].Value.Trim().Length > 8) return o.Groups[1].Value.Trim();
+        }
+        return "";
+    }
     static string Value(List<Cell> cells, Cell label)
     {
         int i = label.Text.IndexOf(':');
@@ -140,7 +152,7 @@ public static class TaxReader
             After(cells, new Pattern(@"^END\s?:")), After(cells, new Pattern(@"^BAIRRO\s?:")), After(cells, new Pattern(@"^MUNICIPIO\s?:")),
             After(cells, new Pattern(@"^CEP\s?:")), After(cells, new Pattern(@"^I\.?\s?E\s?:")), After(cells, new Pattern(@"^CONTATO\s?:")),
             After(cells, new Pattern(@"^TEL")), After(cells, new Pattern(@"^E\s?-?\s?MAIL\s?:")), After(cells, new Pattern(@"^PRAZO DE PAG")),
-            After(cells, new Pattern(@"^COD\.? PRODUTO\s?:")), After(cells, new Pattern(@"^ESPECIFICACAO DO MATERIAL\s?:"))
+            After(cells, new Pattern(@"^COD\.? PRODUTO\s?:")), After(cells, new Pattern(@"^ESPECIFICACAO DO MATERIAL\s?:")), Delivery(cells)
         };
         List<string> parts = new List<string> { Path.GetFileName(path), (name ?? "").Replace(";", ","), ufv.Replace(";", ","), date, f(icmsV), f(ipiV), cnpjV };
         parts.AddRange(extra.Select(e => (e ?? "").Replace(";", ",").Trim()));
@@ -173,6 +185,7 @@ Get-ChildItem $Folder -Filter '*.xlsx' | Where-Object { $_.Name -notlike '~$*' }
         paymentTerm = $p[15]
         productCode = $p[16]
         material  = $p[17]
+        deliveryAddress = $p[18]
     })
 }
 $body = [pscustomobject]@{ apply = [bool]$Apply; overwrite = [bool]$Overwrite; createMissing = [bool]$CreateMissing; rows = $rows }
@@ -192,6 +205,10 @@ if ($Send) {
         Write-Host "Nome ambiguo, nao cadastrados ($($res.ambiguous.Count)):"
         $res.ambiguous | ForEach-Object { Write-Host "  $_" }
     }
+    Write-Host "IE corrigida pelo pedido mais recente ($($res.ieCorrected.Count)):"
+    $res.ieCorrected | ForEach-Object { Write-Host "  $_" }
+    Write-Host "Enderecos de entrega diferentes do cadastro ($($res.deliveryAddresses.Count)):"
+    $res.deliveryAddresses | ForEach-Object { Write-Host "  $_" }
     Write-Host "Sem cliente no cadastro ($($res.unmatched.Count)):"
     $res.unmatched | ForEach-Object { Write-Host "  $_" }
     if (-not $Apply) { Write-Host 'Pre-visualizacao: nada foi gravado. Rode de novo com -Apply.' }

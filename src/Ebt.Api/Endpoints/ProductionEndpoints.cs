@@ -24,8 +24,8 @@ public record HolidayOut(int Id, DateOnly Date, string Name);
 public record LateOrders(int Total, IReadOnlyList<ProductionOrderSummaryOut> Items);
 public record ProductionDashboardOut(int OpenTotal, IReadOnlyDictionary<string, int> ByStatus, LateOrders LateFresh, LateOrders LateLegacy);
 
-public record ProductionOrderIn(int ProductId, decimal Quantity, DateOnly DueDate, ProductionOrderKind Kind = ProductionOrderKind.Standard, int? CustomerId = null, int? ParentOrderId = null, int? PreviousOrderId = null, int? Bales = null, string? Notes = null, string? PrimaryTube = null);
-public record OrderUpdateIn(decimal Quantity, DateOnly DueDate, int? CustomerId, int? Bales, string? Notes, string? PrimaryTube = null);
+public record ProductionOrderIn(int ProductId, decimal Quantity, DateOnly DueDate, ProductionOrderKind Kind = ProductionOrderKind.Standard, int? CustomerId = null, int? ParentOrderId = null, int? PreviousOrderId = null, int? Bales = null, string? Notes = null, string? PrimaryTube = null, string? RawMaterial = null);
+public record OrderUpdateIn(decimal Quantity, DateOnly DueDate, int? CustomerId, int? Bales, string? Notes, string? PrimaryTube = null, string? RawMaterial = null);
 public record OperationDetailsIn(string? Tolerance, string? MeasureStart, string? MeasureEnd);
 public record BulkApplyIn(bool Apply);
 public record BulkStaleIn(int OlderThanDays, string? Reason, bool Apply);
@@ -44,7 +44,7 @@ public record ProductionOrderOut(int Id, ProductionOrderKind Kind, int Number, s
     string? CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset? ReleasedAt, DateTimeOffset? FinishedAt, DateTimeOffset? ClosedAt, string? ClosedBy, DateTimeOffset? CostClosedAt, decimal? MaterialCost, decimal? ServiceCost, decimal? UnitCost,
     decimal Good, decimal Scrap, decimal Received, decimal Receivable, decimal WorkInProcess, IReadOnlyList<ProductionOperationOut> Operations, IReadOnlyList<MaterialLineState> Materials,
     IReadOnlyList<ProductionOrderSummaryOut> Children, IReadOnlyList<string> Warnings, string? PrimaryTube = null, string? CustomerPo = null,
-    int? SalesOrderId = null, string? SalesOrderReference = null, string? ParentOrderReference = null, string? PreviousOrderReference = null);
+    int? SalesOrderId = null, string? SalesOrderReference = null, string? ParentOrderReference = null, string? PreviousOrderReference = null, string? RawMaterial = null);
 public record ReleaseOut(ProductionOrderOut Order, IReadOnlyList<AvailabilityLine> Shortages);
 public record AvailabilityCheckIn(int ProductId, decimal Quantity);
 public record ProductionReportOut(int Id, int OrderId, string Reference, int OperationSequence, DateOnly Date, int? ShiftId, int? EmployeeId, string? EmployeeName, int? MachineId, string? MachineCode, TimeOnly? StartTime, TimeOnly? EndTime,
@@ -208,13 +208,13 @@ public static class ProductionEndpoints
 
         g.MapPost("/", async (ProductionOrderIn i, EbtDbContext db, ProductionService svc, ClaimsPrincipal user, CancellationToken ct) =>
         {
-            var o = await svc.CreateOrderAsync(new OrderInput(i.ProductId, i.Quantity, i.DueDate, i.Kind, i.CustomerId, i.ParentOrderId, i.PreviousOrderId, i.Bales, i.Notes, i.PrimaryTube), Who(user), ct);
+            var o = await svc.CreateOrderAsync(new OrderInput(i.ProductId, i.Quantity, i.DueDate, i.Kind, i.CustomerId, i.ParentOrderId, i.PreviousOrderId, i.Bales, i.Notes, i.PrimaryTube, i.RawMaterial), Who(user), ct);
             return Results.Created($"/api/production/orders/{o.Id}", await Load(db, svc, o.Id, ct));
         }).RequireAuthorization(ProductionPolicies.Plan);
 
         g.MapPut("/{id:int}", async (int id, OrderUpdateIn i, EbtDbContext db, ProductionService svc, CancellationToken ct) =>
         {
-            await svc.UpdateOrderAsync(id, new OrderUpdate(i.Quantity, i.DueDate, i.CustomerId, i.Bales, i.Notes, i.PrimaryTube), ct);
+            await svc.UpdateOrderAsync(id, new OrderUpdate(i.Quantity, i.DueDate, i.CustomerId, i.Bales, i.Notes, i.PrimaryTube, i.RawMaterial), ct);
             return Results.Ok(await Load(db, svc, id, ct));
         }).RequireAuthorization(ProductionPolicies.Plan);
 
@@ -280,6 +280,9 @@ public static class ProductionEndpoints
             return Results.Ok(await db.StockDocuments.AsNoTracking().Where(d => d.OrderId == id || (d.OrderId == null && d.Reference == reference)).OrderBy(d => d.Id)
                 .Select(d => new StockDocumentSummary(d.Id, d.Type, d.Date, d.Reference, d.SupplierId, d.CustomerId, d.ReversalOfId, d.Reversed, d.CreatedBy, d.CreatedAt, d.Movements.Count)).ToListAsync(ct));
         });
+
+        g.MapPost("/bulk/fill-materials", async (BulkApplyIn i, ProductionService svc, CancellationToken ct) =>
+            Results.Ok(await svc.BulkFillMaterialsAsync(i.Apply, ct))).RequireAuthorization(Policies.Admin);
 
         g.MapPost("/bulk/suggest-process", async (BulkApplyIn i, ProductionService svc, CancellationToken ct) =>
             Results.Ok(await svc.BulkSuggestProcessAsync(i.Apply, ct))).RequireAuthorization(Policies.Admin);
@@ -476,7 +479,7 @@ public static class ProductionEndpoints
         return new ProductionOrderOut(o.Id, o.Kind, o.Number, o.Reference, o.ProductId, o.Product!.Code, o.Product.Name, o.Product.StockUnit, o.CustomerId, o.Quantity, o.DueDate, o.PlannedStart, o.PlannedEnd, o.AdjustedStart, o.AdjustedEnd,
             o.Status, o.StatusReason, o.ParentOrderId, o.PreviousOrderId, o.Bales, o.Notes, o.CreatedBy, o.CreatedAt, o.ReleasedAt, o.FinishedAt, o.ClosedAt, o.ClosedBy, o.CostClosedAt, o.MaterialCost, o.ServiceCost, o.UnitCost,
             progress.Good, progress.Scrap, progress.Received, progress.Receivable, progress.WorkInProcess, ops, materials, children, warnings, o.PrimaryTube, customerPo,
-            salesOrder?.Id, salesOrder?.Reference, related.FirstOrDefault(x => x.Id == o.ParentOrderId)?.Reference, related.FirstOrDefault(x => x.Id == o.PreviousOrderId)?.Reference);
+            salesOrder?.Id, salesOrder?.Reference, related.FirstOrDefault(x => x.Id == o.ParentOrderId)?.Reference, related.FirstOrDefault(x => x.Id == o.PreviousOrderId)?.Reference, o.RawMaterial);
     }
 
     private static readonly Expression<Func<ProductionOrder, ProductionOrderSummaryOut>> Summary = o =>

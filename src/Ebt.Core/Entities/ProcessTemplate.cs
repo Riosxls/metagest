@@ -15,6 +15,10 @@ public class ProcessTemplate
     public decimal? ThicknessMm { get; set; }
     public decimal? LengthMm { get; set; }
     public string? Spec { get; set; }
+    /// <summary>"Matéria-Prima" of the legacy OF ("Fita 1,20 x 42,50mm").</summary>
+    public string? RawMaterial { get; set; }
+    /// <summary>"Tubo Primário (Perfilar)" of the legacy OF ("Rolo 14,00 x 1,20 mm").</summary>
+    public string? PrimaryTube { get; set; }
     /// <summary>Legacy OF number the process was taken from (for example 04679-26).</summary>
     public required string SourceRef { get; set; }
     public DateOnly? SourceDate { get; set; }

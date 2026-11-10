@@ -196,6 +196,15 @@ void main() {
       _expectPdf(await buildProductionOrderPdf(_api(), _productionOrder()));
     });
 
+    test('an OF with the usual five operations fits one sheet (SENF and Inspeção Final are not cut off)', () async {
+      final ops = [
+        for (var i = 1; i <= 5; i++) {'sequence': i * 10, 'description': 'Operação $i', 'tolerance': '± 0,10', 'machineName': 'Trefiladeira'},
+      ];
+      final bytes = await buildProductionOrderPdf(_api(), _productionOrder(ops: ops));
+      final pages = RegExp(r'/Type\s*/Page(?!s)').allMatches(String.fromCharCodes(bytes)).length;
+      expect(pages, 1);
+    });
+
     test('works when customer and product no longer exist', () async {
       _expectPdf(await buildProductionOrderPdf(_api(customerFails: true, productFails: true), _productionOrder()));
     });

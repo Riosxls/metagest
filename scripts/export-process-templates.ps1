@@ -43,7 +43,7 @@ public class ProcessOp { public string Seq, Description, Tolerance, Start, End, 
 
 public class ProcessOrder
 {
-    public string File, Num, Customer, Spec, Problem;
+    public string File, Num, Customer, Spec, Problem, RawMaterial, PrimaryTube;
     public double D, T, L;
     public bool HasT, HasL;
     public DateTime Date;
@@ -202,6 +202,11 @@ public static class ProcessReader
             }
             Cell sl = Label(pedido, op, "ESPECIFICACAO DO MATERIAL");
             o.Spec = sl == null ? null : ValueOf(pedido.Contains(sl) ? pedido : op, sl);
+            // OP sheet: "Materia Prima:" (Fita 1,20 x 42,50mm) and "Tubo Primario ( Perfila ):" (Rolo 14,00 x 1,20 mm).
+            Cell rl = op.FirstOrDefault(x => x.Fold.StartsWith("MATERIA PRIMA", StringComparison.Ordinal));
+            o.RawMaterial = rl == null ? null : ValueOf(op, rl);
+            Cell tl = op.FirstOrDefault(x => x.Fold.StartsWith("TUBO PRIMARIO", StringComparison.Ordinal));
+            o.PrimaryTube = tl == null ? null : ValueOf(op, tl);
 
             // Signature date: the cell just above the last "DATA" label.
             DateTime? date = null;
@@ -263,7 +268,7 @@ function Clean([string]$s) { if ($null -eq $s) { return '' }; return (($s -repla
 if (-not (Test-Path -LiteralPath $PedidosFolder)) { throw "Pedidos folder not found: $PedidosFolder" }
 
 $sb = New-Object Text.StringBuilder
-[void]$sb.Append("of;date;customer;diameter;thickness;length;spec;seq;description;tolerance;start;end;resource`r`n")
+[void]$sb.Append("of;date;customer;diameter;thickness;length;spec;seq;description;tolerance;start;end;resource;raw_material;primary_tube`r`n")
 $files = 0; $usable = 0; $opCount = 0; $problems = @{}; $seenOf = @{}
 foreach ($f in Get-ChildItem -LiteralPath $PedidosFolder -Filter '*.xlsx' -File | Sort-Object Name) {
     if ($f.Name.StartsWith('~$')) { continue }
@@ -281,7 +286,7 @@ foreach ($f in Get-ChildItem -LiteralPath $PedidosFolder -Filter '*.xlsx' -File 
         $n++
         $seq = Clean $p.Seq
         if ($seq -notmatch '^\d+$') { $seq = [string]($n * 10) }
-        [void]$sb.Append(('{0};{1};{2};{3};{4};{5};{6};{7};{8};{9};{10};{11};{12}' -f $of, $o.Date.ToString('yyyy-MM-dd'), (Clean $o.Customer), (Fmt $o.D), $thick, $len, (Clean $o.Spec), $seq, (Clean $p.Description), (Clean $p.Tolerance), (Clean $p.Start), (Clean $p.End), (Clean $p.Resource)))
+        [void]$sb.Append(('{0};{1};{2};{3};{4};{5};{6};{7};{8};{9};{10};{11};{12};{13};{14}' -f $of, $o.Date.ToString('yyyy-MM-dd'), (Clean $o.Customer), (Fmt $o.D), $thick, $len, (Clean $o.Spec), $seq, (Clean $p.Description), (Clean $p.Tolerance), (Clean $p.Start), (Clean $p.End), (Clean $p.Resource), (Clean $o.RawMaterial), (Clean $o.PrimaryTube)))
         [void]$sb.Append("`r`n")
         $opCount++
     }

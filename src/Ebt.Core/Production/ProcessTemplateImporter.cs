@@ -21,7 +21,7 @@ public sealed class ProcessTemplateImporter(EbtDbContext db)
     private const string ReasonMeasures = "medidas", ReasonOperation = "operação", ReasonDate = "data";
 
     private sealed record Op(int Sequence, string Description, string? Tolerance, string? Start, string? End, string? Resource);
-    private sealed record Candidate(string? Key, string Customer, decimal D, decimal? T, decimal? L, string? Spec, string Ref, DateOnly Date, List<Op> Ops);
+    private sealed record Candidate(string? Key, string Customer, decimal D, decimal? T, decimal? L, string? Spec, string Ref, DateOnly Date, List<Op> Ops, string? RawMaterial = null, string? PrimaryTube = null);
 
     /// <summary>Imports the file. Two imports racing on the same new templates hit the unique key: the loser starts over once and, if that fails too, answers 409.</summary>
     public async Task<ProcessTemplateImportResult> ImportAsync(byte[] file, CancellationToken ct = default)
@@ -102,7 +102,7 @@ public sealed class ProcessTemplateImporter(EbtDbContext db)
             var spec = Opt(first, cols, "spec", 100);
             var ckey = PriceHistoryImporter.CustomerKey(customer).ToUpperInvariant();
             var cand = new Candidate(ckey.Length == 0 ? null : ckey, customer, Math.Round(d.Value, 4), t is null ? null : Math.Round(t.Value, 4), l is null ? null : Math.Round(l.Value, 4), spec, of.Length > 0 ? of : "?", date,
-                ops.Select((o, i) => (o, i)).OrderBy(x => x.o.Sequence).ThenBy(x => x.i).Select(x => x.o).ToList());
+                ops.Select((o, i) => (o, i)).OrderBy(x => x.o.Sequence).ThenBy(x => x.i).Select(x => x.o).ToList(), Opt(first, cols, "raw", 100), Opt(first, cols, "tube", 100));
             var k = (cand.Key, cand.D, cand.T, cand.L);
             if (!candidates.TryGetValue(k, out var seen) || cand.Date >= seen.Date) candidates[k] = cand;
         }
@@ -116,11 +116,13 @@ public sealed class ProcessTemplateImporter(EbtDbContext db)
             if (existing.TryGetValue(k, out var old))
             {
                 if (old.SourceDate is { } od && od > c.Date) continue;
-                if (old.SourceDate == c.Date && old.SourceRef == c.Ref && old.CustomerName == c.Customer && old.Spec == c.Spec && Same(old.Operations, newOps)) continue;
+                if (old.SourceDate == c.Date && old.SourceRef == c.Ref && old.CustomerName == c.Customer && old.Spec == c.Spec && old.RawMaterial == c.RawMaterial && old.PrimaryTube == c.PrimaryTube && Same(old.Operations, newOps)) continue;
                 db.ProcessTemplateOperations.RemoveRange(old.Operations);
                 old.Operations = newOps;
                 old.CustomerName = c.Customer;
                 old.Spec = c.Spec;
+                old.RawMaterial = c.RawMaterial;
+                old.PrimaryTube = c.PrimaryTube;
                 old.SourceRef = c.Ref;
                 old.SourceDate = c.Date;
                 old.UpdatedAt = now;
@@ -130,7 +132,7 @@ public sealed class ProcessTemplateImporter(EbtDbContext db)
             {
                 db.ProcessTemplates.Add(new ProcessTemplate
                 {
-                    CustomerKey = c.Key, CustomerName = c.Customer, DiameterMm = c.D, ThicknessMm = c.T, LengthMm = c.L, Spec = c.Spec, SourceRef = c.Ref, SourceDate = c.Date, UpdatedAt = now, Operations = newOps
+                    CustomerKey = c.Key, CustomerName = c.Customer, DiameterMm = c.D, ThicknessMm = c.T, LengthMm = c.L, Spec = c.Spec, RawMaterial = c.RawMaterial, PrimaryTube = c.PrimaryTube, SourceRef = c.Ref, SourceDate = c.Date, UpdatedAt = now, Operations = newOps
                 });
                 created++;
             }
@@ -170,6 +172,8 @@ public sealed class ProcessTemplateImporter(EbtDbContext db)
                 "diametro" or "diameter" => "diameter",
                 "espessura" or "thickness" => "thickness",
                 "spec" or "especificacao" or "especificacaodomaterial" => "spec",
+                "rawmaterial" or "materiaprima" => "raw",
+                "primarytube" or "tuboprimario" => "tube",
                 "seq" or "sequencia" or "num" or "numero" or "n" => "seq",
                 "description" or "descricao" or "operacao" or "processo" => "description",
                 "tolerance" or "tolerancia" or "requisitos" or "requisitostolerancia" => "tolerance",

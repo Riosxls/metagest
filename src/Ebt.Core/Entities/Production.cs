@@ -81,6 +81,8 @@ public class ProductionOrder : IHasSource
     public int? Bales { get; set; }
     public string? Notes { get; set; }
     public string? PrimaryTube { get; set; }
+    /// <summary>"Matéria-Prima" printed on the OF ("Fita 1,20 x 42,50mm"); the steel standard is the "Especificação do material".</summary>
+    public string? RawMaterial { get; set; }
     public string? StatusReason { get; set; }
     public string? CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

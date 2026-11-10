@@ -2733,7 +2733,6 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnName("last_date");
 
                     b.Property<string>("Material")
-                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("material");
@@ -3249,6 +3248,14 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("numeric(12,4)")
                         .HasColumnName("length_mm");
 
+                    b.Property<string>("PrimaryTube")
+                        .HasColumnType("text")
+                        .HasColumnName("primary_tube");
+
+                    b.Property<string>("RawMaterial")
+                        .HasColumnType("text")
+                        .HasColumnName("raw_material");
+
                     b.Property<DateOnly?>("SourceDate")
                         .HasColumnType("date")
                         .HasColumnName("source_date");
@@ -3618,6 +3625,10 @@ namespace Ebt.Core.Data.Migrations
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)")
                         .HasColumnName("quantity");
+
+                    b.Property<string>("RawMaterial")
+                        .HasColumnType("text")
+                        .HasColumnName("raw_material");
 
                     b.Property<string>("Reference")
                         .IsRequired()

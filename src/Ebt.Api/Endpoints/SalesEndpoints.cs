@@ -435,8 +435,13 @@ public static class SalesEndpoints
         {
             var orders = db.SalesOrders.AsNoTracking().Where(o => o.CustomerId == customerId && o.Source != DataSource.Test && (exceptOrderId == null || o.Id < exceptOrderId));
             var ofs = db.ProductionOrders.AsNoTracking().Where(o => o.CustomerId == customerId && o.Source != DataSource.Test && o.Status != ProductionOrderStatus.Cancelled && (exceptProductionId == null || o.Id < exceptProductionId));
-            var customerKnown = await orders.AnyAsync(ct) || await ofs.AnyAsync(ct);
-            var itemKnown = productId is { } p && (await db.SalesOrderLines.AsNoTracking().AnyAsync(l => l.ProductId == p && l.Order!.CustomerId == customerId && l.Order.Source != DataSource.Test && (exceptOrderId == null || l.OrderId < exceptOrderId), ct)
+            // The old internal sales orders (order_materials, one row per customer and product) and a customer that came from the legacy system also count as history.
+            var legacyProducts = await db.OrderMaterials.AsNoTracking().Where(m => m.CustomerId == customerId).Select(m => m.ProductCode).ToListAsync(ct);
+            var customerKnown = await orders.AnyAsync(ct) || await ofs.AnyAsync(ct) || legacyProducts.Count > 0
+                || await db.Customers.AsNoTracking().AnyAsync(c => c.Id == customerId && c.LegacyCode != null, ct);
+            var productCode = productId is { } pid ? await db.Products.AsNoTracking().Where(x => x.Id == pid).Select(x => x.Code).FirstOrDefaultAsync(ct) : null;
+            var itemKnown = productId is { } p && ((productCode != null && legacyProducts.Contains(productCode))
+                || await db.SalesOrderLines.AsNoTracking().AnyAsync(l => l.ProductId == p && l.Order!.CustomerId == customerId && l.Order.Source != DataSource.Test && (exceptOrderId == null || l.OrderId < exceptOrderId), ct)
                 || await ofs.AnyAsync(o => o.ProductId == p, ct));
             return Results.Ok(new { customerNew = !customerKnown, itemNew = !itemKnown });
         }).RequireAuthorization(Policies.Read).WithTags("Sales");

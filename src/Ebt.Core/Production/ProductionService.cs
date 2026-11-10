@@ -46,7 +46,7 @@ public sealed partial class ProductionService(EbtDbContext db, StockService stoc
             {
                 Kind = i.Kind, Number = number, Reference = ReferenceFor(i.Kind, number), ProductId = product.Id, CustomerId = i.CustomerId, Quantity = i.Quantity,
                 DueDate = i.DueDate, Status = ProductionOrderStatus.Created, ParentOrderId = i.ParentOrderId, PreviousOrderId = i.PreviousOrderId, Bales = i.Bales,
-                Notes = Clean(i.Notes), PrimaryTube = Clean(i.PrimaryTube), CreatedBy = user, CreatedAt = DateTimeOffset.UtcNow
+                Notes = Clean(i.Notes), PrimaryTube = Clean(i.PrimaryTube), RawMaterial = Clean(i.RawMaterial), CreatedBy = user, CreatedAt = DateTimeOffset.UtcNow
             };
             await SnapshotStructureAsync(order, ct, suggestProcess: true);
             db.ProductionOrders.Add(order);
@@ -74,6 +74,7 @@ public sealed partial class ProductionService(EbtDbContext db, StockService stoc
             order.Bales = i.Bales;
             order.Notes = Clean(i.Notes);
             order.PrimaryTube = Clean(i.PrimaryTube);
+            order.RawMaterial = Clean(i.RawMaterial);
             await db.SaveChangesAsync(ct);
             return order;
         }, ct);

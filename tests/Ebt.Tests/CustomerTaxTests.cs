@@ -198,4 +198,49 @@ public class CustomerTaxTests(ApiFixture api)
         var again = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, true, rows))).Read<CustomerTaxResult>();
         Assert.Equal(0, again.ContactsFilled);
     }
+
+    [Fact]
+    public async Task The_latest_order_corrects_the_ie_adds_a_different_delivery_address_and_makes_the_customer_and_item_known()
+    {
+        var admin = await api.AdminAsync();
+        var cnpj = Cnpj();
+        var company = new CustomerCompany(cnpj, "112470391112", true, "Rua Padre Isidoro", "182", null, "Vila Nova York", "São Paulo", "SP", "03479020", null, null, null);
+        var customer = await (await admin.Post("/api/customers", new CustomerIn("Entrega " + Code("C", 8), null, null, ConsumerType.Normal, Company: company))).Read<CustomerOut>();
+        var product = await (await admin.Post("/api/products", Tube(Code("N")))).Read<ProductOut>();
+        string NoveltyUrl() => $"/api/sales/customers/{customer.Id}/novelty?productId={product.Id}";
+        var before = await (await admin.GetAsync(NoveltyUrl())).Read<System.Text.Json.JsonElement>();
+        Assert.True(before.GetProperty("customerNew").GetBoolean());
+        Assert.True(before.GetProperty("itemNew").GetBoolean());
+
+        var rows = new List<TaxOrderRow>
+        {
+            new("00001-26", new DateOnly(2026, 3, 1), "Entrega", cnpj, "SP", 18m, 3.25m, StateRegistration: "112.970.351.112", ProductCode: product.Code,
+                DeliveryAddress: "Rua Lateral,810 Vila Nova York São Paulo-SP 03479-020"),
+            new("00002-26", new DateOnly(2026, 3, 2), "Entrega", cnpj, "SP", 18m, 3.25m, ProductCode: "OUTRO", DeliveryAddress: "Rua Padre Isidoro, 182 Vila Nova York São Paulo-SP 03479-020"),
+        };
+        var preview = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(false, false, rows))).Read<CustomerTaxResult>();
+        Assert.Single(preview.IeCorrected!);
+        Assert.Single(preview.DeliveryAddresses!);
+
+        var applied = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, false, rows))).Read<CustomerTaxResult>();
+        Assert.Single(applied.IeCorrected!);
+        var read = await (await admin.GetAsync($"/api/customers/{customer.Id}")).Read<CustomerOut>();
+        Assert.Equal("112.970.351.112", read.Company!.StateRegistration);
+        var addresses = await (await admin.GetAsync($"/api/customers/{customer.Id}/addresses")).Read<List<CustomerAddressOut>>();
+        var delivery = Assert.Single(addresses);
+        Assert.Equal("Rua Lateral", delivery.Street);
+        Assert.Equal("810", delivery.Number);
+        Assert.Equal("03479020", delivery.ZipCode);
+        Assert.Equal("São Paulo", delivery.City);
+        Assert.Equal("Vila Nova York", delivery.District);
+
+        var after = await (await admin.GetAsync(NoveltyUrl())).Read<System.Text.Json.JsonElement>();
+        Assert.False(after.GetProperty("customerNew").GetBoolean());
+        Assert.False(after.GetProperty("itemNew").GetBoolean()); // the same product code was on an old order
+
+        // A second run adds nothing.
+        var again = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, true, rows))).Read<CustomerTaxResult>();
+        Assert.Empty(again.DeliveryAddresses!);
+        Assert.Empty(again.IeCorrected!);
+    }
 }

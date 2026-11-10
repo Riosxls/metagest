@@ -10,7 +10,8 @@ public class OrderMaterial
     public int CustomerId { get; set; }
     public Customer? Customer { get; set; }
     public required string ProductCode { get; set; }
-    public required string Material { get; set; }
+    /// <summary>The material the old orders gave; null when they gave none (the row then only says the customer bought the product before).</summary>
+    public string? Material { get; set; }
     /// <summary>How many old orders said this.</summary>
     public int Orders { get; set; }
     public DateOnly LastDate { get; set; }

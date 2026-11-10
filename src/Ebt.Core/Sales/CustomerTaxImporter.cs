@@ -8,12 +8,12 @@ namespace Ebt.Core.Sales;
 /// <summary>One internal sales order ("Pedido Interno de Venda") as read from the legacy workbooks: its number (<c>04183-25</c>), the customer as typed on it and the taxes it charged.</summary>
 public sealed record TaxOrderRow(string? Reference, DateOnly? Date, string? Customer, string? Document, string? Uf, decimal? Icms, decimal? Ipi,
     string? Street = null, string? District = null, string? City = null, string? ZipCode = null, string? StateRegistration = null,
-    string? Contact = null, string? Phone = null, string? Email = null, string? PaymentTerm = null, string? ProductCode = null, string? Material = null);
+    string? Contact = null, string? Phone = null, string? Email = null, string? PaymentTerm = null, string? ProductCode = null, string? Material = null, string? DeliveryAddress = null);
 
 public sealed record CustomerTaxMatch(int CustomerId, string CustomerName, string MatchedBy, int Orders, decimal? Ipi, decimal? Icms, string Note, bool Applied);
 
 public sealed record CustomerTaxResult(int Read, int Used, int Skipped, IReadOnlyList<CustomerTaxMatch> Matches, IReadOnlyList<string> Unmatched,
-    IReadOnlyList<string>? Created = null, IReadOnlyList<string>? Ambiguous = null, int ContactsFilled = 0, int Materials = 0);
+    IReadOnlyList<string>? Created = null, IReadOnlyList<string>? Ambiguous = null, int ContactsFilled = 0, int Materials = 0, IReadOnlyList<string>? IeCorrected = null, IReadOnlyList<string>? DeliveryAddresses = null);
 
 /// <summary>
 /// Learns each customer's usual IPI and ICMS from the old internal sales orders and stores them on the customer (company data): the IPI and ICMS of the
@@ -50,6 +50,8 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
 
         var matches = new List<CustomerTaxMatch>();
         var contactsFilled = 0;
+        var ieCorrected = new List<string>();
+        var deliveries = new List<string>();
         foreach (var (id, (by, orders)) in byCustomer.OrderBy(e => e.Key))
         {
             orders.Sort((a, b) => a.Date != b.Date ? a.Date.CompareTo(b.Date) : a.Seq.CompareTo(b.Seq));
@@ -73,23 +75,40 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
             Fill(c.Phone, Latest(r => r.Phone), v => c.Phone = v);
             var ie = Latest(r => r.StateRegistration);
             if (Digits(ie).Length >= 5 && string.IsNullOrWhiteSpace(c.StateRegistration)) { filled = true; if (apply) { c.StateRegistration = ie; c.IcmsContributor = true; } }
+            // The latest order is what the customer says today: a different IE on an order that carries the customer's own CNPJ replaces the cadastro one.
+            else if (by == "CNPJ" && Digits(ie).Length >= 8 && Digits(ie) != Digits(c.StateRegistration))
+            {
+                ieCorrected.Add($"{c.Name}: {c.StateRegistration} -> {ie}");
+                if (apply) { c.StateRegistration = ie; c.IcmsContributor = true; }
+            }
+            // Where the order says to deliver elsewhere than the customer's own address, that place becomes a delivery address of the customer.
+            // Every distinct place named on the orders counts (the newest three), not only the one of the latest order.
+            var places = orders.AsEnumerable().Reverse().Select(o => Clean(o.Row.DeliveryAddress)).Where(t => t is not null).GroupBy(t => Letters(t)).Select(g => g.First()!).Take(3).ToList();
+            foreach (var deliveryText in places)
+                if (NewDeliveryAddress(c, deliveryText) is { } address)
+                {
+                    deliveries.Add($"{c.Name}: {deliveryText}");
+                    if (apply) c.Addresses.Add(address);
+                }
             if (filled) contactsFilled++;
             matches.Add(new CustomerTaxMatch(id, c.Name, by, orders.Count, ipi, icms, note, apply && take));
         }
         var materials = await LearnMaterialsAsync(rows, known, apply, ct);
         if (apply) await db.SaveChangesAsync(ct);
-        return new CustomerTaxResult(rows.Count, matches.Sum(m => m.Orders), skipped, matches, unmatched.ToList(), created, ambiguous, contactsFilled, materials);
+        return new CustomerTaxResult(rows.Count, matches.Sum(m => m.Orders), skipped, matches, unmatched.ToList(), created, ambiguous, contactsFilled, materials, ieCorrected, deliveries);
     }
 
     /// <summary>The material of each customer + product code, as the old orders wrote it (the latest order wins, with how many said it).</summary>
     private async Task<int> LearnMaterialsAsync(IReadOnlyList<TaxOrderRow> rows, List<Known> known, bool apply, CancellationToken ct)
     {
-        var found = new Dictionary<(int Customer, string Product), (DateOnly Date, int Seq, string Material, int Count)>();
+        var found = new Dictionary<(int Customer, string Product), (DateOnly Date, int Seq, string? Material, int Count)>();
         foreach (var r in rows)
         {
             var material = Clean(r.Material);
-            var product = Clean(r.ProductCode);
-            if (material is null || product is null || product.Length > 40 || material.Length > 200 || material.StartsWith("TUBO", StringComparison.OrdinalIgnoreCase)) continue;
+            if (material is not null && (material.Length > 200 || material.StartsWith("TUBO", StringComparison.OrdinalIgnoreCase))) material = null;
+            // A row without a product code still says the customer bought before: it is kept under "-".
+            var product = Clean(r.ProductCode) ?? "-";
+            if (product.Length > 40) continue;
             var (id, _, _) = Lookup(known, r);
             if (id is null) continue;
             var (year, seq) = Parse(r);
@@ -98,7 +117,7 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
             var key = (id.Value, product);
             found.TryGetValue(key, out var old);
             var newer = old.Count == 0 || (date, seq).CompareTo((old.Date, old.Seq)) >= 0;
-            found[key] = (newer ? date : old.Date, newer ? seq : old.Seq, newer ? material : old.Material, old.Count + 1);
+            found[key] = (newer ? date : old.Date, newer ? seq : old.Seq, newer ? (material ?? old.Material) : (old.Material ?? material), old.Count + 1);
         }
         if (!apply) return found.Count;
         var existing = await db.OrderMaterials.ToListAsync(ct);
@@ -106,7 +125,7 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
         {
             var row = existing.FirstOrDefault(e => e.CustomerId == customer && e.ProductCode == product);
             if (row is null) db.OrderMaterials.Add(new Entities.OrderMaterial { CustomerId = customer, ProductCode = product, Material = v.Material, Orders = v.Count, LastDate = v.Date });
-            else { row.Material = v.Material; row.Orders = v.Count; row.LastDate = v.Date; }
+            else { row.Material = v.Material ?? row.Material; row.Orders = v.Count; row.LastDate = v.Date; }
         }
         return found.Count;
     }
@@ -120,9 +139,9 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
         if (line is not null) return line;
         var code = await db.Products.AsNoTracking().Where(p => p.Id == productId).Select(p => p.Code).FirstOrDefaultAsync(ct);
         if (code is null) return null;
-        var own = await db.OrderMaterials.AsNoTracking().Where(m => m.CustomerId == customerId && m.ProductCode == code).Select(m => m.Material).FirstOrDefaultAsync(ct);
+        var own = await db.OrderMaterials.AsNoTracking().Where(m => m.CustomerId == customerId && m.ProductCode == code && m.Material != null).Select(m => m.Material).FirstOrDefaultAsync(ct);
         if (own is not null) return own;
-        return await db.OrderMaterials.AsNoTracking().Where(m => m.ProductCode == code).GroupBy(m => m.Material)
+        return await db.OrderMaterials.AsNoTracking().Where(m => m.ProductCode == code && m.Material != null).GroupBy(m => m.Material)
             .OrderByDescending(g => g.Sum(m => m.Orders)).ThenByDescending(g => g.Max(m => m.LastDate)).Select(g => g.Key).FirstOrDefaultAsync(ct);
     }
 
@@ -188,6 +207,51 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
         }
         if (apply) await db.SaveChangesAsync(ct);
         return (created.Order(StringComparer.OrdinalIgnoreCase).ToList(), ambiguous.ToList());
+    }
+
+    private static string Letters(string? s) => new(PriceHistoryImporter.Fold(s ?? "").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+    /// <summary>
+    /// The delivery address written on an order ("Rua Lateral,810 Vila Nova York São Paulo-SP 03479-020") as a new address of the customer, or null when it is the customer's own
+    /// address (same CEP, or the same street and number) or the customer already has it.
+    /// </summary>
+    private static Entities.CustomerAddress? NewDeliveryAddress(Entities.Customer c, string text)
+    {
+        var folded = Letters(text);
+        if (folded.Length < 8) return null;
+        var zipMatch = Regex.Match(text, @"(\d{5})\s*-?\s*(\d{3})\b");
+        var zip = zipMatch.Success ? zipMatch.Groups[1].Value + zipMatch.Groups[2].Value : null;
+        var street = text;
+        string? number = null;
+        var sm = Regex.Match(text, @"^(?<s>[^,]+?)\s*,\s*(?<n>\d[\w\-./]*)\s*(?<rest>.*)$");
+        if (sm.Success) { street = sm.Groups["s"].Value.Trim(); number = sm.Groups["n"].Value.Trim(); }
+        bool Same(string? zipCode, string? st, string? no) =>
+            (zip is not null && zip == Digits(zipCode) && (number is null || no is null || Letters(number) == Letters(no)))
+            || (Letters(st).Length >= 4 && Letters(street) == Letters(st) && (number is null || no is null || Letters(number) == Letters(no)));
+        if (Same(c.ZipCode, c.Street, c.Number)) return null;
+        if (c.Addresses.Any(a => Same(a.ZipCode, a.Street, a.Number))) return null;
+
+        string? district = null, city = null, uf = null;
+        if (sm.Success)
+        {
+            var rest = sm.Groups["rest"].Value;
+            rest = zipMatch.Success ? rest.Replace(zipMatch.Value, "") : rest;
+            var um = Regex.Match(rest, @"[-/,]\s*([A-Za-z]{2})\s*$");
+            if (um.Success) { uf = um.Groups[1].Value.ToUpperInvariant(); rest = rest[..um.Index]; }
+            rest = rest.Trim(' ', ',', '-');
+            if (!string.IsNullOrWhiteSpace(c.City) && Letters(rest).EndsWith(Letters(c.City), StringComparison.Ordinal) && Letters(rest).Length >= Letters(c.City).Length)
+            {
+                var cut = rest.LastIndexOf(c.City, StringComparison.OrdinalIgnoreCase);
+                if (cut >= 0) { district = rest[..cut].Trim(' ', ',', '-'); city = rest[cut..].Trim(); }
+            }
+            if (city is null && rest.Length > 0) district = rest;
+        }
+        return new Entities.CustomerAddress
+        {
+            Document = c.Document ?? "", StateRegistration = c.StateRegistration, IcmsContributor = c.IcmsContributor,
+            Street = Smart(street), Number = number, District = Smart(district), City = Smart(city) ?? c.City, Uf = uf ?? c.Uf ?? "", ZipCode = zip,
+            Buyer = c.Contact, Email = c.Email, Phone = c.Phone
+        };
     }
 
     private static readonly Regex StreetNumber = new(@"^(?<s>.+?)\s*[,]\s*(?<n>(?:S\s*/\s*N|\d[\w\-./]*))\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);

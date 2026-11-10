@@ -53,6 +53,7 @@ const productionOrderFields = [
   ),
   FieldSpec('previousOrderId', 'OF anterior', type: FieldType.lookup, lookup: LookupSpec('/api/production/orders'), advanced: true),
   FieldSpec('bales', 'Amarrados', type: FieldType.integer, advanced: true),
+  FieldSpec('rawMaterial', 'Matéria-prima', hint: 'Ex.: Fita 1,20 x 42,50mm', advanced: true),
   FieldSpec('primaryTube', 'Tubo primário (perfila)', hint: 'Ex.: Rolo 14,00 x 0,90 mm', advanced: true),
   FieldSpec('notes', 'Observações', advanced: true),
 ];
@@ -62,6 +63,7 @@ const productionUpdateFields = [
   FieldSpec('dueDate', 'Data de entrega', type: FieldType.date, required: true),
   FieldSpec('customerId', 'Cliente', type: FieldType.lookup, lookup: LookupSpec('/api/customers')),
   FieldSpec('bales', 'Amarrados', type: FieldType.integer),
+  FieldSpec('rawMaterial', 'Matéria-prima', hint: 'Ex.: Fita 1,20 x 42,50mm'),
   FieldSpec('primaryTube', 'Tubo primário (perfila)', hint: 'Ex.: Rolo 14,00 x 0,90 mm'),
   FieldSpec('notes', 'Observações'),
 ];
@@ -666,6 +668,7 @@ class _ProductionOrderScreenState extends State<ProductionOrderScreen> with Sing
                 ('Programado', o['plannedStart'] == null ? '' : '${fmtDay(o['plannedStart'])} a ${fmtDay(o['plannedEnd'])}'),
                 ('Ajustado', o['adjustedStart'] == null ? '' : '${fmtDay(o['adjustedStart'])} a ${fmtDay(o['adjustedEnd'])}'),
                 ('Amarrados', fmt(o['bales'])),
+                ('Matéria-prima', fmt(o['rawMaterial'])),
                 ('Tubo primário', fmt(o['primaryTube'])),
                 ('Criada', '${fmt(o['createdBy'])} · ${fmtDate(o['createdAt'])}'),
                 ('Liberada', fmtDate(o['releasedAt'])),

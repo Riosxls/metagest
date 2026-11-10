@@ -14,7 +14,7 @@ public enum OperationKind { Other, Profile, Draw, StraightenCut, Inspection, Bru
 
 public sealed record SuggestedOperation(int Sequence, string Description, string? Tolerance, string? MeasureStart, string? MeasureEnd, int? MachineId, string? MachineCode, string? MachineName);
 
-public sealed record ProcessSuggestion(ProcessSource Source, string? SourceRef, IReadOnlyList<SuggestedOperation> Operations);
+public sealed record ProcessSuggestion(ProcessSource Source, string? SourceRef, IReadOnlyList<SuggestedOperation> Operations, string? RawMaterial = null, string? PrimaryTube = null);
 
 /// <summary>The machines of the plant, looked up by name keywords (never by id or code).</summary>
 public sealed class MachineIndex
@@ -158,7 +158,7 @@ public sealed class ProcessSuggester(EbtDbContext db)
     }
 
     private static ProcessSuggestion FromTemplate(ProcessSource source, ProcessTemplate t, MachineIndex machines) =>
-        new(source, t.SourceRef, t.Operations.OrderBy(o => o.Sequence).Select((o, i) => Make(i, o.Description, o.Tolerance, o.MeasureStart, o.MeasureEnd, MachineFor(machines, o.Description, o.Resource))).ToList());
+        new(source, t.SourceRef, t.Operations.OrderBy(o => o.Sequence).Select((o, i) => Make(i, o.Description, o.Tolerance, o.MeasureStart, o.MeasureEnd, MachineFor(machines, o.Description, o.Resource))).ToList(), t.RawMaterial, t.PrimaryTube);
 
     private async Task<ProcessSuggestion?> FromPreviousOrderAsync(Product product, List<string> keys, int? excludeOrderId, MachineIndex machines, CancellationToken ct)
     {
@@ -177,11 +177,12 @@ public sealed class ProcessSuggester(EbtDbContext db)
             .Any(n => !string.IsNullOrWhiteSpace(n) && keys.Contains(PriceHistoryImporter.CustomerKey(n).ToUpperInvariant())));
         if (match is null) return null;
         var ops = await db.ProductionOrderOperations.AsNoTracking().Include(o => o.Machine).Where(o => o.OrderId == match.Id).OrderBy(o => o.Sequence).ToListAsync(ct);
+        var materials = await db.ProductionOrders.AsNoTracking().Where(o => o.Id == match.Id).Select(o => new { o.RawMaterial, o.PrimaryTube }).FirstAsync(ct);
         return new ProcessSuggestion(ProcessSource.PreviousOrder, match.Reference, ops.Select((o, i) =>
         {
             var swap = IsLegacySwap(o.Tolerance);
             var machine = o.Machine ?? MachineFor(machines, o.Description, swap ? LegacyInspectionResource : null);
             return Make(i, o.Description ?? "", swap ? Dash : o.Tolerance, o.MeasureStart, o.MeasureEnd, machine);
-        }).ToList());
+        }).ToList(), materials.RawMaterial, materials.PrimaryTube);
     }
 }

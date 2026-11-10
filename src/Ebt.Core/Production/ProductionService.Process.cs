@@ -46,6 +46,8 @@ public sealed partial class ProductionService
             var (name, trade) = await CustomerOfAsync(order.CustomerId, null, ct);
             var suggestion = await Suggester.SuggestAsync(product, order.PrimaryTube, name, ct, null, trade, machines);
             order.Operations.AddRange(suggestion.Operations.Select(ToOperation));
+            if (string.IsNullOrWhiteSpace(order.PrimaryTube)) order.PrimaryTube = Clean(suggestion.PrimaryTube);
+            if (string.IsNullOrWhiteSpace(order.RawMaterial)) order.RawMaterial = Clean(suggestion.RawMaterial);
         }
         else
         {
@@ -130,6 +132,31 @@ public sealed partial class ProductionService
             await db.SaveChangesAsync(ct);
             return order;
         }, ct);
+    }
+
+    /// <summary>
+    /// Fills the empty "Matéria-Prima" and "Tubo primário" of OFs that are still only created, from the OF the customer had before or the legacy template of the tube.
+    /// Only empty fields are written. With <paramref name="apply"/> false it only counts.
+    /// </summary>
+    public async Task<BulkResult> BulkFillMaterialsAsync(bool apply, CancellationToken ct = default)
+    {
+        var orders = await db.ProductionOrders.Include(o => o.Product)
+            .Where(o => o.Status == ProductionOrderStatus.Created && o.Kind == ProductionOrderKind.Standard && o.ParentOrderId == null
+                && (o.RawMaterial == null || o.RawMaterial == "" || o.PrimaryTube == null || o.PrimaryTube == ""))
+            .OrderBy(o => o.DueDate).ToListAsync(ct);
+        var machines = await MachineIndex.LoadAsync(db, ct);
+        var touched = new List<string>();
+        foreach (var o in orders.Where(o => o.Product != null))
+        {
+            var (name, trade) = await CustomerOfAsync(o.CustomerId, o.Id, ct);
+            var suggestion = await Suggester.SuggestAsync(o.Product!, o.PrimaryTube, name, ct, o.Id, trade, machines);
+            var changed = false;
+            if (string.IsNullOrWhiteSpace(o.PrimaryTube) && Clean(suggestion.PrimaryTube) is { } tube) { if (apply) o.PrimaryTube = tube; changed = true; }
+            if (string.IsNullOrWhiteSpace(o.RawMaterial) && Clean(suggestion.RawMaterial) is { } raw) { if (apply) o.RawMaterial = raw; changed = true; }
+            if (changed) touched.Add(o.Reference);
+        }
+        if (apply) await db.SaveChangesAsync(ct);
+        return new BulkResult(touched.Count, apply ? touched.Count : 0, 0, touched.Take(20).ToList());
     }
 
     /// <summary>

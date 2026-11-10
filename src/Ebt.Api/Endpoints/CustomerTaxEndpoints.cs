@@ -25,7 +25,7 @@ public static class CustomerTaxEndpoints
                 db.AuditLog.Add(new AuditEntry
                 {
                     At = DateTimeOffset.UtcNow, User = user.Identity?.Name, Entity = "Customer", EntityId = "tax-import", Action = "Import",
-                    Changes = JsonSerializer.Serialize(new { result.Read, result.Used, result.Skipped, customers = result.Matches.Count(m => m.Applied), created = result.Created?.Count ?? 0, contacts = result.ContactsFilled, materials = result.Materials, unmatched = result.Unmatched.Count })
+                    Changes = JsonSerializer.Serialize(new { result.Read, result.Used, result.Skipped, customers = result.Matches.Count(m => m.Applied), created = result.Created?.Count ?? 0, contacts = result.ContactsFilled, materials = result.Materials, ieCorrected = result.IeCorrected?.Count ?? 0, deliveries = result.DeliveryAddresses?.Count ?? 0, unmatched = result.Unmatched.Count })
                 });
                 await db.SaveChangesAsync(ct);
             }
