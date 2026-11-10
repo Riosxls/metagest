@@ -152,8 +152,17 @@ void main() {
     });
 
     testWidgets('a chip per stage shows its count and brings the column into view', (tester) async {
+      // Empty stages fold into narrow strips, so every stage holds a card here to keep the board wider than the window.
       final f = _fake({
+        'quote': [_card('Quote', 5, 'PROP 31', 'Draft')],
         'sent': [_card('Quote', 6, 'PROP 32', 'Sent')],
+        'accepted': [_card('Quote', 7, 'PROP 33', 'Accepted')],
+        'po': [_card('Quote', 8, 'PROP 34', 'PurchaseOrder')],
+        'order': [_card('Order', 10, 'PV 10', 'Created')],
+        'production': [_card('Order', 11, 'PV 11', 'InProduction')],
+        'certificate': [_card('Order', 12, 'PV 12', 'InProduction')],
+        'ready': [_card('Order', 13, 'PV 13', 'InProduction')],
+        'shipped': [_card('Order', 14, 'PV 14', 'Shipped')],
         'delivered': [_card('Order', 9, 'PV 9', 'Delivered')],
       });
       await _open(tester, f);
@@ -168,7 +177,7 @@ void main() {
     });
 
     testWidgets('the mouse wheel over the board moves the columns sideways', (tester) async {
-      await _open(tester, _fake({}));
+      await _open(tester, _fake({for (final k in ['quote', 'sent', 'accepted', 'po', 'order', 'production', 'certificate', 'ready', 'shipped', 'delivered']) k: [_card('Order', k.length, 'PV $k', 'Created')]}));
       final scroll = tester.state<ScrollableState>(find.descendant(of: find.byKey(const ValueKey('kanban')), matching: find.byType(Scrollable)).first);
       expect(scroll.position.pixels, 0);
       // Over the header of a column (nothing there scrolls up and down).
@@ -178,6 +187,31 @@ void main() {
       await tester.sendEventToBinding(pointer.scroll(const Offset(0, 300)));
       await tester.pump();
       expect(scroll.position.pixels, greaterThan(0));
+    });
+
+    testWidgets('an empty stage folds into a narrow strip and the quote stage offers a new quote', (tester) async {
+      await _open(tester, _fake({}));
+      expect(tester.getSize(find.byKey(const ValueKey('stage-sent'))).width, lessThan(100));
+      expect(tester.getSize(find.byKey(const ValueKey('stage-quote'))).width, greaterThan(200));
+      expect(find.text('Nenhum orçamento em andamento'), findsOneWidget);
+    });
+
+    testWidgets('the late tile filters the board to the late orders and a second tap clears it', (tester) async {
+      final f = _fake({
+        'order': [_card('Order', 9, 'PV 9', 'Created', badges: ['late']), _card('Order', 10, 'PV 10', 'Created')],
+      });
+      final plain = _pipeline({
+        'order': [_card('Order', 9, 'PV 9', 'Created', badges: ['late']), _card('Order', 10, 'PV 10', 'Created')],
+      });
+      (plain['kpis'] as Map<String, dynamic>)['lateOrders'] = 1;
+      f.overrides['GET /api/sales/pipeline'] = (_) => jsonResp(plain);
+      await _open(tester, f);
+      expect(find.text('PV 10'), findsOneWidget);
+      await tapKey(tester, 'kpi-late');
+      expect(find.text('PV 9'), findsOneWidget);
+      expect(find.text('PV 10'), findsNothing);
+      await tapKey(tester, 'kpi-late');
+      expect(find.text('PV 10'), findsOneWidget);
     });
   });
 }

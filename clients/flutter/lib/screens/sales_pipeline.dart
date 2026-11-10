@@ -61,6 +61,12 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
   String? _dragFrom;
   final _kanbanScroll = ScrollController();
 
+  /// Whether there is more board to the left / right of the window: the edges show a fade and an arrow then.
+  final _edges = ValueNotifier<(bool, bool)>((false, false));
+
+  /// Only the late orders (the "Atrasados" tile toggles it).
+  bool _onlyLate = false;
+
   /// Last data stays on screen while a reload runs, so the board does not blank and the scroll position is kept.
   Map<String, dynamic>? _data;
   Object? _error;
@@ -70,6 +76,7 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
   @override
   void initState() {
     super.initState();
+    _kanbanScroll.addListener(_measure);
     unawaited(_reload());
   }
 
@@ -87,7 +94,29 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
   }
 
   static const _columnWidth = 272.0;
+  static const _collapsedWidth = 64.0;
   static const _columnGap = 10.0;
+
+  void _measure() {
+    if (!_kanbanScroll.hasClients || !_kanbanScroll.position.hasContentDimensions) return;
+    final p = _kanbanScroll.position;
+    final v = (p.pixels > 1, p.pixels < p.maxScrollExtent - 1);
+    if (v != _edges.value) _edges.value = v;
+  }
+
+  /// The cards of a stage as shown now: all of them, or only the late ones.
+  List<Map<String, dynamic>> _cardsOf(Map<String, dynamic> st) {
+    final all = (st['cards'] as List).cast<Map<String, dynamic>>();
+    return _onlyLate ? all.where((c) => (c['badges'] as List).contains('late')).toList() : all;
+  }
+
+  /// An empty stage folds into a narrow strip so the others have room; it opens while a card is dragged that can land there, and the quote stage stays open for whoever can start one.
+  bool _collapsed(Map<String, dynamic> st) {
+    final key = st['key'] as String;
+    if (_cardsOf(st).isNotEmpty) return false;
+    if (_dragFrom != null && _moves[_dragFrom] == key) return false;
+    return !(key == 'quote' && s.canSell && !_onlyLate);
+  }
 
   /// A mouse wheel only scrolls up and down; over the kanban (outside a column that has more cards to scroll) it moves the columns sideways.
   void _wheelToHorizontal(PointerSignalEvent e) {
@@ -101,12 +130,25 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
   void _jumpTo(int column) {
     if (!_kanbanScroll.hasClients) return;
     final p = _kanbanScroll.position;
-    unawaited(_kanbanScroll.animateTo((column * (_columnWidth + _columnGap)).clamp(p.minScrollExtent, p.maxScrollExtent), duration: const Duration(milliseconds: 250), curve: Curves.easeOut));
+    final stages = (_data?['stages'] as List? ?? const []).cast<Map<String, dynamic>>();
+    var offset = 0.0;
+    for (var i = 0; i < column && i < stages.length; i++) {
+      offset += (_collapsed(stages[i]) ? _collapsedWidth : _columnWidth) + _columnGap;
+    }
+    unawaited(_kanbanScroll.animateTo(offset.clamp(p.minScrollExtent, p.maxScrollExtent), duration: const Duration(milliseconds: 250), curve: Curves.easeOut));
+  }
+
+  void _jumpToStage(String key) {
+    final stages = (_data?['stages'] as List? ?? const []).cast<Map<String, dynamic>>();
+    final i = stages.indexWhere((e) => e['key'] == key);
+    if (i >= 0) _jumpTo(i);
   }
 
   @override
   void dispose() {
+    _kanbanScroll.removeListener(_measure);
     _kanbanScroll.dispose();
+    _edges.dispose();
     super.dispose();
   }
 
@@ -309,7 +351,7 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
           _kpis(data['kpis'] as Map<String, dynamic>),
           // The columns run wider than the window: a chip per stage (with how many cards it holds) jumps to it.
           SizedBox(
-            height: 40,
+            height: 44,
             child: ListView(
               key: const ValueKey('stage-chips'),
               scrollDirection: Axis.horizontal,
@@ -320,9 +362,9 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
                     padding: const EdgeInsets.only(right: 6),
                     child: ActionChip(
                       key: ValueKey('stage-chip-${st['key']}'),
-                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Ir para a etapa',
                       avatar: Icon(_stageIcons[st['key']], size: 16),
-                      label: Text('${pipelineStages[st['key']] ?? st['key']} · ${st['count']}'),
+                      label: Text('${pipelineStages[st['key']] ?? st['key']} · ${_cardsOf(st).length}'),
                       onPressed: () => _jumpTo(i),
                     ),
                   ),
@@ -330,22 +372,70 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
             ),
           ),
           Expanded(
-            child: Listener(
-              onPointerSignal: _wheelToHorizontal,
-              child: Scrollbar(
-                controller: _kanbanScroll,
-                child: ListView(
-                  key: const ValueKey('kanban'),
-                  controller: _kanbanScroll,
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.all(12),
-                  children: [for (final st in (data['stages'] as List).cast<Map<String, dynamic>>()) _column(st)],
-                ),
+            child: NotificationListener<ScrollMetricsNotification>(
+              onNotification: (_) {
+                WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+                return false;
+              },
+              child: Stack(
+                children: [
+                  Listener(
+                    onPointerSignal: _wheelToHorizontal,
+                    child: Scrollbar(
+                      controller: _kanbanScroll,
+                      child: ListView(
+                        key: const ValueKey('kanban'),
+                        controller: _kanbanScroll,
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.all(12),
+                        children: [for (final st in (data['stages'] as List).cast<Map<String, dynamic>>()) _column(st)],
+                      ),
+                    ),
+                  ),
+                  ValueListenableBuilder<(bool, bool)>(
+                    valueListenable: _edges,
+                    builder: (context, e, _) => Stack(
+                      children: [
+                        if (e.$1) _edge(left: true),
+                        if (e.$2) _edge(left: false),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ],
       ],
+    );
+  }
+
+  /// A fade with an arrow on the left / right edge of the board: more columns wait there.
+  Widget _edge({required bool left}) {
+    final bg = Theme.of(context).colorScheme.surface;
+    return Positioned(
+      top: 0,
+      bottom: 0,
+      left: left ? 0 : null,
+      right: left ? null : 0,
+      width: 56,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(begin: left ? Alignment.centerLeft : Alignment.centerRight, end: left ? Alignment.centerRight : Alignment.centerLeft, colors: [bg, bg.withValues(alpha: 0)]),
+        ),
+        child: Align(
+          alignment: left ? Alignment.centerLeft : Alignment.centerRight,
+          child: IconButton.filledTonal(
+            key: ValueKey(left ? 'kanban-edge-left' : 'kanban-edge-right'),
+            tooltip: left ? 'Etapas anteriores' : 'Mais etapas',
+            icon: Icon(left ? Icons.chevron_left : Icons.chevron_right),
+            onPressed: () {
+              final p = _kanbanScroll.position;
+              unawaited(_kanbanScroll.animateTo((p.pixels + (left ? -1 : 1) * 2 * (_columnWidth + _columnGap)).clamp(p.minScrollExtent, p.maxScrollExtent), duration: const Duration(milliseconds: 250), curve: Curves.easeOut));
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -396,6 +486,17 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
   Widget _kpis(Map<String, dynamic> k) {
     final winRate = k['winRate'];
     final conversion = winRate == null ? '' : ' · conversão ${((winRate as num) * 100).round()}% (90 dias)';
+    // A click filters the board to the late orders; another click clears it.
+    Widget lateTile(Map<String, dynamic> k) => KpiTile(
+      key: const ValueKey('kpi-late'),
+      width: 240,
+      label: _onlyLate ? 'Atrasados (filtrando)' : 'Atrasados',
+      value: '${k['lateOrders']}',
+      caption: _onlyLate ? 'Toque para ver todos' : 'Toque para filtrar',
+      icon: _onlyLate ? Icons.filter_alt : Icons.schedule,
+      tone: (k['lateOrders'] as num) > 0 ? Tone.danger : Tone.neutral,
+      onTap: () => setState(() => _onlyLate = !_onlyLate),
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 0),
       child: Wrap(
@@ -403,23 +504,29 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
         runSpacing: AppSpacing.sm,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          // Late orders come first when there are any: it is the one tile that asks for action.
+          if ((k['lateOrders'] as num) > 0) lateTile(k),
           KpiTile(
+            width: 240,
             label: 'Orçamentos em aberto',
             value: fmtMoney(k['openQuotesValue']),
             caption: '${_count(k['openQuotes'], 'orçamento', 'orçamentos')}$conversion',
             icon: Icons.request_quote_outlined,
+            onTap: () => _jumpToStage('quote'),
           ),
           KpiTile(
+            width: 240,
             label: 'Pedidos em aberto',
             value: fmtMoney(k['openOrdersValue']),
             caption: _count(k['openOrders'], 'pedido', 'pedidos'),
             icon: Icons.receipt_long_outlined,
             tone: Tone.progress,
+            onTap: () => _jumpToStage('order'),
           ),
-          KpiTile(label: 'Prontos p/ expedir', value: '${k['readyToShip']}', icon: Icons.local_shipping_outlined, tone: Tone.success),
-          KpiTile(label: 'Atrasados', value: '${k['lateOrders']}', icon: Icons.schedule, tone: (k['lateOrders'] as num) > 0 ? Tone.danger : Tone.neutral),
+          KpiTile(width: 240, label: 'Prontos para expedir', value: '${k['readyToShip']}', icon: Icons.local_shipping_outlined, tone: Tone.success, onTap: () => _jumpToStage('ready')),
+          if ((k['lateOrders'] as num) <= 0) lateTile(k),
           if ((k['pendingApprovals'] as num) > 0)
-            KpiTile(label: 'Aguardando autorização', value: '${k['pendingApprovals']}', icon: Icons.verified_user_outlined, tone: Tone.warning),
+            KpiTile(width: 240, label: 'Aguardando autorização', value: '${k['pendingApprovals']}', icon: Icons.verified_user_outlined, tone: Tone.warning, onTap: () => _jumpToStage('quote')),
         ],
       ),
     );
@@ -428,8 +535,9 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
   Widget _column(Map<String, dynamic> st) {
     final key = st['key'] as String;
     final tone = _stageTones[key] ?? Tone.neutral;
-    final cards = (st['cards'] as List).cast<Map<String, dynamic>>();
+    final cards = _cardsOf(st);
     final theme = Theme.of(context);
+    final collapsed = _collapsed(st);
     return DragTarget<(Map<String, dynamic>, String)>(
       onWillAcceptWithDetails: (d) {
         final ok = _moves[d.data.$2] == key;
@@ -446,14 +554,32 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
         opacity: _dragFrom != null && _dragFrom != key && _moves[_dragFrom] != key ? 0.45 : 1,
         child: Container(
         key: ValueKey('stage-$key'),
-        width: _columnWidth,
+        width: collapsed ? _collapsedWidth : _columnWidth,
         margin: const EdgeInsets.only(right: _columnGap),
         decoration: BoxDecoration(
           color: _hover == key ? toneColors(context, tone).$1 : theme.colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border(top: BorderSide(color: toneAccent(context, tone), width: 4)),
         ),
-        child: Column(
+        child: collapsed
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(
+                  children: [
+                    Icon(_stageIcons[key], size: 18, color: toneAccent(context, tone)),
+                    const SizedBox(height: 6),
+                    StatusBadge('0', tone: tone),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: RotatedBox(
+                        quarterTurns: 3,
+                        child: Text(pipelineStages[key] ?? key, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
@@ -465,17 +591,34 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
                   Expanded(
                     child: Text(pipelineStages[key] ?? key, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                   ),
-                  StatusBadge('${st['count']}', tone: tone),
+                  StatusBadge('${cards.length}', tone: tone),
                 ],
               ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: Text(fmtMoney(st['value']), style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              child: Text(
+                fmtMoney(_onlyLate ? cards.fold<num>(0, (a, c) => a + ((c['value'] as num?) ?? 0)) : st['value']),
+                style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.8)),
+              ),
             ),
             Expanded(
               child: cards.isEmpty
-                  ? Center(child: Text('Nada aqui', style: theme.textTheme.bodySmall))
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_dragFrom != null ? 'Solte aqui para avançar' : 'Nenhum orçamento em andamento', textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+                            if (_dragFrom == null && key == 'quote' && s.canSell) ...[
+                              const SizedBox(height: 8),
+                              FilledButton.tonalIcon(onPressed: _new, icon: const Icon(Icons.add), label: const Text('Novo orçamento')),
+                            ],
+                          ],
+                        ),
+                      ),
+                    )
                   : ListView(padding: const EdgeInsets.fromLTRB(8, 0, 8, 8), children: [for (final c in cards) _draggable(c, key)]),
             ),
           ],

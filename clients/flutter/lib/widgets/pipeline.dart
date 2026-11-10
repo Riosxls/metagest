@@ -331,8 +331,10 @@ class _Chevron extends CustomClipper<Path> {
 
 /// Summary tile with a [value], a [label] and an optional [caption]; tappable when [onTap] is set.
 class KpiTile extends StatelessWidget {
-  const KpiTile({super.key, required this.label, required this.value, this.caption, this.icon, this.tone = Tone.info, this.onTap});
+  const KpiTile({super.key, required this.label, required this.value, this.caption, this.icon, this.tone = Tone.info, this.onTap, this.width = 210});
 
+  /// Tiles of one row share the same height (a label or caption never wraps), so they line up.
+  final double width;
   final String label;
   final String value;
   final String? caption;
@@ -345,14 +347,17 @@ class KpiTile extends StatelessWidget {
     final theme = Theme.of(context);
     final (bg, fg) = toneColors(context, tone);
     return LayoutBuilder(builder: (context, box) => SizedBox(
-      width: box.maxWidth.isFinite && box.maxWidth < 210 ? box.maxWidth : 210,
+      width: box.maxWidth.isFinite && box.maxWidth < width ? box.maxWidth : width,
       child: Card(
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: Padding(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 88),
+            child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 if (icon != null)
                   Container(
@@ -365,15 +370,16 @@ class KpiTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(label, style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                      Text(value, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-                      if (caption != null) Text(caption!, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                      Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                      Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                      if (caption != null) Text(caption!, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                     ],
                   ),
                 ),
                 if (onTap != null) Icon(Icons.chevron_right, size: 18, color: theme.colorScheme.onSurfaceVariant),
               ],
             ),
+          ),
           ),
         ),
       ),
