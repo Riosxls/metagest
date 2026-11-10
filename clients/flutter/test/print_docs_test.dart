@@ -205,6 +205,14 @@ void main() {
       expect(pages, 1);
     });
 
+    test('an OF with many operations still fits one sheet', () async {
+      final ops = [
+        for (var i = 1; i <= 12; i++) {'sequence': i * 10, 'description': 'Operação $i', 'tolerance': '± 0,10', 'machineName': 'Trefiladeira'},
+      ];
+      final bytes = await buildProductionOrderPdf(_api(), _productionOrder(ops: ops));
+      expect(RegExp(r'/Type\s*/Page(?!s)').allMatches(String.fromCharCodes(bytes)).length, 1);
+    });
+
     test('works when customer and product no longer exist', () async {
       _expectPdf(await buildProductionOrderPdf(_api(customerFails: true, productFails: true), _productionOrder()));
     });

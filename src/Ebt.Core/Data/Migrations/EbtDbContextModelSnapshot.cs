@@ -2737,6 +2737,10 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("material");
 
+                    b.Property<string>("Note")
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
                     b.Property<int>("Orders")
                         .HasColumnType("integer")
                         .HasColumnName("orders");

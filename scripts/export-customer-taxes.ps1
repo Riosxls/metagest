@@ -123,6 +123,40 @@ public static class TaxReader
         Cell next = cells.Where(x => x.Row == label.Row && x.Col > label.Col).OrderBy(x => x.Col).FirstOrDefault();
         return next == null ? null : next.Text;
     }
+    // Every "OBS.:" / "Observações:" cell of every sheet (the pedido interno and the ordem de fabricação both carry one), joined by " || ".
+    static string Notes(string path)
+    {
+        List<string> found = new List<string>();
+        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        using (ZipArchive zip = new ZipArchive(fs, ZipArchiveMode.Read))
+        {
+            List<string> shared = new List<string>();
+            ZipArchiveEntry se = zip.GetEntry("xl/sharedStrings.xml");
+            if (se != null) using (Stream st = se.Open())
+                foreach (XElement si in XDocument.Load(st).Root.Elements(Ns + "si"))
+                    shared.Add(string.Concat(si.Descendants(Ns + "t").Select(x => x.Value)));
+            foreach (ZipArchiveEntry sheet in zip.Entries.Where(e => Regex.IsMatch(e.FullName, @"^xl/worksheets/sheet\d+\.xml$")).OrderBy(e => e.FullName))
+            {
+                List<string> texts = new List<string>();
+                using (Stream st = sheet.Open())
+                    foreach (XElement c in XDocument.Load(st).Descendants(Ns + "c"))
+                    {
+                        XAttribute t = c.Attribute("t"); XElement v = c.Element(Ns + "v");
+                        if (t != null && t.Value == "s" && v != null) { int i; if (int.TryParse(v.Value, out i) && i < shared.Count) texts.Add(shared[i].Trim()); }
+                        else if (t != null && t.Value == "inlineStr") { XElement iss = c.Element(Ns + "is"); if (iss != null) texts.Add(string.Concat(iss.Descendants(Ns + "t").Select(x => x.Value)).Trim()); }
+                    }
+                for (int k = 0; k < texts.Count; k++)
+                {
+                    if (!Fold(texts[k]).StartsWith("OBS")) continue;
+                    int i = texts[k].IndexOf(':');
+                    string rest = i >= 0 ? texts[k].Substring(i + 1).Trim() : "";
+                    if (rest.Length == 0 && k + 1 < texts.Count) rest = texts[k + 1];
+                    if (rest.Length > 0 && !found.Contains(rest)) found.Add(rest);
+                }
+            }
+        }
+        return string.Join(" || ", found);
+    }
     public static string Read(string path)
     {
         List<Cell> cells;
@@ -152,7 +186,7 @@ public static class TaxReader
             After(cells, new Pattern(@"^END\s?:")), After(cells, new Pattern(@"^BAIRRO\s?:")), After(cells, new Pattern(@"^MUNICIPIO\s?:")),
             After(cells, new Pattern(@"^CEP\s?:")), After(cells, new Pattern(@"^I\.?\s?E\s?:")), After(cells, new Pattern(@"^CONTATO\s?:")),
             After(cells, new Pattern(@"^TEL")), After(cells, new Pattern(@"^E\s?-?\s?MAIL\s?:")), After(cells, new Pattern(@"^PRAZO DE PAG")),
-            After(cells, new Pattern(@"^COD\.? PRODUTO\s?:")), After(cells, new Pattern(@"^ESPECIFICACAO DO MATERIAL\s?:")), Delivery(cells)
+            After(cells, new Pattern(@"^COD\.? PRODUTO\s?:")), After(cells, new Pattern(@"^ESPECIFICACAO DO MATERIAL\s?:")), Delivery(cells), Notes(path)
         };
         List<string> parts = new List<string> { Path.GetFileName(path), (name ?? "").Replace(";", ","), ufv.Replace(";", ","), date, f(icmsV), f(ipiV), cnpjV };
         parts.AddRange(extra.Select(e => (e ?? "").Replace(";", ",").Trim()));
@@ -186,6 +220,7 @@ Get-ChildItem $Folder -Filter '*.xlsx' | Where-Object { $_.Name -notlike '~$*' }
         productCode = $p[16]
         material  = $p[17]
         deliveryAddress = $p[18]
+        notes     = $p[19]
     })
 }
 $body = [pscustomobject]@{ apply = [bool]$Apply; overwrite = [bool]$Overwrite; createMissing = [bool]$CreateMissing; rows = $rows }
@@ -207,6 +242,7 @@ if ($Send) {
     }
     Write-Host "IE corrigida pelo pedido mais recente ($($res.ieCorrected.Count)):"
     $res.ieCorrected | ForEach-Object { Write-Host "  $_" }
+    Write-Host "Observacoes aprendidas (cliente ou produto): $($res.notesLearned)"
     Write-Host "Enderecos de entrega diferentes do cadastro ($($res.deliveryAddresses.Count)):"
     $res.deliveryAddresses | ForEach-Object { Write-Host "  $_" }
     Write-Host "Sem cliente no cadastro ($($res.unmatched.Count)):"

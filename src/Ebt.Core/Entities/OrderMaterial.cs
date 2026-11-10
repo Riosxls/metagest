@@ -14,5 +14,7 @@ public class OrderMaterial
     public string? Material { get; set; }
     /// <summary>How many old orders said this.</summary>
     public int Orders { get; set; }
+    /// <summary>The observation these orders usually carried ("ISENTO DE OLEO E GRAXA", "Tratamento termico 30 HRB"). ProductCode "*" holds the one that goes on almost every order of the customer.</summary>
+    public string? Note { get; set; }
     public DateOnly LastDate { get; set; }
 }

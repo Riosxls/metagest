@@ -419,15 +419,27 @@ Future<Map<String, dynamic>?> _productById(ApiClient api, Object? id) async {
 String _materialFromDescription(String d) =>
     RegExp(r'^\s*TUBO', caseSensitive: false).hasMatch(d) ? '' : d.replaceFirst(RegExp(r'^\s*MATERIAL\s*[:\-]?\s*', caseSensitive: false), '').trim();
 
-/// The material the customer's old orders gave for this product ("BK DIN 2393"), or '' when none is known.
-Future<String> _usualMaterial(ApiClient api, Object? customerId, Object? productId) async {
-  if (customerId == null || productId == null) return '';
+/// What the customer's old orders say for this product: the material ("BK DIN 2393") and the observation they usually carried ("ISENTO DE OLEO E GRAXA"); '' when unknown.
+Future<({String material, String note})> _usual(ApiClient api, Object? customerId, Object? productId) async {
+  if (customerId == null || productId == null) return (material: '', note: '');
   try {
     final r = await api.get('/api/sales/material-suggestion?customerId=$customerId&productId=$productId') as Map<String, dynamic>;
-    return _s(r['material']);
+    return (material: _s(r['material']), note: _s(r['note']));
   } on ApiException {
-    return '';
+    return (material: '', note: '');
   }
+}
+
+/// A material written without the delivery condition ("SAE 1005/1008 - DIN 2393") gives way to the customer's usual one when it names the same norm and has the
+/// condition ("BK DIN 2393"): the customer buys the tube in that condition, the steel grade alone does not say it.
+String _preferUsual(String written, String usual) {
+  if (usual.isEmpty) return written;
+  if (written.isEmpty) return usual;
+  final condition = RegExp(r'\b(GBK|NBK|BK)\b', caseSensitive: false);
+  final norm = RegExp(r'(?:DIN|EN)\s*(\d{3,5})', caseSensitive: false);
+  final u = norm.firstMatch(usual);
+  final w = norm.firstMatch(written);
+  return condition.hasMatch(usual) && !condition.hasMatch(written) && u != null && w != null && u.group(1) == w.group(1) ? usual : written;
 }
 
 /// Endereço, CNPJ, IE e contato do cliente (preferindo o cadastro da empresa, depois o endereço padrão).
@@ -489,14 +501,20 @@ pw.Widget _specBox({required String dimensions, required String quantity, requir
   _formRow([(1, _lbl('OBSERVAÇÕES:', notes))], lastRow: true),
 ]);
 
-/// A form that may be longer than one sheet: its blocks flow onto a second page instead of being cut off at the bottom of the first.
+/// A form that always prints on ONE A4 sheet: the blocks keep their size while they fit and shrink together when the process has many operations, so nothing is cut off
+/// and no second page is needed.
 Future<Uint8List> _formsFlow(String title, List<pw.Widget> blocks) async {
   final doc = pw.Document(title: title, theme: await _theme());
+  const margin = pw.EdgeInsets.fromLTRB(36, 28, 36, 28);
   doc.addPage(
-    pw.MultiPage(
+    pw.Page(
       pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.fromLTRB(36, 28, 36, 28),
-      build: (_) => [for (final b in blocks) pw.SizedBox(width: double.infinity, child: b)],
+      margin: margin,
+      build: (_) => pw.FittedBox(
+        fit: pw.BoxFit.scaleDown,
+        alignment: pw.Alignment.topCenter,
+        child: pw.SizedBox(width: PdfPageFormat.a4.width - margin.horizontal, child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: blocks)),
+      ),
     ),
   );
   return savePdf(doc);
@@ -537,13 +555,19 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
   // Per item: the product (measures) and whether the customer / item is new. Loaded before the pages are built.
   final products = <Object?, Map<String, dynamic>?>{for (final l in lines) l['productId']: await _productById(api, l['productId'])};
   final novelty = <Object?, ({bool customerNew, bool itemNew})?>{for (final l in lines) l['productId']: await _novelty(api, o['customerId'], l['productId'], exceptOrderId: o['id'])};
-  final usual = <Object?, String>{for (final l in lines) l['productId']: await _usualMaterial(api, o['customerId'], l['productId'])};
+  final usual = <Object?, ({String material, String note})>{for (final l in lines) l['productId']: await _usual(api, o['customerId'], l['productId'])};
   final billTo = _s(o['billTo']);
   final created = _s(o['createdAt']).split('T').first;
   final term = _s(o['paymentTermName'] ?? o['customPaymentTerm']);
   final freight = _s(o['freight']);
   final po = _s(o['customerPo']);
-  final notes = [if (po.isNotEmpty) 'PEDIDO Nº $po', if (_s(o['notes']).isNotEmpty) _s(o['notes'])].join(' - ');
+  // The order's own observation wins; without one, the observation the customer usually puts on this product goes on the paper.
+  String notesFor(Object? productId) {
+    final own = _s(o['notes']);
+    final note = own.isNotEmpty ? own : (usual[productId]?.note ?? '');
+    return [if (po.isNotEmpty) 'PEDIDO Nº $po', if (note.isNotEmpty) note].join(' - ');
+  }
+
   final pages = <pw.Widget>[
     for (final l in lines)
       () {
@@ -561,7 +585,8 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
         final measures = specMeasures.isNotEmpty ? '$specMeasures mm' : _tubeDimensions(product, '');
         final standard = _specStandard(spec);
         final fromDescription = _materialFromDescription(description);
-        final materialText = standard.isNotEmpty ? standard : (fromDescription.isNotEmpty ? fromDescription : (usual[l['productId']] ?? ''));
+        final usualMaterial = usual[l['productId']]?.material ?? '';
+        final materialText = _preferUsual(standard.isNotEmpty ? standard : (fromDescription.isNotEmpty ? fromDescription : usualMaterial), usualMaterial);
         return pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
@@ -576,7 +601,7 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
               quantity: _qty(qty, _s(l['unit'])),
               material: materialText,
               delivery: fmtDay(l['dueDate']),
-              notes: notes,
+              notes: notesFor(l['productId']),
             ),
             pw.SizedBox(height: 4),
             _salesTerms(price: fmtMoney(price), perKg: _s(l['unit']).toUpperCase() == 'KG', icms: fmt(l['icmsPercent']), ipi: '${fmt(ipi)}%', total: fmtMoney(total), term: term, billTo: billTo),
@@ -797,8 +822,13 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
   // Without a BOM the material is the one written on the sales order line.
   final orderLine = ((salesOrder?['lines'] as List?) ?? const []).cast<Map<String, dynamic>>().where((l) => l['productId'] == o['productId']).firstOrNull;
   var orderMaterial = orderLine == null ? '' : _materialFromDescription(_s(orderLine['description']));
-  if (orderMaterial.isEmpty) orderMaterial = await _usualMaterial(api, o['customerId'], o['productId']);
-  final materialText = _materialSpec(mats).isNotEmpty ? _materialSpec(mats) : orderMaterial;
+  final usual = await _usual(api, o['customerId'], o['productId']);
+  if (orderMaterial.isEmpty) orderMaterial = usual.material;
+  final materialText = _preferUsual(_materialSpec(mats).isNotEmpty ? _materialSpec(mats) : orderMaterial, usual.material);
+  // Observation: the OF's own, else the one the customer usually puts on this product; the customer's purchase order number leads ("O.C 3166 ISENTO DE OLEO E GRAXA").
+  final ownNotes = _s(o['notes']).isNotEmpty ? _s(o['notes']) : usual.note;
+  final poText = _s(o['customerPo']);
+  final ofNotes = [if (poText.isNotEmpty && !ownNotes.contains(poText)) 'O.C $poText', if (ownNotes.isNotEmpty) ownNotes].join(' ');
   final blankRows = ops.length >= 5 ? 0 : 10 - ops.length * 2;
   final none = pw.SizedBox();
   pw.Widget small(String t) => pw.Text(t, style: _t(8.5));
@@ -817,7 +847,7 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
       _orderedBy(salesOrder?['origin']),
       _customerBox(c),
       pw.SizedBox(height: 4),
-      _specBox(dimensions: _tubeDimensions(product, _s(o['productName'])), quantity: _qty(qty, _s(o['productUnit'])), material: materialText, delivery: fmtDay(o['dueDate']), notes: _s(o['notes'])),
+      _specBox(dimensions: _tubeDimensions(product, _s(o['productName'])), quantity: _qty(qty, _s(o['productUnit'])), material: materialText, delivery: fmtDay(o['dueDate']), notes: ofNotes),
       _frame([
         _sectionTitle('PROCESSO', fill: true),
         _formRow([(1, _centered(small('Matéria-Prima:'))), (2, small(_s(o['rawMaterial']).isNotEmpty ? _s(o['rawMaterial']) : rawMaterial)), (1, _centered(small('Lote'))), (1, none)], height: 17),

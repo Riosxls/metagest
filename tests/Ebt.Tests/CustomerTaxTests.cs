@@ -260,4 +260,32 @@ public class CustomerTaxTests(ApiFixture api)
         var bare = await (await admin.Post("/api/customers", new CustomerIn("Sem endereco " + Code("C", 8), null, null, ConsumerType.Normal))).Read<CustomerOut>();
         Assert.Empty(await (await admin.PostAsync($"/api/customers/{bare.Id}/addresses/from-main", null)).Read<List<CustomerAddressOut>>());
     }
+
+    [Fact]
+    public async Task The_observation_a_customer_always_puts_on_a_product_is_learned_without_the_purchase_order_number()
+    {
+        var admin = await api.AdminAsync();
+        var cnpj = Cnpj();
+        var company = new CustomerCompany(cnpj, "112470391112", true, "Rua Padre Isidoro", "182", null, "Vila Nova York", "São Paulo", "SP", "03479020", null, null, null);
+        var customer = await (await admin.Post("/api/customers", new CustomerIn("Obs " + Code("C", 8), null, null, ConsumerType.Normal, Company: company))).Read<CustomerOut>();
+        var code = $"{Random.Shared.Next(100, 999)}.{Random.Shared.Next(100, 999)}.{Random.Shared.Next(10, 99)}";
+        var product = await (await admin.Post("/api/products", Tube(code))).Read<ProductOut>();
+        var other = await (await admin.Post("/api/products", Tube(Code("O")))).Read<ProductOut>();
+        var rows = new List<TaxOrderRow>
+        {
+            new("00001-26", new DateOnly(2026, 3, 1), "Obs", cnpj, "SP", 18m, 3.25m, ProductCode: code, Notes: "PEDIDO O.C 3166 || O.C 3166  ISENTO DE OLEO E GRAXA"),
+            new("00002-26", new DateOnly(2026, 3, 2), "Obs", cnpj, "SP", 18m, 3.25m, ProductCode: code, Notes: "PEDIDO Nº 3.170 || ISENTO DE ÓLEO E GRAXA || Horário de recebimento até as 16:00 hs"),
+            new("00003-26", new DateOnly(2026, 3, 3), "Obs", cnpj, "SP", 18m, 3.25m, ProductCode: code, Notes: "PEDIDO VERBAL"),
+        };
+        var preview = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(false, false, rows))).Read<CustomerTaxResult>();
+        Assert.Equal(1, preview.NotesLearned);
+        await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, false, rows));
+        var suggestion = await (await admin.GetAsync($"/api/sales/material-suggestion?customerId={customer.Id}&productId={product.Id}")).Read<System.Text.Json.JsonElement>();
+        Assert.Contains("ISENTO DE", suggestion.GetProperty("note").GetString()!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("3166", suggestion.GetProperty("note").GetString()!);
+        Assert.DoesNotContain("16:00", suggestion.GetProperty("note").GetString()!);
+        // Another product of the customer, which no order mentioned, gets none.
+        var none = await (await admin.GetAsync($"/api/sales/material-suggestion?customerId={customer.Id}&productId={other.Id}")).Read<System.Text.Json.JsonElement>();
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, none.GetProperty("note").ValueKind);
+    }
 }

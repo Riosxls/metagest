@@ -8,12 +8,12 @@ namespace Ebt.Core.Sales;
 /// <summary>One internal sales order ("Pedido Interno de Venda") as read from the legacy workbooks: its number (<c>04183-25</c>), the customer as typed on it and the taxes it charged.</summary>
 public sealed record TaxOrderRow(string? Reference, DateOnly? Date, string? Customer, string? Document, string? Uf, decimal? Icms, decimal? Ipi,
     string? Street = null, string? District = null, string? City = null, string? ZipCode = null, string? StateRegistration = null,
-    string? Contact = null, string? Phone = null, string? Email = null, string? PaymentTerm = null, string? ProductCode = null, string? Material = null, string? DeliveryAddress = null);
+    string? Contact = null, string? Phone = null, string? Email = null, string? PaymentTerm = null, string? ProductCode = null, string? Material = null, string? DeliveryAddress = null, string? Notes = null);
 
 public sealed record CustomerTaxMatch(int CustomerId, string CustomerName, string MatchedBy, int Orders, decimal? Ipi, decimal? Icms, string Note, bool Applied);
 
 public sealed record CustomerTaxResult(int Read, int Used, int Skipped, IReadOnlyList<CustomerTaxMatch> Matches, IReadOnlyList<string> Unmatched,
-    IReadOnlyList<string>? Created = null, IReadOnlyList<string>? Ambiguous = null, int ContactsFilled = 0, int Materials = 0, IReadOnlyList<string>? IeCorrected = null, IReadOnlyList<string>? DeliveryAddresses = null);
+    IReadOnlyList<string>? Created = null, IReadOnlyList<string>? Ambiguous = null, int ContactsFilled = 0, int Materials = 0, IReadOnlyList<string>? IeCorrected = null, IReadOnlyList<string>? DeliveryAddresses = null, int NotesLearned = 0);
 
 /// <summary>
 /// Learns each customer's usual IPI and ICMS from the old internal sales orders and stores them on the customer (company data): the IPI and ICMS of the
@@ -100,7 +100,9 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
         }
         var materials = await LearnMaterialsAsync(rows, known, apply, ct);
         if (apply) await db.SaveChangesAsync(ct);
-        return new CustomerTaxResult(rows.Count, matches.Sum(m => m.Orders), skipped, matches, unmatched.ToList(), created, ambiguous, contactsFilled, materials, ieCorrected, deliveries);
+        var notes = await LearnNotesAsync(rows, known, apply, ct);
+        if (apply) await db.SaveChangesAsync(ct);
+        return new CustomerTaxResult(rows.Count, matches.Sum(m => m.Orders), skipped, matches, unmatched.ToList(), created, ambiguous, contactsFilled, materials, ieCorrected, deliveries, notes);
     }
 
     /// <summary>The material of each customer + product code, as the old orders wrote it (the latest order wins, with how many said it).</summary>
@@ -133,6 +135,99 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
             else { row.Material = v.Material ?? row.Material; row.Orders = v.Count; row.LastDate = v.Date; }
         }
         return found.Count;
+    }
+
+    private static readonly Regex NoteWords = new("isent|tratamento|dureza|hrb|costura|solda|rebarba|cortereto|zincagem|recozido|carbono|espessura|filmar|fardo|naopassar|fieira|chapa|oleo|graxa|escovar|amarrad", RegexOptions.Compiled);
+    private static readonly Regex PoPrefix = new(@"^\s*(PEDIDO(\s+DE\s+COMPRAS?)?|ORDEM\s+DE\s+COMPRA|O\.?\s?C\.?)\s*(N[º°O]?\.?)?\s*:?\s*[\d.\-/]*\s*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ProductCodeShape = new(@"^\d{3}\.\d{3}\.\d{2}$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// What the "OBS." cells of an order sheet ask of the product ("ISENTO DE OLEO E GRAXA", "Tratamento termico 30 HRB"): the purchase-order number, the quantities and the logistics notes
+    /// are dropped, only the pieces that talk about the tube itself stay. Null when there are none.
+    /// </summary>
+    internal static string? TechnicalNote(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var kept = new Dictionary<string, string>();
+        foreach (var piece in raw.Split(" || ", StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (Regex.IsMatch(piece, @"\bCOD\.", RegexOptions.IgnoreCase)) continue;
+            var t = PoPrefix.Replace(piece, "");
+            t = Regex.Replace(t, @"^[\d.]+\s+", "");
+            t = Regex.Replace(t.Trim(' ', '-'), @"\s+", " ");
+            if (t.Length is 0 or > 160 || !NoteWords.IsMatch(Letters(t))) continue;
+            kept.TryAdd(Letters(t), t);
+        }
+        return kept.Count == 0 ? null : string.Join("; ", kept.Values);
+    }
+
+    private sealed class NoteTally
+    {
+        public int Orders;
+        public DateOnly Last;
+        public readonly Dictionary<string, (string Text, int N, DateOnly Last)> Notes = new();
+        public void Add(string? note, DateOnly date)
+        {
+            Orders++;
+            if (date > Last) Last = date;
+            if (note is null) return;
+            var key = Letters(note);
+            Notes.TryGetValue(key, out var old);
+            Notes[key] = (old.N == 0 || date >= old.Last ? note : old.Text, old.N + 1, date > old.Last ? date : old.Last);
+        }
+        public (string Text, int N)? Top => Notes.Count == 0 ? null : Notes.Values.OrderByDescending(v => v.N).ThenByDescending(v => v.Last).Select(v => (v.Text, v.N)).First();
+    }
+
+    /// <summary>
+    /// The observation each customer usually puts on its orders. A note that goes on at least 70% of the customer's orders (5 or more) becomes the customer's note (product "*");
+    /// otherwise a note that goes on at least half of the orders of one product (2 or more) becomes that product's note. The product's note wins over the customer's.
+    /// </summary>
+    private async Task<int> LearnNotesAsync(IReadOnlyList<TaxOrderRow> rows, List<Known> known, bool apply, CancellationToken ct)
+    {
+        var tallies = new Dictionary<int, (NoteTally All, Dictionary<string, NoteTally> Products)>();
+        foreach (var r in rows)
+        {
+            var (id, _, _) = Lookup(known, r);
+            if (id is null) continue;
+            var (year, _) = Parse(r);
+            if (year > DateTime.Now.Year) continue;
+            var date = r.Date ?? new DateOnly(year, 1, 1);
+            var note = TechnicalNote(r.Notes);
+            if (!tallies.TryGetValue(id.Value, out var t)) tallies[id.Value] = t = (new NoteTally(), []);
+            t.All.Add(note, date);
+            var code = Clean(r.ProductCode);
+            if (code is null || !ProductCodeShape.IsMatch(code)) continue;
+            if (!t.Products.TryGetValue(code, out var p)) t.Products[code] = p = new NoteTally();
+            p.Add(note, date);
+        }
+        var wanted = new Dictionary<(int Customer, string Product), (string Note, int Orders, DateOnly Last)>();
+        foreach (var (customer, (all, products)) in tallies)
+        {
+            string? wide = null;
+            if (all.Top is { } top && all.Orders >= 5 && top.N * 10 >= all.Orders * 7) { wide = top.Text; wanted[(customer, "*")] = (wide, all.Orders, all.Last); }
+            foreach (var (code, tally) in products)
+                if (tally.Top is { } p && tally.Orders >= 2 && p.N * 2 >= tally.Orders && (wide is null || Letters(wide) != Letters(p.Text)))
+                    wanted[(customer, code)] = (p.Text, tally.Orders, tally.Last);
+        }
+        if (!apply) return wanted.Count;
+        var existing = await db.OrderMaterials.ToListAsync(ct);
+        foreach (var row in existing.Where(e => e.Note is not null && !wanted.ContainsKey((e.CustomerId, e.ProductCode)))) row.Note = null;
+        foreach (var ((customer, product), v) in wanted)
+        {
+            var row = existing.FirstOrDefault(e => e.CustomerId == customer && e.ProductCode == product);
+            if (row is null) db.OrderMaterials.Add(new Entities.OrderMaterial { CustomerId = customer, ProductCode = product, Orders = v.Orders, LastDate = v.Last, Note = v.Note });
+            else row.Note = v.Note;
+        }
+        return wanted.Count;
+    }
+
+    /// <summary>The observation the customer usually puts on this product (its own, else the customer-wide one), or null.</summary>
+    public async Task<string?> SuggestNoteAsync(int customerId, int productId, CancellationToken ct = default)
+    {
+        var code = await db.Products.AsNoTracking().Where(p => p.Id == productId).Select(p => p.Code).FirstOrDefaultAsync(ct);
+        var codes = code is null ? new[] { "*" } : new[] { code, "*" };
+        var rows = await db.OrderMaterials.AsNoTracking().Where(m => m.CustomerId == customerId && codes.Contains(m.ProductCode) && m.Note != null).Select(m => new { m.ProductCode, m.Note }).ToListAsync(ct);
+        return (rows.FirstOrDefault(r => r.ProductCode == code) ?? rows.FirstOrDefault(r => r.ProductCode == "*"))?.Note;
     }
 
     /// <summary>The material to print on an order line that has none: what this customer's latest order for the product said, else what most orders of any customer said.</summary>
