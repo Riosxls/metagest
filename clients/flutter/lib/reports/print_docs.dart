@@ -432,6 +432,8 @@ Future<({String material, String note})> _usual(ApiClient api, Object? customerI
 
 /// An observation without the customer's purchase-order prefix ("PEDIDO Nº 102956 - C/ TRATAMENTO TERMICO" -> "C/ TRATAMENTO TERMICO"): the paper says what the tube needs, not the PO number.
 String cleanOrderNote(String note) => note
+    // The note the system wrote on older OFs ("PV 40 item 10 · pedido cliente 102956"): the PV and the customer's PO have their own fields on the paper.
+    .replaceFirst(RegExp(r'^\s*PV\s*\d+\s+item\s+\d+\s*(?:·\s*pedido cliente\s+[^·]*)?(?:·\s*)?', caseSensitive: false), '')
     .replaceFirst(RegExp(r'^\s*(PEDIDO(\s+DE\s+COMPRAS?)?|ORDEM\s+DE\s+COMPRA|O\.?\s?C\.?)\s*(N[º°o]\.?)?\s*:?\s*[\d.\-/]*\s*[-–:]*\s*', caseSensitive: false), '')
     .trim();
 
@@ -499,11 +501,11 @@ pw.Widget _customerBox(_CustomerBlock c) => _frame([
   _formRow([(1, _lbl('E-MAIL:', c.email))], lastRow: true),
 ]);
 
-pw.Widget _specBox({required String dimensions, required String quantity, required String material, required String delivery, required String notes}) => _frame([
+pw.Widget _specBox({required String dimensions, required String quantity, required String material, required String delivery, required String notes, String customerPo = ''}) => _frame([
   _sectionTitle('ESPECIFICAÇÃO', size: 10),
   _formRow([(1, _lbl('DIMENSÕES DO TUBO (MM):', dimensions)), (1, _lbl('QUANTIDADE (KG/PÇ):', quantity))]),
   _formRow([(1, _lbl('ESPECIFICAÇÃO DO MATERIAL:', material)), (1, _lbl('DATA DE ENTREGA:', delivery))]),
-  _formRow([(1, _lbl('OBSERVAÇÕES:', notes))], lastRow: true),
+  _formRow([(2, _lbl('OBSERVAÇÕES:', notes)), (1, _lbl('PEDIDO DO CLIENTE:', customerPo))], lastRow: true),
 ]);
 
 /// A form that always prints on ONE A4 sheet: the blocks keep their size while they fit and shrink together when the process has many operations, and the sheet is centered on the page both ways, so nothing is cut off
@@ -605,6 +607,7 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
               material: materialText,
               delivery: fmtDay(l['dueDate']),
               notes: notesFor(l['productId']),
+              customerPo: _s(o['customerPo']),
             ),
             pw.SizedBox(height: 4),
             _salesTerms(price: fmtMoney(price), perKg: _s(l['unit']).toUpperCase() == 'KG', icms: fmt(l['icmsPercent']), ipi: '${fmt(ipi)}%', total: fmtMoney(total), term: term, billTo: billTo),
@@ -848,7 +851,7 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
       _orderedBy(salesOrder?['origin']),
       _customerBox(c),
       pw.SizedBox(height: 4),
-      _specBox(dimensions: _tubeDimensions(product, _s(o['productName'])), quantity: _qty(qty, _s(o['productUnit'])), material: materialText, delivery: fmtDay(o['dueDate']), notes: ofNotes),
+      _specBox(dimensions: _tubeDimensions(product, _s(o['productName'])), quantity: _qty(qty, _s(o['productUnit'])), material: materialText, delivery: fmtDay(o['dueDate']), notes: ofNotes, customerPo: _s(o['customerPo'])),
       _frame([
         _sectionTitle('PROCESSO', fill: true),
         _formRow([(1, _centered(small('Matéria-Prima:'))), (2, small(_s(o['rawMaterial']).isNotEmpty ? _s(o['rawMaterial']) : rawMaterial)), (1, _centered(small('Lote'))), (1, none)], height: 17),

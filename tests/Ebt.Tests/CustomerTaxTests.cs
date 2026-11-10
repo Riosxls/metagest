@@ -288,4 +288,23 @@ public class CustomerTaxTests(ApiFixture api)
         var none = await (await admin.GetAsync($"/api/sales/material-suggestion?customerId={customer.Id}&productId={other.Id}")).Read<System.Text.Json.JsonElement>();
         Assert.Equal(System.Text.Json.JsonValueKind.Null, none.GetProperty("note").ValueKind);
     }
+
+    [Fact]
+    public async Task The_condition_of_the_same_tube_in_another_length_beats_what_other_customers_use()
+    {
+        var admin = await api.AdminAsync();
+        var cnpj = Cnpj();
+        var company = new CustomerCompany(cnpj, "112470391112", true, "Rua Padre Isidoro", "182", null, "Vila Nova York", "São Paulo", "SP", "03479020", null, null, null);
+        var customer = await (await admin.Post("/api/customers", new CustomerIn("Familia " + Code("C", 8), null, null, ConsumerType.Normal, Company: company))).Read<CustomerOut>();
+        var stem = $"{Random.Shared.Next(100, 999)}.{Random.Shared.Next(100, 999)}";
+        var product = await (await admin.Post("/api/products", Tube($"{stem}.60"))).Read<ProductOut>();
+        var rows = new List<TaxOrderRow>
+        {
+            new("00001-26", new DateOnly(2026, 3, 1), "Familia", cnpj, "SP", 18m, 3.25m, ProductCode: $"{stem}.30", Material: "NBR-6591-BK"),
+            new("00002-26", new DateOnly(2026, 3, 2), "Familia", cnpj, "SP", 18m, 3.25m, ProductCode: $"{stem}.30", Material: "NBR-6591-BK"),
+        };
+        await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, false, rows));
+        var material = await (await admin.GetAsync($"/api/sales/material-suggestion?customerId={customer.Id}&productId={product.Id}")).Read<System.Text.Json.JsonElement>();
+        Assert.Equal("NBR-6591-BK", material.GetProperty("material").GetString());
+    }
 }

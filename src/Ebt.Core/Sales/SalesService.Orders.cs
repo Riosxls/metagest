@@ -135,7 +135,7 @@ public sealed partial class SalesService
                 }
                 var routing = line.FeasibilityStudyId is { } fid ? await db.FeasibilityStudies.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fid, ct) : null;
                 var of = await production.CreateOrderAsync(new OrderInput(line.ProductId, toProduce, line.DueDate, ProductionOrderKind.Standard, o.CustomerId,
-                    Notes: $"{o.Reference} item {line.Sequence}{(o.CustomerPo is null ? "" : $" · pedido cliente {o.CustomerPo}")}{(routing is null ? "" : $" · {ViabilityRules.RoutingNote(routing)}")}"), user, ct);
+                    Notes: routing is null ? null : ViabilityRules.RoutingNote(routing)), user, ct); // the PV and the customer PO have their own fields on the paper, never in the observation
                 line.ProductionOrderId = of.Id;
                 notes.Add($"Item {line.Sequence}: {of.Reference} ({toProduce:0.####}){(fromStock > 0 ? $" + {fromStock:0.####} do estoque" : "")}");
             }

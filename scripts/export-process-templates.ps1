@@ -22,7 +22,8 @@
 #>
 param(
     [string]$PedidosFolder = 'C:\Users\italo\Desktop\EBT\Pedidos de Vendas\PEDIDOS DE VENDAS  BST 25 & 26',
-    [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) 'process-templates.csv')
+    [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) 'process-templates.csv'),
+    [string]$SkipLog = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -179,6 +180,11 @@ public static class ProcessReader
                 List<string> shared = SharedStrings(zip);
                 pedido = Load(zip, shared, "xl/worksheets/sheet1.xml");
                 op = Load(zip, shared, "xl/worksheets/sheet2.xml");
+                // Newer workbooks have the two sheets the other way round (the ordem de fabricação first): the OP sheet is the one with "PROCESSOS SECUNDARIOS".
+                if (!op.Any(x => x.Fold.StartsWith("PROCESSOS SECUNDARIOS", StringComparison.Ordinal)) && pedido.Any(x => x.Fold.StartsWith("PROCESSOS SECUNDARIOS", StringComparison.Ordinal)))
+                {
+                    List<Cell> swap = pedido; pedido = op; op = swap;
+                }
             }
             Cell first = pedido.FirstOrDefault(x => x.Row == 1 && x.Col > 3);
             if (first == null) first = op.FirstOrDefault(x => x.Row == 1 && x.Col > 3);
@@ -282,7 +288,7 @@ foreach ($f in Get-ChildItem -LiteralPath $PedidosFolder -Filter '*.xlsx' -File 
     if ($f.Name.StartsWith('~$')) { continue }
     $files++
     $o = [ProcessReader]::Read($f.FullName)
-    if ($o.Problem) { if ($problems.ContainsKey($o.Problem)) { $problems[$o.Problem]++ } else { $problems[$o.Problem] = 1 }; continue }
+    if ($o.Problem) { if ($SkipLog) { Add-Content -LiteralPath $SkipLog -Value ("{0};{1}" -f $f.Name, $o.Problem) -Encoding UTF8 }; if ($problems.ContainsKey($o.Problem)) { $problems[$o.Problem]++ } else { $problems[$o.Problem] = 1 }; continue }
     $usable++
     $of = Clean $o.Num
     if ($of -eq '') { $of = Clean $o.File }
@@ -294,7 +300,7 @@ foreach ($f in Get-ChildItem -LiteralPath $PedidosFolder -Filter '*.xlsx' -File 
         $n++
         $seq = Clean $p.Seq
         if ($seq -notmatch '^\d+$') { $seq = [string]($n * 10) }
-        [void]$sb.Append(('{0};{1};{2};{3};{4};{5};{6};{7};{8};{9};{10};{11};{12};{13};{14}' -f $of, $o.Date.ToString('yyyy-MM-dd'), (Clean $o.Customer), (Fmt $o.D), $thick, $len, (Clean $o.Spec), $seq, (Clean $p.Description), (Clean $p.Tolerance), (Clean $p.Start), (Clean $p.End), (Clean $p.Resource), (Clean $o.RawMaterial), (Clean $o.PrimaryTube)))
+        [void]$sb.Append(('{0};{1};{2};{3};{4};{5};{6};{7};{8};{9};{10};{11};{12};{13};{14}' -f $of, $o.Date.ToString('yyyy-MM-dd'), (Clean $o.Customer), (Fmt $o.D), $thick, $len, (Clean $o.Spec), $seq, (Clean $p.Description), ((Clean $p.Tolerance) -replace '^([-+]?\d+)\.(\d+)$', '$1,$2'), (Clean $p.Start), (Clean $p.End), (Clean $p.Resource), (Clean $o.RawMaterial), (Clean $o.PrimaryTube)))
         [void]$sb.Append("`r`n")
         $opCount++
     }

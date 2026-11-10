@@ -254,6 +254,8 @@ void main() {
       expect(cleanOrderNote('Pedido de Compra nº 8706 Filmar a contagem'), 'Filmar a contagem');
       expect(cleanOrderNote('Solda baixa CONTROLADA'), 'Solda baixa CONTROLADA');
       expect(cleanOrderNote('PEDIDO Nº 77'), '');
+      expect(cleanOrderNote('PV 40 item 10 · pedido cliente 102956'), '');
+      expect(cleanOrderNote('PV 40 item 10 · pedido cliente 102956 · Roteiro X'), 'Roteiro X');
     });
   });
 

@@ -243,6 +243,14 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
         if (code is null) return null;
         var own = await db.OrderMaterials.AsNoTracking().Where(m => m.CustomerId == customerId && m.ProductCode == code && m.Material != null).Select(m => m.Material).FirstOrDefaultAsync(ct);
         if (own is not null) return own;
+        // Same customer, same tube in another length ("060.075.30" for "060.075.60"): the delivery condition (BK, NBK, GBK) is the customer's own, so it beats the other customers' habit.
+        var family = code.Length > 3 && code[..^3] is { Length: > 0 } stem ? stem + "." : null;
+        if (family is not null)
+        {
+            var sibling = await db.OrderMaterials.AsNoTracking().Where(m => m.CustomerId == customerId && m.ProductCode.StartsWith(family) && m.Material != null)
+                .OrderByDescending(m => m.Orders).ThenByDescending(m => m.LastDate).Select(m => m.Material).FirstOrDefaultAsync(ct);
+            if (sibling is not null) return sibling;
+        }
         return await db.OrderMaterials.AsNoTracking().Where(m => m.ProductCode == code && m.Material != null).GroupBy(m => m.Material)
             .OrderByDescending(g => g.Sum(m => m.Orders)).ThenByDescending(g => g.Max(m => m.LastDate)).Select(g => g.Key).FirstOrDefaultAsync(ct);
     }
