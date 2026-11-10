@@ -247,6 +247,16 @@ void main() {
     });
   });
 
+  group('cleanOrderNote', () {
+    test('drops the purchase-order prefix and keeps what the tube needs', () {
+      expect(cleanOrderNote('PEDIDO Nº 102956 - C/ TRATAMENTO TERMICO Dureza 30HRB'), 'C/ TRATAMENTO TERMICO Dureza 30HRB');
+      expect(cleanOrderNote('O.C 3166  ISENTO DE OLEO E GRAXA'), 'ISENTO DE OLEO E GRAXA');
+      expect(cleanOrderNote('Pedido de Compra nº 8706 Filmar a contagem'), 'Filmar a contagem');
+      expect(cleanOrderNote('Solda baixa CONTROLADA'), 'Solda baixa CONTROLADA');
+      expect(cleanOrderNote('PEDIDO Nº 77'), '');
+    });
+  });
+
   group('opCellFit', () {
     test('short text stays on one line at the normal size', () {
       final f = opCellFit('± 0,10', 80);

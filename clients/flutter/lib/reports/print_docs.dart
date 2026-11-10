@@ -430,6 +430,11 @@ Future<({String material, String note})> _usual(ApiClient api, Object? customerI
   }
 }
 
+/// An observation without the customer's purchase-order prefix ("PEDIDO Nº 102956 - C/ TRATAMENTO TERMICO" -> "C/ TRATAMENTO TERMICO"): the paper says what the tube needs, not the PO number.
+String cleanOrderNote(String note) => note
+    .replaceFirst(RegExp(r'^\s*(PEDIDO(\s+DE\s+COMPRAS?)?|ORDEM\s+DE\s+COMPRA|O\.?\s?C\.?)\s*(N[º°o]\.?)?\s*:?\s*[\d.\-/]*\s*[-–:]*\s*', caseSensitive: false), '')
+    .trim();
+
 /// A material written without the delivery condition ("SAE 1005/1008 - DIN 2393") gives way to the customer's usual one when it names the same norm and has the
 /// condition ("BK DIN 2393"): the customer buys the tube in that condition, the steel grade alone does not say it.
 String _preferUsual(String written, String usual) {
@@ -560,12 +565,10 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
   final created = _s(o['createdAt']).split('T').first;
   final term = _s(o['paymentTermName'] ?? o['customPaymentTerm']);
   final freight = _s(o['freight']);
-  final po = _s(o['customerPo']);
   // The order's own observation wins; without one, the observation the customer usually puts on this product goes on the paper.
   String notesFor(Object? productId) {
-    final own = _s(o['notes']);
-    final note = own.isNotEmpty ? own : (usual[productId]?.note ?? '');
-    return [if (po.isNotEmpty) 'PEDIDO Nº $po', if (note.isNotEmpty) note].join(' - ');
+    final own = cleanOrderNote(_s(o['notes']));
+    return own.isNotEmpty ? own : cleanOrderNote(usual[productId]?.note ?? '');
   }
 
   final pages = <pw.Widget>[
@@ -825,10 +828,8 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
   final usual = await _usual(api, o['customerId'], o['productId']);
   if (orderMaterial.isEmpty) orderMaterial = usual.material;
   final materialText = _preferUsual(_materialSpec(mats).isNotEmpty ? _materialSpec(mats) : orderMaterial, usual.material);
-  // Observation: the OF's own, else the one the customer usually puts on this product; the customer's purchase order number leads ("O.C 3166 ISENTO DE OLEO E GRAXA").
-  final ownNotes = _s(o['notes']).isNotEmpty ? _s(o['notes']) : usual.note;
-  final poText = _s(o['customerPo']);
-  final ofNotes = [if (poText.isNotEmpty && !ownNotes.contains(poText)) 'O.C $poText', if (ownNotes.isNotEmpty) ownNotes].join(' ');
+  // Observation: the OF's own, else the one the customer usually puts on this product; never with the purchase-order number in front.
+  final ofNotes = cleanOrderNote(_s(o['notes'])).isNotEmpty ? cleanOrderNote(_s(o['notes'])) : cleanOrderNote(usual.note);
   final blankRows = ops.length >= 5 ? 0 : 10 - ops.length * 2;
   final none = pw.SizedBox();
   pw.Widget small(String t) => pw.Text(t, style: _t(8.5));
