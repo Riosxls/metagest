@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../entities.dart';
+import '../reports/pt_text.dart' show ptText;
 import '../session.dart';
+import '../widgets/contact_list.dart';
 import '../widgets/entity_form.dart';
 import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
@@ -71,6 +73,19 @@ class _EntityListScreenState extends State<EntityListScreen> {
     if (isProduct) RowAction('Editar cadastro', Icons.edit_outlined, () => _edit(e)),
   ];
 
+  bool get isEmployee => spec.path == employees.path;
+
+  /// Employees are people: the same contact-style list as the customers (avatar, name with the function, registration and nickname).
+  Widget _employeeRow(BuildContext context, Map<String, dynamic> e, bool wide) => ContactRow(
+    name: ptText(e['name']),
+    subtitle: ptText(e['function']),
+    active: e['active'] == true,
+    wide: wide,
+    flex: const [38, 14, 24],
+    cells: [ContactCell('${e['code'] ?? ''}'), ContactCell(ptText(e['nickname']))],
+    actions: const [],
+  );
+
   @override
   Widget build(BuildContext context) => RecordList(
     key: _list,
@@ -78,6 +93,10 @@ class _EntityListScreenState extends State<EntityListScreen> {
     path: spec.path,
     columns: spec.columns,
     searchable: spec.searchable,
+    pillSearch: isEmployee,
+    rowBuilder: isEmployee ? _employeeRow : null,
+    groupOf: isEmployee ? (e) => contactLetter('${e['name']}') : null,
+    listHeader: isEmployee ? const ContactsHeader(titles: ['NOME', 'MATRÍCULA', 'APELIDO'], flex: [38, 14, 24]) : null,
     onTap: _open,
     rowChevron: true,
     rowActions: spec.whereUsed || isProduct ? _rowActions : null,

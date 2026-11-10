@@ -7,6 +7,7 @@ import '../entities.dart';
 import '../labels.dart';
 import '../session.dart';
 import '../widgets/actions.dart';
+import '../widgets/contact_list.dart' show ContactAvatar;
 import '../widgets/entity_form.dart';
 import '../widgets/load_error.dart';
 import '../widgets/page_column.dart';
@@ -171,12 +172,20 @@ class _UsersScreenState extends State<UsersScreen> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               SizedBox(
-                width: 260,
+                width: 320,
                 child: TextField(
                   key: const ValueKey('users-search'),
                   controller: _search,
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(labelText: 'Buscar usuário ou perfil', prefixIcon: Icon(Icons.search), isDense: true, border: OutlineInputBorder()),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar usuário ou perfil',
+                    prefixIcon: const Icon(Icons.search),
+                    isDense: true,
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                    border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(28)), borderSide: BorderSide.none),
+                  ),
                 ),
               ),
               ChoiceFilter(
@@ -227,7 +236,7 @@ class _UsersScreenState extends State<UsersScreen> {
     final name = '${u['username']}';
     return ListTile(
       key: ValueKey('user-${u['id']}'),
-      leading: CircleAvatar(child: Text(name.isEmpty ? '?' : name.substring(0, name.length < 2 ? 1 : 2).toUpperCase())),
+      leading: ContactAvatar(name: name, initials: name.isEmpty ? '?' : name.substring(0, name.length < 2 ? 1 : 2).toUpperCase()),
       title: Text(name),
       subtitle: Wrap(
         spacing: 8,

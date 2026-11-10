@@ -108,4 +108,12 @@ void main() {
     await tester.tap(find.text('BOB-15'));
     await tester.pumpAndSettle();
   });
+
+  testWidgets('the supplier list is a contact list with the data of the default address', (tester) async {
+    await _pump(tester, (s) => SuppliersScreen(session: s));
+    expect(find.text('A'), findsOneWidget); // letter heading
+    expect(find.text('AS'), findsOneWidget); // avatar of "Aços Sul"
+    expect(find.text('NOME'), findsOneWidget);
+    expect(find.text('Sul'), findsOneWidget); // trade name under the name
+  });
 }

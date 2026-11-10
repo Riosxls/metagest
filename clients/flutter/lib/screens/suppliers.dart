@@ -2,16 +2,42 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../entities.dart';
+import '../reports/pt_text.dart' show ptEmail, ptText;
 import '../session.dart';
+import '../widgets/contact_list.dart';
 import '../widgets/entity_form.dart';
 import '../widgets/load_error.dart';
 import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
+import 'customers.dart' show fmtDocument;
 import 'orders.dart';
 import 'receipts.dart';
 import 'stock_documents.dart';
 
 /// Suppliers list.
+const _supplierFlex = [30, 15, 24, 14, 17];
+
+Widget _supplierRow(BuildContext context, Map<String, dynamic> s, bool wide) {
+  final email = ptEmail(s['email']);
+  final phones = contactPhones(s['phone']);
+  final city = fmt(s['city']).isEmpty ? '' : '${ptText(s['city'])}/${fmt(s['uf']).toUpperCase()}';
+  return ContactRow(
+    name: ptText(s['name']),
+    subtitle: ptText(s['tradeName']),
+    active: s['active'] == true,
+    wide: wide,
+    flex: _supplierFlex,
+    maxActions: 2,
+    cells: [
+      ContactCell(fmtDocument(s['document'])),
+      ContactCell(email),
+      ContactCell(phones.first, second: phones.more > 0 ? '+${phones.more} número${phones.more > 1 ? 's' : ''}' : null),
+      ContactCell(city),
+    ],
+    actions: contactActions(context, email: email, phone: phones.first),
+  );
+}
+
 class SuppliersScreen extends StatefulWidget {
   const SuppliersScreen({super.key, required this.session});
 
@@ -42,6 +68,11 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
     path: suppliers.path,
     columns: suppliers.columns,
     searchHint: 'Nome, fantasia ou código antigo',
+    // Contact-style list, like the customers': avatar, name with the trade name, CNPJ, e-mail, phone and city of the default address.
+    pillSearch: true,
+    rowBuilder: _supplierRow,
+    groupOf: (e) => contactLetter('${e['name']}'),
+    listHeader: const ContactsHeader(titles: ['NOME', 'CNPJ/CPF', 'E-MAIL', 'TELEFONE', 'CIDADE'], flex: _supplierFlex, actions: 2),
     fab: widget.session.canWrite
         ? FloatingActionButton.extended(heroTag: 'new-sup', onPressed: _new, icon: const Icon(Icons.add), label: const Text('Novo'))
         : null,

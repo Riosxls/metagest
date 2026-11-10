@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../entities.dart';
@@ -11,6 +10,7 @@ import '../reports/print_docs.dart' show buildCustomerContactPdf;
 import '../reports/pt_text.dart' show ptEmail, ptPhone, ptText;
 import '../session.dart';
 import '../theme_tokens.dart';
+import '../widgets/contact_list.dart';
 import '../widgets/entity_form.dart';
 import '../widgets/load_error.dart';
 import '../widgets/pipeline.dart' show StatusBadge, Tone, toneAccent;
@@ -20,6 +20,8 @@ import '../widgets/record_nav.dart';
 import 'receivables.dart';
 import 'sales_common.dart';
 import 'sales_quotes.dart' show newQuote;
+
+export '../widgets/contact_list.dart' show contactInitials, contactPhones;
 
 const customerStatuses = {'true': 'Ativos', 'false': 'Inativos'};
 
@@ -186,225 +188,34 @@ final _shippingFields = [
 
 String _orDash(String s) => s.trim().isEmpty ? '—' : s;
 
-/// Initials for the avatar: the first letters of the first two words ("Metalúrgica Gepela Ltda." -> "MG").
-@visibleForTesting
-String contactInitials(String name) => _initials(name);
-
-@visibleForTesting
-({String first, int more}) contactPhones(Object? raw) => _phones(raw);
-
-String _initials(String name) {
-  const generic = {'de', 'da', 'do', 'das', 'dos', 'e', 'ind', 'industria', 'indústria', 'com', 'comercio', 'comércio', 'ltda', 'eireli', 'epp', 'me', 'sa', 's/a', 'cia'};
-  final all = name.trim().split(RegExp(r'\s+')).where((w) => RegExp(r'^[A-Za-zÀ-ú]').hasMatch(w)).toList();
-  // "ACOS IDEAL LTDA" and "AMVIAN IND E COM DE PECAS" would both be "AI" without this: the words every company has do not count.
-  final words = all.where((w) => !generic.contains(w.toLowerCase().replaceAll('.', ''))).toList();
-  final use = words.isEmpty ? all : words;
-  if (use.isEmpty) return '?';
-  return (use.first[0] + (use.length > 1 ? use[1][0] : '')).toUpperCase();
-}
-
-/// The first phone of a field that holds several ("(11) 2958-4633/2682-0000", "... ou ..."), formatted, and how many more there are.
-({String first, int more}) _phones(Object? raw) {
-  final parts = '${raw ?? ''}'.split(RegExp(r'\s*(?:/|;|,|\bou\b)\s*')).where((p) => RegExp(r'\d').hasMatch(p)).toList();
-  if (parts.isEmpty) return (first: '', more: 0);
-  return (first: ptPhone(parts.first), more: parts.length - 1);
-}
-
-/// The letter a customer is filed under ("Aços Divaltec" -> "A"); names that do not start with a letter go under "#".
-String _letterOf(String name) {
-  final t = name.trim();
-  if (t.isEmpty) return '#';
-  const from = 'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç';
-  const to = 'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc';
-  final c = t[0];
-  final i = from.indexOf(c);
-  final base = (i >= 0 ? to[i] : c).toUpperCase();
-  return RegExp(r'[A-Z]').hasMatch(base) ? base : '#';
-}
-
-/// Same widths for the column titles and the rows, so they line up.
+/// Same widths for the column titles and the rows of the customer list, name first.
 const _contactFlex = [30, 15, 24, 14, 17];
 
-/// Room of the hover buttons (send e-mail, copy phone, print) at the end of a row; the column titles leave the same room.
-const _contactActionsWidth = 144.0;
-
-class _ContactsHeader extends StatelessWidget {
-  const _ContactsHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final style = theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600, letterSpacing: 0.4);
-    Widget cell(int i, String text) => Expanded(flex: _contactFlex[i], child: Padding(padding: const EdgeInsets.only(right: 12), child: Text(text, style: style, maxLines: 1, overflow: TextOverflow.ellipsis)));
-    return Container(
-      padding: const EdgeInsets.fromLTRB(28, 8, 16, 8),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant))),
-      child: Row(
-        children: [
-          const SizedBox(width: 56),
-          cell(0, 'NOME'),
-          cell(1, 'CNPJ/CPF'),
-          cell(2, 'E-MAIL'),
-          cell(3, 'TELEFONE'),
-          cell(4, 'CIDADE'),
-          const SizedBox(width: _contactActionsWidth),
-        ],
-      ),
-    );
-  }
-}
-
-/// One customer in the list: a coloured avatar with the initials, the name with the trade name under it and the main data in columns; the copy buttons show on hover.
-class _ContactRow extends StatefulWidget {
-  const _ContactRow({required this.customer, required this.wide, required this.api});
-
-  final Map<String, dynamic> customer;
-  final bool wide;
-  final ApiClient api;
-
-  @override
-  State<_ContactRow> createState() => _ContactRowState();
-}
-
-class _ContactRowState extends State<_ContactRow> {
-  bool _hover = false;
-
-  Future<void> _copy(String text, String what) async {
-    await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$what copiado')));
-  }
-
-  /// Opens the e-mail program with the customer's address filled in.
-  Future<void> _mail(String to) async {
-    var opened = false;
-    try {
-      opened = await launchUrl(Uri(scheme: 'mailto', path: to));
-    } catch (e) {
-      debugPrint('customers: the mail program could not be opened: $e');
-    }
-    if (!opened && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhum programa de e-mail configurado neste computador')));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final c = widget.customer;
-    final co = _company(c);
-    // Names, cities and e-mails arrive in every case (CAPS from the old system, lower from typing): shown the same way on every row.
-    final name = ptText(c['name']);
-    final trade = ptText(c['tradeName']);
-    final active = c['active'] == true;
-    final email = ptEmail(co?['email']);
-    final person = ptText(co?['contact']);
-    final phones = _phones(co?['phone']);
-    final phone = phones.first;
-    final doc = fmtDocument(co?['document']);
-    final city = fmt(co?['city']).isEmpty ? '' : '${ptText(co!['city'])}/${fmt(co['uf']).toUpperCase()}';
-    final dark = theme.brightness == Brightness.dark;
-    final hue = (name.codeUnits.fold<int>(7, (a, b) => (a * 31 + b) & 0xFFFFFF) % 360).toDouble();
-    final avatarBg = HSLColor.fromAHSL(1, hue, 0.45, dark ? 0.32 : 0.84).toColor();
-    final avatarFg = HSLColor.fromAHSL(1, hue, 0.55, dark ? 0.85 : 0.25).toColor();
-    final muted = theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant);
-    Widget cell(int i, String text, {String? second}) => Expanded(
-      flex: _contactFlex[i],
-      child: Padding(
-        padding: const EdgeInsets.only(right: 12),
-        child: text.isEmpty
-            ? Text('—', style: muted)
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
-                  if (second != null && second.isNotEmpty) Text(second, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                ],
-              ),
-      ),
-    );
-    final avatar = CircleAvatar(
-      radius: 20,
-      backgroundColor: avatarBg,
-      child: Text(_initials(name), style: theme.textTheme.titleSmall?.copyWith(color: avatarFg, fontWeight: FontWeight.w700)),
-    );
-    final title = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600, color: active ? null : theme.colorScheme.onSurfaceVariant))),
-            if (!active) ...[const SizedBox(width: 8), const StatusBadge('Inativo', tone: Tone.neutral)],
-          ],
-        ),
-        if (trade.isNotEmpty) Text(trade, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-      ],
-    );
-    if (!widget.wide) {
-      final lines = [if (email.isNotEmpty) email, if (phone.isNotEmpty) phone, if (city.isNotEmpty) city];
-      return ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 68),
-        child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          children: [
-            avatar,
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [title, if (lines.isNotEmpty) Text(lines.join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: muted)],
-              ),
-            ),
-          ],
-        ),
-      ),
-      );
-    }
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 68),
-        child: Padding(
-        padding: const EdgeInsets.fromLTRB(28, 8, 16, 8),
-        child: Row(
-          children: [
-            avatar,
-            const SizedBox(width: 16),
-            Expanded(flex: _contactFlex[0], child: Padding(padding: const EdgeInsets.only(right: 12), child: title)),
-            cell(1, doc),
-            cell(2, email, second: person),
-            cell(3, phone, second: phones.more > 0 ? '+${phones.more} número${phones.more > 1 ? 's' : ''}' : null),
-            cell(4, city),
-            SizedBox(
-              width: _contactActionsWidth,
-              child: IgnorePointer(
-                ignoring: !_hover,
-                child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 120),
-                opacity: _hover ? 1 : 0,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (email.isNotEmpty) IconButton(tooltip: 'Enviar e-mail', visualDensity: VisualDensity.compact, icon: const Icon(Icons.mail_outline, size: 20), onPressed: () => unawaited(_mail(email))),
-                    if (phone.isNotEmpty) IconButton(tooltip: 'Copiar telefone', visualDensity: VisualDensity.compact, icon: const Icon(Icons.phone_outlined, size: 20), onPressed: () => unawaited(_copy(phone, 'Telefone'))),
-                    IconButton(
-                      tooltip: 'Imprimir ficha do cliente',
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.print_outlined, size: 20),
-                      onPressed: () => unawaited(printPdf(context, 'Ficha do cliente ${c['name']}', () => buildCustomerContactPdf(widget.api, c))),
-                    ),
-                  ],
-                ),
-              ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      ),
-    );
-  }
+/// One customer as a row of the contact list: CNPJ/CPF, e-mail with who to ask for, phone, city; buttons to send an e-mail, copy the phone and print the sheet.
+Widget _customerRow(BuildContext context, ApiClient api, Map<String, dynamic> c, bool wide) {
+  final co = _company(c);
+  // Names, cities and e-mails arrive in every case (CAPS from the old system, lower from typing): shown the same way on every row.
+  final email = ptEmail(co?['email']);
+  final phones = contactPhones(co?['phone']);
+  final city = fmt(co?['city']).isEmpty ? '' : '${ptText(co!['city'])}/${fmt(co['uf']).toUpperCase()}';
+  return ContactRow(
+    name: ptText(c['name']),
+    subtitle: ptText(c['tradeName']),
+    active: c['active'] == true,
+    wide: wide,
+    flex: _contactFlex,
+    maxActions: 3,
+    cells: [
+      ContactCell(fmtDocument(co?['document'])),
+      ContactCell(email, second: ptText(co?['contact'])),
+      ContactCell(phones.first, second: phones.more > 0 ? '+${phones.more} número${phones.more > 1 ? 's' : ''}' : null),
+      ContactCell(city),
+    ],
+    actions: [
+      ...contactActions(context, email: email, phone: phones.first),
+      ContactAction(Icons.print_outlined, 'Imprimir ficha do cliente', () => unawaited(printPdf(context, 'Ficha do cliente ${c['name']}', () => buildCustomerContactPdf(api, c)))),
+    ],
+  );
 }
 
 /// Customer list with search and creation.
@@ -464,9 +275,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
         : null,
     // Contact-style list: avatar, name and trade name, then the data a salesperson reaches for (CNPJ, e-mail and who to ask for, phone, city), grouped under letters.
     pillSearch: true,
-    rowBuilder: (context, e, wide) => _ContactRow(customer: e, wide: wide, api: widget.session.api),
-    groupOf: (e) => _letterOf('${e['name']}'),
-    listHeader: const _ContactsHeader(),
+    rowBuilder: (context, e, wide) => _customerRow(context, widget.session.api, e, wide),
+    groupOf: (e) => contactLetter('${e['name']}'),
+    listHeader: const ContactsHeader(titles: ['NOME', 'CNPJ/CPF', 'E-MAIL', 'TELEFONE', 'CIDADE'], flex: _contactFlex, actions: 3),
     columns: [
       col('Cliente', 'name'),
       col('Fantasia', 'tradeName'),
@@ -636,7 +447,7 @@ class _CustomerHeader extends StatelessWidget {
             key: const ValueKey('customer-avatar'),
             radius: 26,
             backgroundColor: theme.colorScheme.primaryContainer,
-            child: Text(_initials('${customer['name']}'), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onPrimaryContainer, fontWeight: FontWeight.w700)),
+            child: Text(contactInitials('${customer['name']}'), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onPrimaryContainer, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 14),
           Expanded(

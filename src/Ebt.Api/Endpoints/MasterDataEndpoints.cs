@@ -14,7 +14,8 @@ public record CustomerAddressIn(string Document, string Uf, string? LegacyCode, 
 public record CustomerAddressOut(int Id, int CustomerId, string Document, string Uf, string? LegacyCode, string? StateRegistration, bool IcmsContributor, string? Street, string? Number, string? Complement, string? District, string? City, string? CityIbgeCode, string? ZipCode, string? DefaultCfop, string? Buyer, string? Email, string? Phone);
 
 public record SupplierIn(string Name, string? TradeName, string? LegacyCode, string? GroupCode, bool Active = true);
-public record SupplierOut(int Id, string Name, string? TradeName, string? LegacyCode, string? GroupCode, bool Active, int AddressCount);
+/// <param name="Document">CNPJ, city, state, e-mail and phone of the default address (the first one): what the contact-style list shows.</param>
+public record SupplierOut(int Id, string Name, string? TradeName, string? LegacyCode, string? GroupCode, bool Active, int AddressCount, string? Document = null, string? City = null, string? Uf = null, string? Email = null, string? Phone = null);
 public record SupplierAddressIn(string Uf, string? Document, string? LegacyCode, string? StateRegistration, string? Street, string? Number, string? District, string? City, string? CityIbgeCode, string? ZipCode, string? Email, string? Phone);
 public record SupplierAddressOut(int Id, int SupplierId, string Uf, string? Document, string? LegacyCode, string? StateRegistration, string? Street, string? Number, string? District, string? City, string? CityIbgeCode, string? ZipCode, string? Email, string? Phone);
 
@@ -85,7 +86,12 @@ public static class MasterDataEndpoints
 
         app.MapGroup("/api/suppliers").WithTags("Suppliers").AddEndpointFilter(new RowVersionFilter<Supplier>()).MapCrud(new CrudSpec<Supplier, SupplierIn, SupplierOut>
         {
-            Project = s => new SupplierOut(s.Id, s.Name, s.TradeName, s.LegacyCode, s.GroupCode, s.Active, s.Addresses.Count),
+            Project = s => new SupplierOut(s.Id, s.Name, s.TradeName, s.LegacyCode, s.GroupCode, s.Active, s.Addresses.Count,
+                s.Addresses.OrderBy(a => a.LegacyCode).ThenBy(a => a.Id).Select(a => a.Document).FirstOrDefault(),
+                s.Addresses.OrderBy(a => a.LegacyCode).ThenBy(a => a.Id).Select(a => a.City).FirstOrDefault(),
+                s.Addresses.OrderBy(a => a.LegacyCode).ThenBy(a => a.Id).Select(a => a.Uf).FirstOrDefault(),
+                s.Addresses.OrderBy(a => a.LegacyCode).ThenBy(a => a.Id).Select(a => a.Email).FirstOrDefault(),
+                s.Addresses.OrderBy(a => a.LegacyCode).ThenBy(a => a.Id).Select(a => a.Phone).FirstOrDefault()),
             Create = i => new Supplier { Name = i.Name.Trim(), TradeName = Clean(i.TradeName), LegacyCode = Clean(i.LegacyCode), GroupCode = Clean(i.GroupCode), Active = i.Active },
             Apply = (i, s) => { s.Name = i.Name.Trim(); s.TradeName = Clean(i.TradeName); s.LegacyCode = Clean(i.LegacyCode); s.GroupCode = Clean(i.GroupCode); s.Active = i.Active; },
             Validate = (i, _, _) => Task.FromResult(Errors().Require(Has(i.Name), "name", "Required")),
