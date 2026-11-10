@@ -216,7 +216,7 @@ public class CustomerTaxTests(ApiFixture api)
         {
             new("00001-26", new DateOnly(2026, 3, 1), "Entrega", cnpj, "SP", 18m, 3.25m, StateRegistration: "112.970.351.112", ProductCode: product.Code,
                 DeliveryAddress: "Rua Lateral,810 Vila Nova York São Paulo-SP 03479-020"),
-            new("00002-26", new DateOnly(2026, 3, 2), "Entrega", cnpj, "SP", 18m, 3.25m, ProductCode: "OUTRO", DeliveryAddress: "Rua Padre Isidoro, 182 Vila Nova York São Paulo-SP 03479-020"),
+            new("00002-26", new DateOnly(2026, 3, 2), "Entrega", cnpj, "SP", 18m, 3.25m, StateRegistration: "112.970.351.112", ProductCode: "OUTRO", DeliveryAddress: "Rua Padre Isidoro, 182 Vila Nova York São Paulo-SP 03479-020"),
         };
         var preview = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(false, false, rows))).Read<CustomerTaxResult>();
         Assert.Single(preview.IeCorrected!);

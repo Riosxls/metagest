@@ -50,6 +50,9 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
 
         var matches = new List<CustomerTaxMatch>();
         var contactsFilled = 0;
+        // The sheets are copied from one customer to the next, so an IE is only trusted when two or more orders of the customer carry it and no other customer's order does.
+        var ieOwners = rows.Where(r => Digits(r.StateRegistration).Length >= 8)
+            .GroupBy(r => Digits(r.StateRegistration)).ToDictionary(g => g.Key, g => g.Select(r => Digits(r.Document).Length >= 11 ? Digits(r.Document) : KeyOf(r.Customer ?? "")).Distinct().Count());
         var ieCorrected = new List<string>();
         var deliveries = new List<string>();
         foreach (var (id, (by, orders)) in byCustomer.OrderBy(e => e.Key))
@@ -76,7 +79,8 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
             var ie = Latest(r => r.StateRegistration);
             if (Digits(ie).Length >= 5 && string.IsNullOrWhiteSpace(c.StateRegistration)) { filled = true; if (apply) { c.StateRegistration = ie; c.IcmsContributor = true; } }
             // The latest order is what the customer says today: a different IE on an order that carries the customer's own CNPJ replaces the cadastro one.
-            else if (by == "CNPJ" && Digits(ie).Length >= 8 && Digits(ie) != Digits(c.StateRegistration))
+            else if (by == "CNPJ" && Digits(ie).Length >= 8 && Digits(ie) != Digits(c.StateRegistration)
+                && orders.Count(o => Digits(o.Row.StateRegistration) == Digits(ie)) >= 2 && ieOwners.GetValueOrDefault(Digits(ie)) == 1)
             {
                 ieCorrected.Add($"{c.Name}: {c.StateRegistration} -> {ie}");
                 if (apply) { c.StateRegistration = ie; c.IcmsContributor = true; }
