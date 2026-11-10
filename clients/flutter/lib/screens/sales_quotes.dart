@@ -723,6 +723,27 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
       if (!mounted || _customerId != customer) return;
     }
     _fillTaxes();
+    unawaited(_suggestNote());
+  }
+
+  /// An empty observation takes the one this customer always puts on the product ("ISENTO DE OLEO E GRAXA"), learned from its old orders; it can be edited or cleared.
+  Future<void> _suggestNote() async {
+    final customer = _customerId;
+    if (customer == null || _notes.text.trim().isNotEmpty) return;
+    for (final l in _lines) {
+      final id = l['productId'];
+      if (id == null) continue;
+      try {
+        final r = await api.get('/api/sales/material-suggestion?customerId=$customer&productId=$id');
+        final note = r is Map<String, dynamic> ? cleanOrderNote('${r['note'] ?? ''}') : '';
+        if (note.isNotEmpty && mounted && _customerId == customer && _notes.text.trim().isEmpty) {
+          setState(() => _notes.text = note);
+          return;
+        }
+      } on ApiException catch (e) {
+        debugPrint('sales_quotes: no usual observation to suggest: $e');
+      }
+    }
   }
 
   Future<void> _lookupPrice(Object id, int customer) async {

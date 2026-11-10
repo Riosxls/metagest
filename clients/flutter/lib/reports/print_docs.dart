@@ -199,18 +199,17 @@ Future<Map<String, dynamic>?> _customer(ApiClient api, Object? id) async {
   }
 }
 
-String _customerDocument(Map<String, dynamic>? c) {
-  final company = c?['company'] as Map<String, dynamic>?;
-  final doc = fmtDocument(company?['document']);
-  return doc.isEmpty ? '' : doc;
-}
-
-List<List<String>> _itemRows(List<Map<String, dynamic>> lines) => [
+/// The rows of the item table; [materials] is the material the customer usually gets for each product, shown after the description when the line does not already say it.
+List<List<String>> _itemRows(List<Map<String, dynamic>> lines, [Map<Object?, String> materials = const {}]) => [
   for (final l in lines)
     [
       _s(l['sequence']),
       '${l['productCode']}${l['customerPartNumber'] == null ? '' : ' (${l['customerPartNumber']})'}',
-      _s(l['description']),
+      () {
+        final description = _s(l['description']);
+        final material = _preferUsual(_materialFromDescription(description), materials[l['productId']] ?? '');
+        return material.isEmpty || description.contains(material) ? description : '$description · $material';
+      }(),
       fmt(l['quantity']),
       _s(l['unit']),
       fmtNum(l['unitPrice'], 4),
@@ -228,16 +227,36 @@ const _itemRight = {3, 5, 6, 7, 8};
 /// Orçamento (PROP N).
 Future<Uint8List> buildQuotePdf(ApiClient api, Map<String, dynamic> q) async {
   final customer = await _customer(api, q['customerId']);
+  final chosen = await _orderAddress(api, q['customerId'], q['addressId']);
+  // The same customer data as the pedido interno: the company's own address, CNPJ, I.E. with its dots, contact and the customer code; the delivery place apart from it.
+  final c = _CustomerBlock(_s(q['customerName']), customer, _s(q['addressText']), chosen: chosen);
   final issuer = await _Issuer.load(api);
   final banner = quotePrintWarning(q);
   final t = q['totals'] as Map<String, dynamic>;
   final lines = (q['lines'] as List).cast<Map<String, dynamic>>();
   final date = q['sentAt'] ?? q['createdAt'];
+  // What this customer always asks for on each product: the material ("BK DIN 2393") and the observation ("ISENTO DE OLEO E GRAXA").
+  final usual = <Object?, ({String material, String note})>{for (final l in lines) l['productId']: await _usual(api, q['customerId'], l['productId'])};
+  final pickup = _s(q['freight']) == 'CustomerPickup';
+  final address = [c.address, c.district, c.city.isEmpty ? '' : (c.uf.isEmpty ? c.city : '${c.city}-${c.uf}'), c.zip].where((e) => e.isNotEmpty).join(' - ');
+  final ownNotes = cleanOrderNote(_s(q['notes']));
+  final productNotes = <String>[];
+  for (final l in lines) {
+    final n = cleanOrderNote(usual[l['productId']]?.note ?? '');
+    if (n.isNotEmpty && !productNotes.contains(n) && !ownNotes.contains(n)) productNotes.add(n);
+  }
+  final notes = [if (ownNotes.isNotEmpty) ownNotes, ...productNotes].join('\n');
   return _build('Orçamento ${q['reference']}', () => [
     _box('Cliente', [
-      ('Nome', ptText(q['customerName'])),
-      ('CNPJ', _customerDocument(customer)),
-      ('Endereço de entrega', ptText(q['addressText'])),
+      ('Nome', c.name),
+      ('Cód. cliente', c.code),
+      ('CNPJ', c.cnpj),
+      ('I.E.', c.ie),
+      ('Endereço', address),
+      ('Contato', c.contact),
+      ('Telefone', c.phone),
+      ('E-mail', c.email),
+      if (!pickup) ('Local de entrega', c.delivery),
     ]),
     pw.SizedBox(height: 6),
     _box('Orçamento', [
@@ -248,14 +267,15 @@ Future<Uint8List> buildQuotePdf(ApiClient api, Map<String, dynamic> q) async {
       ('Frete', freightTerms[q['freight']] ?? fmt(q['freight'])),
       ('Contato', [q['contactName'], q['contactEmail']].whereType<String>().join(' · ')),
       ('Ref. do cliente', fmt(q['customerReference'])),
+      ('Pedido do cliente', _s(q['customerPo'])),
     ]),
     pw.SizedBox(height: 8),
-    _table(_itemHeaders, _itemRows(lines), flex: _itemFlex, right: _itemRight),
+    _table(_itemHeaders, _itemRows(lines, {for (final e in usual.entries) e.key: e.value.material}), flex: _itemFlex, right: _itemRight),
     pw.SizedBox(height: 8),
     _totals([('Total dos produtos', fmtMoney(t['products'])), ('IPI', fmtMoney(t['ipi'])), ('Total do orçamento', fmtMoney(t['total']))]),
     if (lines.any((l) => l['leadTimeDays'] != null && l['deliveryDate'] == null))
       pw.Padding(padding: const pw.EdgeInsets.only(top: 6), child: pw.Text('* Prazo de entrega em dias úteis, contado a partir da data em que o cliente aprovar este orçamento.', style: const pw.TextStyle(fontSize: 8.5))),
-    if (_s(q['notes']).isNotEmpty) _text('Observações', _s(q['notes'])),
+    if (notes.isNotEmpty) _text('Observações', notes),
     _text('Condições gerais', _s(q['conditions']).isNotEmpty ? _s(q['conditions']) : _generalConditions),
   ], header: (_) => _header('Orçamento', _s(q['reference']), issuer, banner: banner));
 }

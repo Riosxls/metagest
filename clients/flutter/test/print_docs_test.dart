@@ -124,6 +124,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('buildQuotePdf', () {
+    test('prints the customer block of the pedido interno, the pickup freight and a note with its PO prefix cleaned', () async {
+      final q = _quote(extra: {'freight': 'CustomerPickup', 'customerPo': '102956', 'notes': 'PEDIDO Nº 102956 - C/ TRATAMENTO TERMICO Dureza 30HRB', 'addressId': 5});
+      _expectPdf(await buildQuotePdf(_api(), q));
+    });
+
     test('builds a quote with lead time, delivery date and plain lines', () async {
       final bytes = await buildQuotePdf(_api(), _quote());
       _expectPdf(bytes);
