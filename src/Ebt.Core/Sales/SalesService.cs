@@ -55,6 +55,7 @@ public sealed partial class SalesService(EbtDbContext db, StockService stock, Pr
         var today = Today();
         var ids = input.Select(l => l.ProductId).Distinct().ToList();
         var products = await db.Products.AsNoTracking().Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+        var customerTax = await db.Customers.AsNoTracking().Where(c => c.Id == customerId).Select(c => new { c.IpiPercent, c.IcmsPercent }).FirstOrDefaultAsync(ct);
         var customerParts = await db.ProductCustomers.AsNoTracking().Where(pc => pc.CustomerId == customerId && ids.Contains(pc.ProductId)).ToDictionaryAsync(pc => pc.ProductId, ct);
         var result = new List<ResolvedLine>();
         foreach (var (l, n) in input.Select((l, n) => (l, n)))
@@ -72,7 +73,7 @@ public sealed partial class SalesService(EbtDbContext db, StockService stock, Pr
             var unitPrice = l.UnitPrice ?? price?.UnitPrice ?? throw SalesException.Invalid($"{f}.unitPrice", $"No price for {p.Code}; give one or register it in the price list");
             customerParts.TryGetValue(p.Id, out var cp);
             result.Add(new ResolvedLine(p.Id, cp?.CustomerPartNumber, Clean(l.Description) ?? cp?.CustomerDescription ?? p.Name, l.Quantity, p.StockUnit, unitPrice, price?.UnitPrice,
-                l.IpiPercent ?? price?.IpiPercent ?? 0m, l.IcmsPercent ?? price?.IcmsPercent ?? 0m, l.LeadTimeDays, l.DeliveryDate, l.Spec, l.FeasibilityId));
+                l.IpiPercent ?? price?.IpiPercent ?? customerTax?.IpiPercent ?? 0m, l.IcmsPercent ?? price?.IcmsPercent ?? customerTax?.IcmsPercent ?? 0m, l.LeadTimeDays, l.DeliveryDate, l.Spec, l.FeasibilityId));
         }
         return result;
     }

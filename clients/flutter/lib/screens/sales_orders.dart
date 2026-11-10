@@ -279,7 +279,8 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
   void _refresh() => unawaited(_load(report: true));
 
   String get _salesKey => 'order:${widget.id}:sales';
-  String _ofKey(Object? id) => 'order:${widget.id}:of:$id';
+  // One key per OF, shared with the OF screen: printing it from either place marks it everywhere.
+  String _ofKey(Object? id) => 'of:$id';
 
   Future<bool> _printSalesOrder() => printPdf(context, 'Pedido de venda ${_ref()}', () => buildSalesOrderPdf(api, _o!), doneKey: _salesKey);
 

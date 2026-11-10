@@ -158,6 +158,7 @@ app.MapAudit();
 app.MapMaintenance();
 app.MapSystem();
 app.MapMasterData();
+app.MapCustomerTaxes();
 app.MapProducts();
 app.MapInventory();
 app.MapPurchasing();

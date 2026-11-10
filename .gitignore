@@ -36,3 +36,4 @@ releases/
 price-history*.csv
 process-templates*.csv
 fiscal-data*.json
+customer-taxes*.json

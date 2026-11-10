@@ -103,6 +103,7 @@ public static class SalesEndpoints
         services.AddSingleton(sp => new PriceDataCache(sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(), sp.GetRequiredService<IConfiguration>().GetValue("PriceSuggestion:CacheSeconds", 60)));
         services.AddScoped<PriceSuggestionService>();
         services.AddScoped<PriceHistoryImporter>();
+        services.AddScoped<CustomerTaxImporter>();
         services.AddExceptionHandler<SalesExceptionHandler>();
         return services;
     }

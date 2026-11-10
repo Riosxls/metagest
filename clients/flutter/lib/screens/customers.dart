@@ -104,7 +104,17 @@ const _companyFields = [
   FieldSpec('phone', 'Telefone'),
   FieldSpec('paymentTermId', 'Prazo padrão', type: FieldType.lookup, lookup: LookupSpec('/api/sales/payment-terms'), hint: 'Usado como padrão nos orçamentos'),
   FieldSpec('creditLimit', 'Limite de crédito (R\$)', type: FieldType.decimal, hint: 'Vazio = vale o limite do prazo'),
+  FieldSpec('ipiPercent', 'IPI usual (%)', type: FieldType.decimal, hint: 'Entra nos itens do orçamento quando a tabela de preços não traz IPI'),
+  FieldSpec('icmsPercent', 'ICMS usual (%)', type: FieldType.decimal, hint: 'Varia com o estado de destino; a tabela de preços tem prioridade'),
+  FieldSpec('taxNote', 'Impostos nos pedidos anteriores', hint: 'Alíquotas vistas nos pedidos antigos, por estado'),
 ];
+
+/// 3.25 -> "3,25%"; null or empty -> "—" (as [fmt] does).
+String _pct(Object? v) {
+  final n = v is num ? v : num.tryParse('${v ?? ''}');
+  if (n == null) return fmt(null);
+  return '${(n == n.roundToDouble() ? n.toStringAsFixed(0) : n.toString()).replaceAll('.', ',')}%';
+}
 
 /// Helper text for the phone fields of the customer forms: it only warns, it never blocks saving. A phone has 8 to 11 digits once the
 /// punctuation is stripped (landline, mobile, with area code); an empty field and values saved by the old system are left alone.
@@ -389,6 +399,9 @@ class _CustomerCompany extends StatelessWidget {
                   ('E-mail', fmt(a['email'])),
                   ('Telefone', fmt(a['phone'])),
                   ('Prazo padrão', fmt(a['paymentTermName'])),
+                  ('IPI usual', _pct(a['ipiPercent'])),
+                  ('ICMS usual', _pct(a['icmsPercent'])),
+                  ('Impostos nos pedidos anteriores', fmt(a['taxNote'])),
                 ]),
         ),
         _CustomerReceivable(

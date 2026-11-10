@@ -491,7 +491,7 @@ class _ProductionOrderScreenState extends State<ProductionOrderScreen> with Sing
       menu.addAll(group);
     }
     return [
-      PrintButton(name: 'Ordem de fabricação ${_o!['reference']}', builder: () => buildProductionOrderPdf(s.api, _o!)),
+      PrintButton(name: 'Ordem de fabricação ${_o!['reference']}', doneKey: 'of:${_o!['id']}', builder: () => buildProductionOrderPdf(s.api, _o!)),
       ?primary,
       if (menu.isNotEmpty)
         PopupMenuButton<VoidCallback>(key: const ValueKey('of-menu'), tooltip: 'Mais ações', onSelected: (f) => f(), itemBuilder: (_) => menu),

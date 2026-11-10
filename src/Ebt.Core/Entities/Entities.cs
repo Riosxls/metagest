@@ -31,6 +31,12 @@ public class Customer : IHasSource
     public string? Phone { get; set; }
     /// <summary>Overrides the credit limit of the payment term when set.</summary>
     public decimal? CreditLimit { get; set; }
+    /// <summary>The customer's usual IPI (%): the default of a new quote line when the price list gives none.</summary>
+    public decimal? IpiPercent { get; set; }
+    /// <summary>The customer's usual ICMS (%) on sales. It depends on the destination state, so a quote line only takes it when the price list gives none.</summary>
+    public decimal? IcmsPercent { get; set; }
+    /// <summary>What the old orders showed: every rate seen and how often (ICMS per state, IPI over the years).</summary>
+    public string? TaxNote { get; set; }
     public int? DefaultPaymentTermId { get; set; }
     public PaymentTerm? DefaultPaymentTerm { get; set; }
     public List<CustomerAddress> Addresses { get; set; } = new();

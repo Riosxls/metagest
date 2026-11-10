@@ -848,6 +848,16 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("icms_contributor");
 
+                    b.Property<decimal?>("IcmsPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("icms_percent");
+
+                    b.Property<decimal?>("IpiPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("ipi_percent");
+
                     b.Property<string>("LegacyCode")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")
@@ -878,6 +888,11 @@ namespace Ebt.Core.Data.Migrations
                     b.Property<string>("Street")
                         .HasColumnType("text")
                         .HasColumnName("street");
+
+                    b.Property<string>("TaxNote")
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)")
+                        .HasColumnName("tax_note");
 
                     b.Property<string>("TradeName")
                         .HasColumnType("text")
