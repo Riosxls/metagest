@@ -28,6 +28,8 @@ public partial class EbtDbContext(DbContextOptions<EbtDbContext> options) : DbCo
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // Search ignores accents ("metalurgica" finds "Metalúrgica"): EF.Functions.Unaccent.
+        b.HasPostgresExtension("unaccent");
         b.Entity<Customer>(e =>
         {
             e.HasIndex(x => x.LegacyCode).IsUnique();

@@ -1018,7 +1018,7 @@ class _LookupPickerState extends State<LookupPicker> {
               autofocus: true,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search),
-                hintText: 'Buscar ${title.toLowerCase()}',
+                hintText: widget.path.contains('products') ? 'Buscar produto: código, medidas (12 x 1,5 x 900) ou nome' : 'Buscar ${title.toLowerCase()}',
                 filled: true,
                 fillColor: cs.surfaceContainerHigh,
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),

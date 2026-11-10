@@ -12,8 +12,32 @@ class LookupSpec {
   final Map<String, dynamic> query;
   final bool fetchById;
 
+  /// A tube written the same way whatever the old name looked like: "Ø 8 × 0,9 × 6000 mm" (round), "20 × 30 × 1,5 × 6000 mm" (rectangular), "Ø 10 × 1 · rolo".
+  /// Null when the record is not a tube with sizes.
+  static String? tubeSizes(Map<String, dynamic> e) {
+    String n(Object? v) {
+      final x = v is num ? v : num.tryParse('${v ?? ''}');
+      if (x == null) return '';
+      return (x == x.roundToDouble() ? x.toStringAsFixed(0) : x.toString()).replaceAll('.', ',');
+    }
+
+    final thickness = n(e['thicknessMm']);
+    if (thickness.isEmpty) return null;
+    final isRoll = RegExp(r'\bROLO\b', caseSensitive: false).hasMatch('${e['name'] ?? ''}');
+    final length = isRoll ? '' : n(e['lengthMm']);
+    final tail = isRoll ? ' · rolo' : (length.isEmpty ? '' : ' × $length mm');
+    final od = n(e['diameterMm']);
+    if (od.isNotEmpty) return 'Ø $od × $thickness$tail';
+    final w = n(e['widthMm']);
+    final h = n(e['heightMm']);
+    if (w.isNotEmpty && h.isNotEmpty) return '$w × $h × $thickness$tail';
+    return null;
+  }
+
   static String display(Map<String, dynamic> e) {
     final code = e['code'] ?? e['lotCode'] ?? e['number'];
+    final sizes = e['kind'] != null && e['ncm'] != null ? tubeSizes(e) : null;
+    if (sizes != null && code != null) return '$code · $sizes';
     final name = e['name'] ?? e['description'] ?? e['itemCode'] ?? e['title'] ?? e['reference'];
     final extra = e['remaining'] != null ? '${fmt(e['remaining'])} disp.' : (e['quantity'] != null && e['itemCode'] != null ? fmt(e['quantity']) : null);
     // Payment terms use the code only for ordering, so it is not shown.
