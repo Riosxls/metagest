@@ -190,6 +190,174 @@ String _initials(String name) {
   return (words.first[0] + (words.length > 1 ? words[1][0] : '')).toUpperCase();
 }
 
+/// The letter a customer is filed under ("Aços Divaltec" -> "A"); names that do not start with a letter go under "#".
+String _letterOf(String name) {
+  final t = name.trim();
+  if (t.isEmpty) return '#';
+  const from = 'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç';
+  const to = 'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc';
+  final c = t[0];
+  final i = from.indexOf(c);
+  final base = (i >= 0 ? to[i] : c).toUpperCase();
+  return RegExp(r'[A-Z]').hasMatch(base) ? base : '#';
+}
+
+/// Same widths for the column titles and the rows, so they line up.
+const _contactFlex = [30, 15, 24, 14, 17];
+
+class _ContactsHeader extends StatelessWidget {
+  const _ContactsHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600, letterSpacing: 0.4);
+    Widget cell(int i, String text) => Expanded(flex: _contactFlex[i], child: Text(text, style: style, maxLines: 1, overflow: TextOverflow.ellipsis));
+    return Container(
+      padding: const EdgeInsets.fromLTRB(28, 8, 16, 8),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant))),
+      child: Row(
+        children: [
+          const SizedBox(width: 56),
+          cell(0, 'NOME'),
+          cell(1, 'CNPJ/CPF'),
+          cell(2, 'E-MAIL'),
+          cell(3, 'TELEFONE'),
+          cell(4, 'CIDADE'),
+          const SizedBox(width: 96),
+        ],
+      ),
+    );
+  }
+}
+
+/// One customer in the list: a coloured avatar with the initials, the name with the trade name under it and the main data in columns; the copy buttons show on hover.
+class _ContactRow extends StatefulWidget {
+  const _ContactRow({required this.customer, required this.wide});
+
+  final Map<String, dynamic> customer;
+  final bool wide;
+
+  @override
+  State<_ContactRow> createState() => _ContactRowState();
+}
+
+class _ContactRowState extends State<_ContactRow> {
+  bool _hover = false;
+
+  Future<void> _copy(String text, String what) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$what copiado')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final c = widget.customer;
+    final co = _company(c);
+    final name = '${c['name']}';
+    final trade = fmt(c['tradeName']);
+    final active = c['active'] == true;
+    final email = fmt(co?['email']);
+    final person = fmt(co?['contact']);
+    final phone = ptPhone(co?['phone']);
+    final doc = fmtDocument(co?['document']);
+    final city = fmt(co?['city']).isEmpty ? '' : '${co!['city']}/${fmt(co['uf'])}';
+    final dark = theme.brightness == Brightness.dark;
+    final hue = (name.codeUnits.fold<int>(7, (a, b) => (a * 31 + b) & 0xFFFFFF) % 360).toDouble();
+    final avatarBg = HSLColor.fromAHSL(1, hue, 0.45, dark ? 0.32 : 0.84).toColor();
+    final avatarFg = HSLColor.fromAHSL(1, hue, 0.55, dark ? 0.85 : 0.25).toColor();
+    final muted = theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    Widget cell(int i, String text, {String? second}) => Expanded(
+      flex: _contactFlex[i],
+      child: Padding(
+        padding: const EdgeInsets.only(right: 12),
+        child: text.isEmpty
+            ? Text('—', style: muted)
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
+                  if (second != null && second.isNotEmpty) Text(second, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                ],
+              ),
+      ),
+    );
+    final avatar = CircleAvatar(
+      radius: 20,
+      backgroundColor: avatarBg,
+      child: Text(_initials(name), style: theme.textTheme.titleSmall?.copyWith(color: avatarFg, fontWeight: FontWeight.w700)),
+    );
+    final title = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600, color: active ? null : theme.colorScheme.onSurfaceVariant))),
+            if (!active) ...[const SizedBox(width: 8), const StatusBadge('Inativo', tone: Tone.neutral)],
+          ],
+        ),
+        if (trade.isNotEmpty) Text(trade, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+      ],
+    );
+    if (!widget.wide) {
+      final lines = [if (email.isNotEmpty) email, if (phone.isNotEmpty) phone, if (city.isNotEmpty) city];
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            avatar,
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [title, if (lines.isNotEmpty) Text(lines.join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: muted)],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(28, 8, 16, 8),
+        child: Row(
+          children: [
+            avatar,
+            const SizedBox(width: 16),
+            Expanded(flex: _contactFlex[0], child: Padding(padding: const EdgeInsets.only(right: 12), child: title)),
+            cell(1, doc),
+            cell(2, email, second: person),
+            cell(3, phone),
+            cell(4, city),
+            SizedBox(
+              width: 96,
+              child: IgnorePointer(
+                ignoring: !_hover,
+                child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 120),
+                opacity: _hover ? 1 : 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (email.isNotEmpty) IconButton(tooltip: 'Copiar e-mail', visualDensity: VisualDensity.compact, icon: const Icon(Icons.mail_outline, size: 20), onPressed: () => unawaited(_copy(email, 'E-mail'))),
+                    if (phone.isNotEmpty) IconButton(tooltip: 'Copiar telefone', visualDensity: VisualDensity.compact, icon: const Icon(Icons.phone_outlined, size: 20), onPressed: () => unawaited(_copy(phone, 'Telefone'))),
+                  ],
+                ),
+              ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Customer list with search and creation.
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key, required this.session});
@@ -245,6 +413,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
     fab: widget.session.canCustomers
         ? FloatingActionButton.extended(heroTag: 'new-customer', onPressed: _new, icon: const Icon(Icons.add), label: const Text('Novo cliente'))
         : null,
+    // Contact-style list: avatar, name and trade name, then the data a salesperson reaches for (CNPJ, e-mail and who to ask for, phone, city), grouped under letters.
+    pillSearch: true,
+    rowBuilder: (context, e, wide) => _ContactRow(customer: e, wide: wide),
+    groupOf: (e) => _letterOf('${e['name']}'),
+    listHeader: const _ContactsHeader(),
     columns: [
       col('Cliente', 'name'),
       col('Fantasia', 'tradeName'),

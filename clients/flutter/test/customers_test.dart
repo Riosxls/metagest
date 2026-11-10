@@ -277,4 +277,23 @@ void main() {
     expect(copied, 'a@alfa.com');
     expect(find.text('E-mail copiado'), findsOneWidget);
   });
+
+  testWidgets('the list is a contact list: letter headings, avatars with initials and the columns of a customer', (tester) async {
+    await _pump(tester, _Env(), (s) => CustomersScreen(session: s));
+    expect(find.text('M'), findsOneWidget); // heading of "Metalúrgica Alfa"
+    expect(find.text('MA'), findsOneWidget); // its avatar
+    expect(find.text('NOME'), findsOneWidget);
+    expect(find.text('a@alfa.com'), findsOneWidget);
+    expect(find.text('Ana'), findsOneWidget); // who to ask for, under the e-mail
+    expect(find.text('(15) 00'), findsNothing); // the 4-digit test phone stays as typed, not mangled
+  });
+
+  testWidgets('on a narrow screen a customer is the name with its data on one line', (tester) async {
+    await _pump(tester, _Env(), (s) => CustomersScreen(session: s));
+    tester.view.physicalSize = const Size(600, 900);
+    await tester.pumpAndSettle();
+    expect(find.text('Metalúrgica Alfa'), findsOneWidget);
+    expect(find.textContaining('a@alfa.com'), findsOneWidget);
+    expect(find.text('NOME'), findsNothing);
+  });
 }

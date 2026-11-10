@@ -47,7 +47,23 @@ class RecordList extends StatefulWidget {
     this.bottomPadding,
     this.rowChevron = false,
     this.onSearchChanged,
+    this.rowBuilder,
+    this.groupOf,
+    this.listHeader,
+    this.pillSearch = false,
   });
+
+  /// A contact-style list: each row is drawn by the screen (avatar, name, a few columns), grouped under letters by [groupOf], in place of the table and the cards.
+  final Widget Function(BuildContext context, Map<String, dynamic> e, bool wide)? rowBuilder;
+
+  /// Heading of the group a row belongs to (usually the first letter of the name); a new heading is drawn whenever it changes.
+  final String? Function(Map<String, dynamic> e)? groupOf;
+
+  /// Column titles above a wide [rowBuilder] list.
+  final Widget? listHeader;
+
+  /// Rounded, borderless search field (as in contact apps) instead of the outlined one.
+  final bool pillSearch;
 
   /// Room left under the last row (and the pager) so the floating button never hides it; null is 88 with a [fab], 80 without.
   final double? bottomPadding;
@@ -396,16 +412,28 @@ class RecordListState extends State<RecordList> {
                       children: [
                         if (widget.searchable)
                           SizedBox(
-                            width: wide ? 320 : math.max(160, width - 96 - (collapseFilters ? 124 : 0)),
+                            width: wide ? (widget.pillSearch ? 460 : 320) : math.max(160, width - 96 - (collapseFilters ? 124 : 0)),
                             child: TextField(
                               key: const ValueKey('record-search'),
                               controller: _search,
                               focusNode: _searchFocus,
-                              decoration: InputDecoration(
-                                prefixIcon: const Icon(Icons.search),
-                                labelText: widget.searchHint,
-                                isDense: true,
-                              ),
+                              decoration: widget.pillSearch
+                                  ? InputDecoration(
+                                      prefixIcon: const Icon(Icons.search),
+                                      hintText: widget.searchHint,
+                                      isDense: true,
+                                      filled: true,
+                                      fillColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+                                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                                      border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(28)), borderSide: BorderSide.none),
+                                      enabledBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(28)), borderSide: BorderSide.none),
+                                      focusedBorder: OutlineInputBorder(borderRadius: const BorderRadius.all(Radius.circular(28)), borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)),
+                                    )
+                                  : InputDecoration(
+                                      prefixIcon: const Icon(Icons.search),
+                                      labelText: widget.searchHint,
+                                      isDense: true,
+                                    ),
                               onChanged: _onSearch,
                             ),
                           ),
@@ -440,6 +468,8 @@ class RecordListState extends State<RecordList> {
               Expanded(
                 child: page.items.isEmpty
                     ? _empty()
+                    : widget.rowBuilder != null
+                    ? _contacts(_sorted(page.items), wide)
                     : wide
                     ? _table(_sorted(page.items))
                     : _list(_sorted(page.items)),
@@ -579,6 +609,43 @@ class RecordListState extends State<RecordList> {
     _widthsPage = _page;
     _widthsScale = scale;
     return out;
+  }
+
+  /// The contact-style list: rows drawn by the screen under letter headings, a pinned column header when wide.
+  Widget _contacts(List<Map<String, dynamic>> items, bool wide) {
+    final theme = Theme.of(context);
+    final rows = <Widget>[];
+    String? last;
+    for (final e in items) {
+      final g = widget.groupOf?.call(e);
+      if (g != null && g != last) {
+        last = g;
+        rows.add(
+          Padding(
+            padding: EdgeInsets.fromLTRB(wide ? 28 : 18, 16, 16, 4),
+            child: Semantics(header: true, child: Text(g, style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w700))),
+          ),
+        );
+      }
+      rows.add(
+        Material(
+          color: _rowTint(context, e, items) ?? Colors.transparent,
+          child: InkWell(onTap: widget.onTap == null ? null : () => _tap(e), child: widget.rowBuilder!(context, e, wide)),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (wide && widget.listHeader != null) widget.listHeader!,
+        Expanded(
+          child: Scrollbar(
+            controller: _vertical,
+            child: ListView(controller: _vertical, padding: EdgeInsets.only(bottom: _bottomPad), children: rows),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _table(List<Map<String, dynamic>> items) {
