@@ -247,6 +247,13 @@ void main() {
     });
   });
 
+  group('buildCustomerContactPdf', () {
+    test('prints the sheet of a customer, with or without delivery places', () async {
+      _expectPdf(await buildCustomerContactPdf(_api(), {..._customer, 'clientCode': '41', 'active': true}));
+      _expectPdf(await buildCustomerContactPdf(_api(customerFails: true), {'id': 9, 'name': 'SEM DADOS LTDA', 'active': false}));
+    });
+  });
+
   group('cleanOrderNote', () {
     test('drops the purchase-order prefix and keeps what the tube needs', () {
       expect(cleanOrderNote('PEDIDO Nº 102956 - C/ TRATAMENTO TERMICO Dureza 30HRB'), 'C/ TRATAMENTO TERMICO Dureza 30HRB');

@@ -2,16 +2,19 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../entities.dart';
 import '../labels.dart';
+import '../reports/print_docs.dart' show buildCustomerContactPdf;
 import '../reports/pt_text.dart' show ptEmail, ptPhone, ptText;
 import '../session.dart';
 import '../theme_tokens.dart';
 import '../widgets/entity_form.dart';
 import '../widgets/load_error.dart';
 import '../widgets/pipeline.dart' show StatusBadge, Tone, toneAccent;
+import '../widgets/print_panel.dart' show printPdf;
 import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
 import 'receivables.dart';
@@ -222,6 +225,9 @@ String _letterOf(String name) {
 /// Same widths for the column titles and the rows, so they line up.
 const _contactFlex = [30, 15, 24, 14, 17];
 
+/// Room of the hover buttons (send e-mail, copy phone, print) at the end of a row; the column titles leave the same room.
+const _contactActionsWidth = 144.0;
+
 class _ContactsHeader extends StatelessWidget {
   const _ContactsHeader();
 
@@ -241,7 +247,7 @@ class _ContactsHeader extends StatelessWidget {
           cell(2, 'E-MAIL'),
           cell(3, 'TELEFONE'),
           cell(4, 'CIDADE'),
-          const SizedBox(width: 96),
+          const SizedBox(width: _contactActionsWidth),
         ],
       ),
     );
@@ -250,10 +256,11 @@ class _ContactsHeader extends StatelessWidget {
 
 /// One customer in the list: a coloured avatar with the initials, the name with the trade name under it and the main data in columns; the copy buttons show on hover.
 class _ContactRow extends StatefulWidget {
-  const _ContactRow({required this.customer, required this.wide});
+  const _ContactRow({required this.customer, required this.wide, required this.api});
 
   final Map<String, dynamic> customer;
   final bool wide;
+  final ApiClient api;
 
   @override
   State<_ContactRow> createState() => _ContactRowState();
@@ -265,6 +272,17 @@ class _ContactRowState extends State<_ContactRow> {
   Future<void> _copy(String text, String what) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$what copiado')));
+  }
+
+  /// Opens the e-mail program with the customer's address filled in.
+  Future<void> _mail(String to) async {
+    var opened = false;
+    try {
+      opened = await launchUrl(Uri(scheme: 'mailto', path: to));
+    } catch (e) {
+      debugPrint('customers: the mail program could not be opened: $e');
+    }
+    if (!opened && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhum programa de e-mail configurado neste computador')));
   }
 
   @override
@@ -359,7 +377,7 @@ class _ContactRowState extends State<_ContactRow> {
             cell(3, phone, second: phones.more > 0 ? '+${phones.more} número${phones.more > 1 ? 's' : ''}' : null),
             cell(4, city),
             SizedBox(
-              width: 96,
+              width: _contactActionsWidth,
               child: IgnorePointer(
                 ignoring: !_hover,
                 child: AnimatedOpacity(
@@ -368,8 +386,14 @@ class _ContactRowState extends State<_ContactRow> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (email.isNotEmpty) IconButton(tooltip: 'Copiar e-mail', visualDensity: VisualDensity.compact, icon: const Icon(Icons.mail_outline, size: 20), onPressed: () => unawaited(_copy(email, 'E-mail'))),
+                    if (email.isNotEmpty) IconButton(tooltip: 'Enviar e-mail', visualDensity: VisualDensity.compact, icon: const Icon(Icons.mail_outline, size: 20), onPressed: () => unawaited(_mail(email))),
                     if (phone.isNotEmpty) IconButton(tooltip: 'Copiar telefone', visualDensity: VisualDensity.compact, icon: const Icon(Icons.phone_outlined, size: 20), onPressed: () => unawaited(_copy(phone, 'Telefone'))),
+                    IconButton(
+                      tooltip: 'Imprimir ficha do cliente',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.print_outlined, size: 20),
+                      onPressed: () => unawaited(printPdf(context, 'Ficha do cliente ${c['name']}', () => buildCustomerContactPdf(widget.api, c))),
+                    ),
                   ],
                 ),
               ),
@@ -440,7 +464,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         : null,
     // Contact-style list: avatar, name and trade name, then the data a salesperson reaches for (CNPJ, e-mail and who to ask for, phone, city), grouped under letters.
     pillSearch: true,
-    rowBuilder: (context, e, wide) => _ContactRow(customer: e, wide: wide),
+    rowBuilder: (context, e, wide) => _ContactRow(customer: e, wide: wide, api: widget.session.api),
     groupOf: (e) => _letterOf('${e['name']}'),
     listHeader: const _ContactsHeader(),
     columns: [

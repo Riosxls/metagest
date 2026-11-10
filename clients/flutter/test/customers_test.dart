@@ -308,4 +308,12 @@ void main() {
     expect(contactPhones('1129584633').first, '(11) 2958-4633');
     expect(contactPhones('').first, '');
   });
+
+  testWidgets('the row buttons send an e-mail, copy the phone and print the sheet', (tester) async {
+    await _pump(tester, _Env(), (s) => CustomersScreen(session: s));
+    expect(find.byTooltip('Enviar e-mail'), findsOneWidget);
+    expect(find.byTooltip('Copiar telefone'), findsOneWidget);
+    expect(find.byTooltip('Imprimir ficha do cliente'), findsOneWidget);
+    expect(find.byTooltip('Copiar e-mail'), findsNothing); // the e-mail is sent, not copied, from the list
+  });
 }

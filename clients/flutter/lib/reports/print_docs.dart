@@ -964,6 +964,65 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
   return _formsFlow('Ordem de fabricação ${o['reference']}', blocks);
 }
 
+/// Ficha do cliente: the contact data of one customer on one sheet (company, main address, contact, commercial terms and the delivery places).
+Future<Uint8List> buildCustomerContactPdf(ApiClient api, Map<String, dynamic> c) async {
+  final issuer = await _Issuer.load(api);
+  var places = <Map<String, dynamic>>[];
+  try {
+    final r = await api.get('/api/customers/${c['id']}/addresses');
+    final list = r is List ? r : (r is Map && r['items'] is List ? r['items'] as List : const []);
+    places = list.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+  } on ApiException catch (e) {
+    // The sheet still prints without the delivery places; a failure other than "not there" stops it instead of leaving them out silently.
+    if (e.status != 404) rethrow;
+  }
+  final co = (c['company'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+  String line(Map<String, dynamic> a) => [
+    ptStreet(a['street'], a['number']),
+    _s(a['complement']),
+    ptText(a['district']),
+    [ptText(a['city']), _s(a['uf']).toUpperCase()].where((e) => e.isNotEmpty).join('/'),
+    ptZip(a['zipCode']),
+  ].where((e) => e.isNotEmpty).join(' - ');
+  final code = _s(c['clientCode']).isNotEmpty ? _s(c['clientCode']) : _s(c['legacyCode']);
+  final trade = ptText(c['tradeName']);
+  final tax = [
+    if (co['ipiPercent'] is num) 'IPI ${fmt(co['ipiPercent'])}%',
+    if (co['icmsPercent'] is num) 'ICMS ${fmt(co['icmsPercent'])}%',
+  ].join(' · ');
+  return _build(
+    'Ficha do cliente ${c['name']}',
+    () => [
+      pw.Text(ptText(c['name']), style: _b(15)),
+      if (trade.isNotEmpty) pw.Text(trade, style: _n(10)),
+      pw.SizedBox(height: 10),
+      _box('Dados da empresa', [
+        ('CNPJ/CPF', fmtDocument(co['document'])),
+        ('Inscrição estadual', ptIe(co['stateRegistration'], co['uf'])),
+        ('Código do cliente', code),
+        ('Situação', c['active'] == true ? 'Ativo' : 'Inativo'),
+      ]),
+      pw.SizedBox(height: 6),
+      _box('Endereço principal', [('Endereço', line(co))]),
+      pw.SizedBox(height: 6),
+      _box('Contato', [('Contato', ptText(co['contact'])), ('E-mail', ptEmail(co['email'])), ('Telefone', ptPhone(co['phone']))]),
+      pw.SizedBox(height: 6),
+      _box('Condições comerciais', [('Prazo padrão', _s(co['paymentTermName'])), ('Impostos usuais', tax)]),
+      if (places.isNotEmpty) ...[
+        pw.SizedBox(height: 10),
+        pw.Text('Locais de entrega', style: _b(10)),
+        pw.SizedBox(height: 3),
+        for (final (i, a) in places.indexed)
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 5),
+            child: _box(i == 0 ? 'Local padrão' : 'Local ${i + 1}', [('Endereço', line(a)), ('Contato', ptText(a['buyer'])), ('E-mail', ptEmail(a['email'])), ('Telefone', ptPhone(a['phone']))]),
+          ),
+      ],
+    ],
+    header: (_) => _header('Ficha do cliente', code, issuer),
+  );
+}
+
 /// Simulação de preço: one A4 sheet with the measures, the suggested price and the similar sales it came from. It is an internal working paper,
 /// never a proposal. [s] is the plain data the simulator screen collects (see `PriceSimulatorPanel`): shape, measures, spec, customer, quantity,
 /// netKg, grossKg, lossPercent, pricePerKg, pricePerPiece, low, high, total, confidence, reason, warning, markupPercent, costPerKg, margin, note, date, similar.
