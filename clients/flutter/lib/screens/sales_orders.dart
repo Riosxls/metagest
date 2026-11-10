@@ -684,7 +684,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
   }
 
   /// Opens the Emitir nota fiscal step: a simulation of the order's NF and the checklist of what is missing before the real emission.
-  Widget _invoiceButton(Map<String, dynamic> o) => OutlinedButton.icon(
+  Widget _invoiceButton(Map<String, dynamic> o) => FilledButton.icon(
     key: const ValueKey('order-invoice'),
     onPressed: () => unawaited(openOrderInvoice(context, s, o['id'] as int).then((_) => _load())),
     icon: const Icon(Icons.request_quote_outlined),
@@ -710,7 +710,8 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     // One key either way: it is "the delivery button" of the card.
     final key = ValueKey(planned == null ? 'order-deliver' : 'order-ship-delivery');
     return [
-      primary ? FilledButton.icon(key: key, onPressed: onPressed, icon: Icon(icon), label: Text(label)) : OutlinedButton.icon(key: key, onPressed: onPressed, icon: Icon(icon), label: Text(label)),
+      // Every button that moves the order forward is the same filled colour, whether or not it is the main action of the card.
+      FilledButton.icon(key: key, onPressed: onPressed, icon: Icon(icon), label: Text(label)),
     ];
   }
 

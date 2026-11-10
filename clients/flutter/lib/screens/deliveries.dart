@@ -448,7 +448,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   }
 
   Widget _emitInvoiceButton() =>
-      OutlinedButton.icon(key: const ValueKey('delivery-emit-invoice'), onPressed: _emitInvoice, icon: const Icon(Icons.receipt_long_outlined), label: const Text('Emitir NF'));
+      FilledButton.icon(key: const ValueKey('delivery-emit-invoice'), onPressed: _emitInvoice, icon: const Icon(Icons.receipt_long_outlined), label: const Text('Emitir NF'));
 
   Widget _nextStep(Map<String, dynamic> d) => switch (d['status']) {
     'Planned' => NextStepCard(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../entities.dart';
@@ -188,8 +190,12 @@ class StagePath extends StatelessWidget {
                     message: onStep?.call(i) == null ? s.label : 'Abrir: ${s.label}',
                     child: ClipPath(
                       clipper: _Chevron(first: i == 0, last: i == steps.length - 1),
-                      child: Container(
+                      // The step in progress shimmers (a light band sweeping across it) for a while after it shows, so the eye finds where the record is.
+                      child: _Sheen(
+                        enabled: i == current && !failed,
+                        builder: (context, sheen) => Container(
                         key: ValueKey('path-$i'),
+                        foregroundDecoration: sheen,
                         height: 44,
                         margin: const EdgeInsets.only(right: 2),
                         // Narrow bars hold up to nine steps: the padding shrinks so each icon still fits its chevron.
@@ -228,6 +234,7 @@ class StagePath extends StatelessWidget {
                           ],
                         ),
                       ),
+                      ),
                     ),
                   ),
                 ),
@@ -251,6 +258,63 @@ class StagePath extends StatelessWidget {
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+}
+
+/// Sweeps a light band across the step in progress, left to right, [_runs] times (about 3.5 s), then rests; nothing moves when the system asks for reduced motion.
+class _Sheen extends StatefulWidget {
+  const _Sheen({required this.enabled, required this.builder});
+
+  final bool enabled;
+  final Widget Function(BuildContext context, Decoration? sheen) builder;
+
+  @override
+  State<_Sheen> createState() => _SheenState();
+}
+
+class _SheenState extends State<_Sheen> with SingleTickerProviderStateMixin {
+  static const _runs = 3;
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+  int _done = 0;
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started || !widget.enabled || MediaQuery.disableAnimationsOf(context)) return;
+    _started = true;
+    _c.addStatusListener((s) {
+      if (s == AnimationStatus.completed && ++_done < _runs && mounted) unawaited(_c.forward(from: 0));
+    });
+    unawaited(_c.forward());
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.enabled) return widget.builder(context, null);
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        if (!_c.isAnimating) return widget.builder(context, null);
+        final t = Curves.easeInOut.transform(_c.value) * 1.5 - 0.25; // from just left of the step to just right of it
+        double at(double v) => v.clamp(0.0, 1.0);
+        return widget.builder(
+          context,
+          BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: 0.55), Colors.white.withValues(alpha: 0)],
+              stops: [at(t - 0.18), at(t), at(t + 0.18)],
+            ),
+          ),
         );
       },
     );
