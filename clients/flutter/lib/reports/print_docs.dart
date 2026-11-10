@@ -501,7 +501,7 @@ pw.Widget _specBox({required String dimensions, required String quantity, requir
   _formRow([(1, _lbl('OBSERVAÇÕES:', notes))], lastRow: true),
 ]);
 
-/// A form that always prints on ONE A4 sheet: the blocks keep their size while they fit and shrink together when the process has many operations, so nothing is cut off
+/// A form that always prints on ONE A4 sheet: the blocks keep their size while they fit and shrink together when the process has many operations, and the sheet is centered on the page both ways, so nothing is cut off
 /// and no second page is needed.
 Future<Uint8List> _formsFlow(String title, List<pw.Widget> blocks) async {
   final doc = pw.Document(title: title, theme: await _theme());
@@ -512,7 +512,7 @@ Future<Uint8List> _formsFlow(String title, List<pw.Widget> blocks) async {
       margin: margin,
       build: (_) => pw.FittedBox(
         fit: pw.BoxFit.scaleDown,
-        alignment: pw.Alignment.topCenter,
+        alignment: pw.Alignment.center,
         child: pw.SizedBox(width: PdfPageFormat.a4.width - margin.horizontal, child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: blocks)),
       ),
     ),
