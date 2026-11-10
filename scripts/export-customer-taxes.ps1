@@ -6,6 +6,8 @@
 .DESCRIPTION
   One xlsx per order, sheet 1, read as zip + XML (no Excel). Cells are found by their label: CLIENTE:, CNPJ:, ESTADO:, ICMS:, I.P.I:, DATA.
   A rate stored as a fraction (0.0325) becomes a percentage (3.25). The order number comes from the file name (PEDIDO 04183-25 ...).
+  The same sheets carry the customer's registration (END, BAIRRO, MUNICIPIO, CEP, I.E, CONTATO, TEL/FAX, E-mail, PRAZO); with -CreateMissing the API also registers the
+  customers that are on orders but not in the cadastro, one per CNPJ, with the data of their latest order (preview first, -Apply to save).
   Nothing is written to the database. Send the file with -Send (asks the API first with apply=false and prints who would get what), then -Apply to save.
   The file is git-ignored (customer-taxes*.json).
 
@@ -17,7 +19,8 @@ param(
     [string]$Api = 'http://localhost:8080',
     [switch]$Send,
     [switch]$Apply,
-    [switch]$Overwrite
+    [switch]$Overwrite,
+    [switch]$CreateMissing
 )
 
 $ErrorActionPreference = 'Stop'
@@ -90,6 +93,17 @@ public static class TaxReader
         if (!double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out v)) return null;
         return v;
     }
+    // The text after the colon of a label cell ("BAIRRO:JD JAPAO"); an empty field never borrows the next label of the row.
+    static string After(List<Cell> cells, Pattern p)
+    {
+        Cell label = cells.Where(x => Regex.IsMatch(x.Fold, p.Re)).OrderBy(x => x.Row).ThenBy(x => x.Col).FirstOrDefault();
+        if (label == null) return "";
+        int i = label.Text.IndexOf(':');
+        if (i >= 0 && label.Text.Substring(i + 1).Trim().Length > 0) return label.Text.Substring(i + 1).Trim();
+        Cell next = cells.Where(x => x.Row == label.Row && x.Col > label.Col).OrderBy(x => x.Col).FirstOrDefault();
+        return next == null || next.Text.Contains(":") ? "" : next.Text;
+    }
+    class Pattern { public string Re; public Pattern(string re) { Re = re; } }
     static string Value(List<Cell> cells, Cell label)
     {
         int i = label.Text.IndexOf(':');
@@ -122,7 +136,14 @@ public static class TaxReader
         Func<double?, string> f = v => v == null ? "" : (v.Value > 0 && v.Value < 1 ? v.Value * 100 : v.Value).ToString("0.####", CultureInfo.InvariantCulture);
         string name = cust == null ? "" : Value(cells, cust);
         string ufv = uf == null ? "" : (Value(cells, uf) ?? "");
-        return string.Join(";", new[] { Path.GetFileName(path), (name ?? "").Replace(";", ","), ufv.Replace(";", ","), date, f(icmsV), f(ipiV), cnpjV });
+        string[] extra = new[] {
+            After(cells, new Pattern(@"^END\s?:")), After(cells, new Pattern(@"^BAIRRO\s?:")), After(cells, new Pattern(@"^MUNICIPIO\s?:")),
+            After(cells, new Pattern(@"^CEP\s?:")), After(cells, new Pattern(@"^I\.?\s?E\s?:")), After(cells, new Pattern(@"^CONTATO\s?:")),
+            After(cells, new Pattern(@"^TEL")), After(cells, new Pattern(@"^E\s?-?\s?MAIL\s?:")), After(cells, new Pattern(@"^PRAZO DE PAG"))
+        };
+        List<string> parts = new List<string> { Path.GetFileName(path), (name ?? "").Replace(";", ","), ufv.Replace(";", ","), date, f(icmsV), f(ipiV), cnpjV };
+        parts.AddRange(extra.Select(e => (e ?? "").Replace(";", ",").Trim()));
+        return string.Join(";", parts);
     }
 }
 '@
@@ -140,9 +161,18 @@ Get-ChildItem $Folder -Filter '*.xlsx' | Where-Object { $_.Name -notlike '~$*' }
         uf        = $p[2]
         icms      = (& $num $p[4])
         ipi       = (& $num $p[5])
+        street    = $p[7]
+        district  = $p[8]
+        city      = $p[9]
+        zipCode   = ($p[10] -replace '\D', '')
+        stateRegistration = $p[11]
+        contact   = $p[12]
+        phone     = $p[13]
+        email     = $p[14]
+        paymentTerm = $p[15]
     })
 }
-$body = [pscustomobject]@{ apply = [bool]$Apply; overwrite = [bool]$Overwrite; rows = $rows }
+$body = [pscustomobject]@{ apply = [bool]$Apply; overwrite = [bool]$Overwrite; createMissing = [bool]$CreateMissing; rows = $rows }
 [IO.File]::WriteAllText($Out, ($body | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding($false)))
 Write-Host "$($rows.Count) pedidos lidos -> $Out"
 
@@ -153,6 +183,12 @@ if ($Send) {
     $h = @{ Authorization = "Bearer $($login.token)" }
     $res = Invoke-RestMethod -Method Post -Uri "$Api/api/customers/tax-import" -Headers $h -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 4)))
     $res.matches | Select-Object customerId, customerName, matchedBy, orders, ipi, icms, applied | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+    if ($CreateMissing) {
+        Write-Host "Cadastrados agora ($($res.created.Count)):"
+        $res.created | ForEach-Object { Write-Host "  $_" }
+        Write-Host "Nome ambiguo, nao cadastrados ($($res.ambiguous.Count)):"
+        $res.ambiguous | ForEach-Object { Write-Host "  $_" }
+    }
     Write-Host "Sem cliente no cadastro ($($res.unmatched.Count)):"
     $res.unmatched | ForEach-Object { Write-Host "  $_" }
     if (-not $Apply) { Write-Host 'Pre-visualizacao: nada foi gravado. Rode de novo com -Apply.' }

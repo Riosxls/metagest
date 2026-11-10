@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ebt.Api.Endpoints;
+using Ebt.Api.Infrastructure;
 using Ebt.Core.Entities;
 using Ebt.Core.Sales;
 
@@ -112,5 +113,50 @@ public class CustomerTaxTests(ApiFixture api)
         var body = new CustomerTaxImportIn(false, false, [new("1-25", null, "x", null, null, 18m, 5m)]);
         Assert.Equal(System.Net.HttpStatusCode.Unauthorized, (await anon.Post("/api/customers/tax-import", body)).StatusCode);
         Assert.Equal(System.Net.HttpStatusCode.Forbidden, (await (await api.UserAsync(UserRole.Sales)).Post("/api/customers/tax-import", body)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Customers_on_the_orders_but_not_in_the_cadastro_are_registered_with_the_data_of_their_latest_order()
+    {
+        var admin = await api.AdminAsync();
+        var word = Word();
+        var cnpj = Cnpj();
+        var known = await (await admin.Post("/api/customers", new CustomerIn("Ja Cadastrada " + Code("K", 8), null, null, ConsumerType.Normal, Company: Company(Cnpj())))).Read<CustomerOut>();
+        var rows = new List<TaxOrderRow>
+        {
+            new("00001-24", new DateOnly(2024, 1, 5), $"{word.ToUpper()} COMERCIAL LTDA", cnpj, "SP", 18m, 5m, "RUA ANTIGA, 10", "CENTRO", "SAO PAULO", "01000-000", "111.222.333.444", "SR. ANTIGO", "(11) 1111-1111", "antigo@x.com", "30 DDL"),
+            new("00002-26", new DateOnly(2026, 3, 1), $"{word.ToUpper()} COMERCIAL LTDA", cnpj, "SP", 18m, 3.25m, "RUA ARISUGAWA,153", "JD JAPAO", "SAO PAULO", "03228 - 000", "115.467.772.113", "SR.ANTONIO", "(11) 2982 - 5522", "Antonio@Jetro.com.br", "30/45/60 DDL"),
+            new("00003-26", null, $"Sem Cnpj {word}", null, "RS", 12m, 3.25m),
+        };
+
+        var preview = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(false, false, rows, true))).Read<CustomerTaxResult>();
+        Assert.Equal(2, preview.Created!.Count);
+        Assert.Empty((await (await admin.GetAsync($"/api/customers?q={word}")).Read<Page<System.Text.Json.JsonElement>>()).Items);
+
+        var applied = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, false, rows, true))).Read<CustomerTaxResult>();
+        Assert.Equal(2, applied.Created!.Count);
+        Assert.Equal(2, applied.Matches.Count); // the new customers also get their rates
+        var page = await (await admin.GetAsync($"/api/customers?q={word}")).Read<Page<System.Text.Json.JsonElement>>();
+        Assert.Equal(2, page.Items.Count);
+        var company = page.Items.Single(i => i.GetProperty("name").GetString()!.Contains("Comercial", StringComparison.OrdinalIgnoreCase));
+        var read = await (await admin.GetAsync($"/api/customers/{company.GetProperty("id").GetInt32()}")).Read<CustomerOut>();
+        Assert.EndsWith("Comercial Ltda", read.Name);
+        Assert.Equal(cnpj, read.Company!.Document);
+        Assert.Equal("Rua Arisugawa", read.Company.Street);
+        Assert.Equal("153", read.Company.Number);
+        Assert.Equal("Jd Japao", read.Company.District);
+        Assert.Equal("Sao Paulo", read.Company.City);
+        Assert.Equal("SP", read.Company.Uf);
+        Assert.Equal("03228000", read.Company.ZipCode);
+        Assert.Equal("115.467.772.113", read.Company.StateRegistration);
+        Assert.True(read.Company.IcmsContributor);
+        Assert.Equal("antonio@jetro.com.br", read.Company.Email);
+        Assert.Equal(3.25m, read.Company.IpiPercent); // from the latest order
+
+        // A second run finds them by CNPJ and name: nothing is created twice.
+        var again = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, false, rows, true))).Read<CustomerTaxResult>();
+        Assert.Empty(again.Created!);
+        Assert.Equal(2, (await (await admin.GetAsync($"/api/customers?q={word}")).Read<Page<System.Text.Json.JsonElement>>()).Items.Count);
+        Assert.NotEqual(0, known.Id);
     }
 }
