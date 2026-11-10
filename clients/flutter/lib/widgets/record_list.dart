@@ -50,7 +50,7 @@ class RecordList extends StatefulWidget {
     this.rowBuilder,
     this.groupOf,
     this.listHeader,
-    this.pillSearch = false,
+    this.pillSearch = true,
   });
 
   /// A contact-style list: each row is drawn by the screen (avatar, name, a few columns), grouped under letters by [groupOf], in place of the table and the cards.
@@ -62,7 +62,7 @@ class RecordList extends StatefulWidget {
   /// Column titles above a wide [rowBuilder] list.
   final Widget? listHeader;
 
-  /// Rounded, borderless search field (as in contact apps) instead of the outlined one.
+  /// Rounded, borderless search field (as in contact apps); false gives the outlined one.
   final bool pillSearch;
 
   /// Room left under the last row (and the pager) so the floating button never hides it; null is 88 with a [fab], 80 without.
@@ -122,6 +122,10 @@ class RecordListState extends State<RecordList> {
   Timer? _debounce;
   final _search = TextEditingController();
   final _vertical = ScrollController();
+
+  /// Width the list was last given (the table stretches to it); part of the cache key of the column widths.
+  double? _availWidth;
+  double? _widthsAvail;
   final _horizontal = ScrollController();
   final _headerHorizontal = ScrollController();
   final _filterTick = ValueNotifier<int>(0);
@@ -387,6 +391,7 @@ class RecordListState extends State<RecordList> {
 
   Widget _buildBody(BuildContext context, BoxConstraints box) {
     final width = box.maxWidth.isFinite ? box.maxWidth : MediaQuery.sizeOf(context).width;
+    _availWidth = width;
     final wide = width >= 900;
     final collapseFilters = width < 600 && widget.filters.isNotEmpty;
     final page = _page;
@@ -587,7 +592,7 @@ class RecordListState extends State<RecordList> {
   List<double> _columnWidths(List<Map<String, dynamic>> items) {
     final scale = MediaQuery.textScalerOf(context).scale(10);
     final cached = _widths;
-    if (cached != null && identical(_widthsPage, _page) && _widthsScale == scale && cached.length == widget.columns.length) return cached;
+    if (cached != null && identical(_widthsPage, _page) && _widthsScale == scale && _widthsAvail == _availWidth && cached.length == widget.columns.length) return cached;
     final scaler = MediaQuery.textScalerOf(context);
     final head = _headStyle(), data = _dataStyle();
     double measure(String s, TextStyle style) {
@@ -605,9 +610,24 @@ class RecordListState extends State<RecordList> {
       }
       out.add(math.max(math.min(cells + 2, _maxCol), measure(c.label, head) + _sortSlot + 4).ceilToDouble());
     }
+    // A table narrower than its window leaves a blank band on the right: the text columns share the spare room, so the table always fills the width.
+    final avail = _availWidth;
+    if (avail != null && out.isNotEmpty) {
+      final extras = (widget.rowActions != null ? _actionsCol + _spacing : 0) + (_chevron ? _chevronCol + _spacing : 0);
+      final used = _margin * 2 + out.fold(0.0, (a, b) => a + b) + _spacing * (out.length - 1) + extras;
+      final grow = [for (var i = 0; i < out.length; i++) if (!widget.columns[i].numeric) i];
+      final base = grow.fold(0.0, (a, i) => a + out[i]);
+      if (used < avail && base > 0) {
+        final extra = avail - used - 1;
+        for (final i in grow) {
+          out[i] = (out[i] + extra * out[i] / base).floorToDouble();
+        }
+      }
+    }
     _widths = out;
     _widthsPage = _page;
     _widthsScale = scale;
+    _widthsAvail = avail;
     return out;
   }
 

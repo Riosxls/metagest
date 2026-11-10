@@ -148,7 +148,17 @@ class _ProductionOrdersScreenState extends State<ProductionOrdersScreen> {
             runSpacing: AppSpacing.xs,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text(productionStatuses[e['status']] ?? fmt(e['status'])),
+              StatusBadge(
+                productionStatuses[e['status']] ?? fmt(e['status']),
+                tone: switch (e['status']) {
+                  'Released' => Tone.info,
+                  'InProduction' => Tone.progress,
+                  'Stopped' => Tone.warning,
+                  'Finished' || 'Closed' => Tone.success,
+                  'Cancelled' => Tone.danger,
+                  _ => Tone.neutral,
+                },
+              ),
               // Colour alone does not say it: the row tint is backed by a word.
               if (productionLate(e)) const StatusBadge('Atrasada', tone: Tone.danger, icon: Icons.schedule),
             ],

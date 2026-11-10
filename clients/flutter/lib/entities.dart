@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'widgets/pipeline.dart' show StatusBadge, Tone;
+
 /// Kinds of input a form field can use in [EntitySpec] forms.
 enum FieldType { text, integer, decimal, boolean, choice, lookup, date, time }
 
@@ -178,7 +180,9 @@ String fmt(Object? v) {
   if (v == null) return '';
   if (v is bool) return v ? 'Sim' : 'Não';
   if (v is num) {
-    final s = v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
+    var s = v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
+    // A value that rounds to zero at four places (0.00001) is "0", not "0,".
+    if (s.endsWith('.')) s = s.substring(0, s.length - 1);
     return s.replaceAll('.', ',');
   }
   return '$v';
@@ -287,13 +291,23 @@ final products = EntitySpec(
     FieldSpec('processRevision', 'Revisão processo', advanced: true, lockWhenEditing: true, hint: 'Depois de criado, altere pela aba Revisões do produto'),
   ],
   columns: [
-    col('Código', 'code'),
+    // The code is what people read out and search by: it leads in bold.
+    ColumnSpec('Código', (e) => fmt(e['code']), cell: (context, e) => Text(fmt(e['code']), style: const TextStyle(fontWeight: FontWeight.w600))),
     col('Descrição', 'name'),
-    ColumnSpec('Tipo', (e) => kinds[e['kind']] ?? ''),
+    ColumnSpec(
+      'Tipo',
+      (e) => kinds[e['kind']] ?? '',
+      cell: (context, e) => (kinds[e['kind']] ?? '').isEmpty ? const SizedBox.shrink() : StatusBadge(kinds[e['kind']]!, tone: e['kind'] == 'Part' ? Tone.info : Tone.neutral),
+    ),
     col('NCM', 'ncm'),
     col('Peso (kg)', 'netWeightKg', numeric: true),
-    col('Operações', 'operationCount', numeric: true),
-    ColumnSpec('Bloqueado', (e) => e['blocked'] == true ? 'Sim' : ''),
+    // Zero operations is the usual case of a part still being engineered: a dash, not a column of zeros.
+    ColumnSpec('Operações', (e) => (e['operationCount'] is num && e['operationCount'] > 0) ? fmt(e['operationCount']) : '', numeric: true),
+    ColumnSpec(
+      'Situação',
+      (e) => e['blocked'] == true ? 'Bloqueado' : 'Liberado',
+      cell: (context, e) => e['blocked'] == true ? const StatusBadge('Bloqueado', tone: Tone.danger, icon: Icons.block) : const SizedBox.shrink(),
+    ),
   ],
   whereUsed: true,
 );
@@ -329,9 +343,14 @@ final materials = EntitySpec(
     col('Descrição', 'description'),
     col('Subgrupo', 'subgroupName'),
     col('Un.', 'stockUnit'),
-    col('Espessura', 'thicknessMm', numeric: true),
+    // Always two decimals (0,60 / 1,00 / 1,50): the column reads as one, not as 0,6 over 1 over 1,5.
+    ColumnSpec('Espessura', (e) => e['thicknessMm'] is num ? fmtNum(e['thicknessMm'], 2) : '', numeric: true),
     col('NCM', 'ncm'),
-    ColumnSpec('Ativo', (e) => e['active'] == true ? 'Sim' : 'Não'),
+    ColumnSpec(
+      'Situação',
+      (e) => e['active'] == true ? 'Ativo' : 'Inativo',
+      cell: (context, e) => e['active'] == true ? const SizedBox.shrink() : const StatusBadge('Inativo', tone: Tone.neutral),
+    ),
   ],
   whereUsed: true,
 );

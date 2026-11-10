@@ -93,7 +93,6 @@ class _EntityListScreenState extends State<EntityListScreen> {
     path: spec.path,
     columns: spec.columns,
     searchable: spec.searchable,
-    pillSearch: isEmployee,
     rowBuilder: isEmployee ? _employeeRow : null,
     groupOf: isEmployee ? (e) => contactLetter('${e['name']}') : null,
     listHeader: isEmployee ? const ContactsHeader(titles: ['NOME', 'MATRÍCULA', 'APELIDO'], flex: [38, 14, 24]) : null,
