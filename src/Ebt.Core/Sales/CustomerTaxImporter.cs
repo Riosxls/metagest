@@ -80,6 +80,7 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
             if (Digits(ie).Length >= 5 && string.IsNullOrWhiteSpace(c.StateRegistration)) { filled = true; if (apply) { c.StateRegistration = ie; c.IcmsContributor = true; } }
             // The latest order is what the customer says today: a different IE on an order that carries the customer's own CNPJ replaces the cadastro one.
             else if (by == "CNPJ" && Digits(ie).Length >= 8 && Digits(ie) != Digits(c.StateRegistration)
+                && (Digits(c.StateRegistration).Length == 0 || Digits(c.StateRegistration).Length == Digits(ie).Length)
                 && orders.Count(o => Digits(o.Row.StateRegistration) == Digits(ie)) >= 2 && ieOwners.GetValueOrDefault(Digits(ie)) == 1)
             {
                 ieCorrected.Add($"{c.Name}: {c.StateRegistration} -> {ie}");
@@ -243,10 +244,16 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
             var um = Regex.Match(rest, @"[-/,]\s*([A-Za-z]{2})\s*$");
             if (um.Success) { uf = um.Groups[1].Value.ToUpperInvariant(); rest = rest[..um.Index]; }
             rest = rest.Trim(' ', ',', '-');
-            if (!string.IsNullOrWhiteSpace(c.City) && Letters(rest).EndsWith(Letters(c.City), StringComparison.Ordinal) && Letters(rest).Length >= Letters(c.City).Length)
+            if (!string.IsNullOrWhiteSpace(c.City))
             {
-                var cut = rest.LastIndexOf(c.City, StringComparison.OrdinalIgnoreCase);
-                if (cut >= 0) { district = rest[..cut].Trim(' ', ',', '-'); city = rest[cut..].Trim(); }
+                // The customer's own city closes the text ("Vila Nova York São Paulo"): its words, compared without accents or case, are the city and the rest is the district.
+                var words = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var n = c.City.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+                if (words.Length >= n && Letters(string.Concat(words[^n..])) == Letters(c.City))
+                {
+                    city = string.Join(' ', words[^n..]);
+                    district = string.Join(' ', words[..^n]).Trim(' ', ',', '-');
+                }
             }
             if (city is null && rest.Length > 0) district = rest;
         }
