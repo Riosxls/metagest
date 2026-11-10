@@ -458,34 +458,54 @@ pw.Widget _cellBox(String label, String value, {bool bold = false, double size =
 );
 
 /// Pede os dados da NF-e já emitida (número, chave e protocolo) e devolve null se cancelado.
-Future<NfFiscal?> askNfFiscal(BuildContext context, {String number = ''}) {
-  final n = TextEditingController(text: number);
-  final s = TextEditingController(text: '001');
-  final k = TextEditingController();
-  final p = TextEditingController();
-  return showDialog<NfFiscal>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Imprimir NF'),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: n, decoration: const InputDecoration(labelText: 'Nº da NF')),
-              TextField(controller: s, decoration: const InputDecoration(labelText: 'Série')),
-              TextField(controller: k, decoration: const InputDecoration(labelText: 'Chave de acesso (opcional)')),
-              TextField(controller: p, decoration: const InputDecoration(labelText: 'Protocolo de autorização (opcional)')),
-            ],
-          ),
+Future<NfFiscal?> askNfFiscal(BuildContext context, {String number = ''}) => showDialog<NfFiscal>(context: context, builder: (_) => _NfFiscalDialog(number: number));
+
+/// The dialog owns its four controllers and disposes them with itself (after its closing animation), so none is left behind per print.
+class _NfFiscalDialog extends StatefulWidget {
+  const _NfFiscalDialog({required this.number});
+
+  final String number;
+
+  @override
+  State<_NfFiscalDialog> createState() => _NfFiscalDialogState();
+}
+
+class _NfFiscalDialogState extends State<_NfFiscalDialog> {
+  late final _n = TextEditingController(text: widget.number);
+  final _s = TextEditingController(text: '001');
+  final _k = TextEditingController();
+  final _p = TextEditingController();
+
+  @override
+  void dispose() {
+    _n.dispose();
+    _s.dispose();
+    _k.dispose();
+    _p.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Imprimir NF'),
+    content: SizedBox(
+      width: 420,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: _n, decoration: const InputDecoration(labelText: 'Nº da NF')),
+            TextField(controller: _s, decoration: const InputDecoration(labelText: 'Série')),
+            TextField(controller: _k, decoration: const InputDecoration(labelText: 'Chave de acesso (opcional)')),
+            TextField(controller: _p, decoration: const InputDecoration(labelText: 'Protocolo de autorização (opcional)')),
+          ],
         ),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, NfFiscal(number: n.text.trim(), series: s.text.trim(), accessKey: k.text.trim(), protocol: p.text.trim())), child: const Text('Imprimir')),
-      ],
     ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+      FilledButton(onPressed: () => Navigator.pop(context, NfFiscal(number: _n.text.trim(), series: _s.text.trim(), accessKey: _k.text.trim(), protocol: _p.text.trim())), child: const Text('Imprimir')),
+    ],
   );
 }
 

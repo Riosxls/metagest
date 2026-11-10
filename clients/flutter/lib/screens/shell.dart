@@ -242,6 +242,9 @@ class _ShellState extends State<Shell> {
 
   /// Screens kept alive (filters, sort and scroll survive a visit elsewhere), keyed by [_key]. Oldest first.
   final _mounted = <String, ({String id, String? filter})>{};
+
+  /// The widget built for each kept page. Building it again on every Shell rebuild (alert timer, record trail, resize) gave every hidden screen a new widget to rebuild; the same instance is skipped by Flutter.
+  final _pageWidgets = <String, Widget>{};
   final _left = <String, DateTime>{};
   static const _keepFor = Duration(minutes: 3);
   static const _keepMax = 12;
@@ -461,7 +464,10 @@ class _ShellState extends State<Shell> {
   void _mount(String id, String? filter) {
     final k = _key(id, filter);
     final seen = _left[k];
-    if (id == 'dashboard' || (seen != null && DateTime.now().difference(seen) > _keepFor)) _mounted.remove(k);
+    if (id == 'dashboard' || (seen != null && DateTime.now().difference(seen) > _keepFor)) {
+      _mounted.remove(k);
+      _pageWidgets.remove(k); // a page left for long (or the Painel) is built again, so it reloads its data
+    }
     _mounted.removeWhere((key, t) => key != k && t.id == id);
     _mounted[k] = (id: id, filter: filter);
     while (_mounted.length > _keepMax) {
@@ -1190,6 +1196,7 @@ class _ShellState extends State<Shell> {
 
   Widget _pages() {
     final s = widget.session;
+    _pageWidgets.removeWhere((key, _) => !_mounted.containsKey(key));
     final stack = Stack(
       fit: StackFit.expand,
       children: [
@@ -1197,7 +1204,7 @@ class _ShellState extends State<Shell> {
           _PageSlot(
             key: ValueKey(e.key),
             active: e.key == _key(_current, _filter),
-            child: _items.firstWhere((i) => i.id == e.value.id).build(s, e.value.filter, _go),
+            child: _pageWidgets.putIfAbsent(e.key, () => _items.firstWhere((i) => i.id == e.value.id).build(s, e.value.filter, _go)),
           ),
       ],
     );
@@ -1375,7 +1382,8 @@ class _PageSlotState extends State<_PageSlot> with SingleTickerProviderStateMixi
         enabled: widget.active,
         child: ExcludeFocus(
           excluding: !widget.active,
-          child: FadeTransition(opacity: _fade, child: widget.child),
+          // Its own layer: a page painting (a table scrolling, a list loading) does not repaint the sidebar or the other pages.
+          child: RepaintBoundary(child: FadeTransition(opacity: _fade, child: widget.child)),
         ),
       ),
     ),

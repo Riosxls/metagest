@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show compute;
+
 import 'package:http/http.dart' as http;
 
 /// Error answer from the API: HTTP [status], a user-facing [message] and per-field validation messages in [fieldErrors].
@@ -96,6 +98,11 @@ class LruMap<K, V> {
 }
 
 /// HTTP client for the MetaGest API. Adds the bearer token, refreshes it silently on 401, sends the last seen version as `If-Match` on writes, and maps failures to [ApiException].
+/// Answers longer than this many bytes are decoded in an isolate.
+const _isolateDecodeFrom = 100 * 1024;
+
+dynamic _decodeJson(Uint8List bytes) => jsonDecode(utf8.decode(bytes));
+
 class ApiClient {
   // ignore: prefer_initializing_formals
   ApiClient({required String baseUrl, this.token, http.Client? client, this.onUnauthorized}) : _baseUrl = baseUrl, _http = client ?? http.Client();
@@ -270,7 +277,10 @@ class ApiClient {
       final tag = r.headers['etag'];
       final k = _versionKey(path);
       if (tag != null && k != null) _versions[k] = tag;
-      return r.body.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));
+      final bytes = r.bodyBytes;
+      if (bytes.isEmpty) return null;
+      // A big answer (a report, a list of 500) is parsed in another isolate so the screen does not freeze meanwhile; small ones are cheaper to parse in place.
+      return bytes.length > _isolateDecodeFrom ? await compute(_decodeJson, bytes) : _decodeJson(bytes);
     }
     throw _error(r, path);
   }

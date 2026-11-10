@@ -169,19 +169,20 @@ class _NewQuotationDialogState extends State<NewQuotationDialog> {
                   ? const Center(child: CircularProgressIndicator())
                   : reqs.isEmpty
                   ? const Center(child: Text('Nenhuma requisição aprovada aguardando cotação'))
-                  : ListView(
-                      children: [
-                        for (final r in reqs)
-                          CheckboxListTile(
-                            dense: true,
-                            value: _selected.contains(r['id']),
-                            title: Text('${r['number']} · ${r['description']}'),
-                            subtitle: Text(
-                              '${fmt(r['approvedQuantity'] ?? r['quantity'])} ${r['unit']}${r['neededBy'] == null ? '' : ' · até ${fmtDay(r['neededBy'])}'}${r['department'] == null ? '' : ' · ${r['department']}'}',
-                            ),
-                            onChanged: (v) => setState(() => v == true ? _selected.add(r['id'] as int) : _selected.remove(r['id'])),
+                  : ListView.builder(
+                      itemCount: reqs.length,
+                      itemBuilder: (_, i) {
+                        final r = reqs[i];
+                        return CheckboxListTile(
+                          dense: true,
+                          value: _selected.contains(r['id']),
+                          title: Text('${r['number']} · ${r['description']}'),
+                          subtitle: Text(
+                            '${fmt(r['approvedQuantity'] ?? r['quantity'])} ${r['unit']}${r['neededBy'] == null ? '' : ' · até ${fmtDay(r['neededBy'])}'}${r['department'] == null ? '' : ' · ${r['department']}'}',
                           ),
-                      ],
+                          onChanged: (v) => setState(() => v == true ? _selected.add(r['id'] as int) : _selected.remove(r['id'])),
+                        );
+                      },
                     ),
             ),
             const Divider(),

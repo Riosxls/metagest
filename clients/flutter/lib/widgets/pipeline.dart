@@ -191,7 +191,9 @@ class StagePath extends StatelessWidget {
                     child: ClipPath(
                       clipper: _Chevron(first: i == 0, last: i == steps.length - 1),
                       // The step in progress shimmers (a light band sweeping across it) for a while after it shows, so the eye finds where the record is.
-                      child: _Sheen(
+                      // The shimmer repaints the step every frame for a few seconds: its own layer keeps that from repainting the whole record page.
+                      child: RepaintBoundary(
+                        child: _Sheen(
                         enabled: i == current && !failed,
                         builder: (context, sheen) => Container(
                         key: ValueKey('path-$i'),
@@ -233,6 +235,7 @@ class StagePath extends StatelessWidget {
                             ],
                           ],
                         ),
+                      ),
                       ),
                       ),
                     ),
