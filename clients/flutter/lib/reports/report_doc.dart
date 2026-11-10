@@ -100,7 +100,8 @@ class ReportDoc {
         ],
       ),
     );
-    return savePdf(doc);
+    // A long report is laid out in another isolate; a short one is faster saved right here.
+    return savePdf(doc, offThread: rows.length > 150);
   }
 }
 

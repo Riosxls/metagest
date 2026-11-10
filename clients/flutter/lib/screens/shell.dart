@@ -12,6 +12,7 @@ import '../session.dart';
 import '../widgets/alerts.dart';
 import '../widgets/command_palette.dart';
 import '../widgets/discard_guard.dart';
+import '../widgets/freeze_layout.dart';
 import '../widgets/record_nav.dart';
 import '../widgets/responsive.dart';
 import '../widgets/tab_frame.dart';
@@ -1383,7 +1384,8 @@ class _PageSlotState extends State<_PageSlot> with SingleTickerProviderStateMixi
         child: ExcludeFocus(
           excluding: !widget.active,
           // Its own layer: a page painting (a table scrolling, a list loading) does not repaint the sidebar or the other pages.
-          child: RepaintBoundary(child: FadeTransition(opacity: _fade, child: widget.child)),
+          // A hidden page keeps the constraints it had, so resizing the window lays out only the visible one.
+          child: RepaintBoundary(child: FadeTransition(opacity: _fade, child: FreezeLayout(frozen: !widget.active, child: widget.child))),
         ),
       ),
     ),

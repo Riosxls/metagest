@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show compute, debugPrint, kIsWeb, visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/widgets.dart' as pw;
 
@@ -28,8 +29,25 @@ Future<_Fonts> _loadFonts() => _loading ??= () async {
   }
 }();
 
-/// Final step of every builder: serializes the document. Kept in one place so the work can move off the UI thread without touching the builders.
-///
-/// A [pw.Document] holds page-building closures and font objects, which cannot be sent to another isolate; moving the layout there means building
-/// the whole document inside the isolate from plain data and font bytes. Until the builders take that shape, this runs on the calling isolate.
-Future<Uint8List> savePdf(pw.Document doc) => doc.save();
+/// Whether the last [savePdf] ran in another isolate; for tests.
+@visibleForTesting
+bool lastSaveOffThread = false;
+
+/// Final step of every builder: lays out and serializes the document. With [offThread] (a long report: thousands of table rows) the work runs in another isolate, so the
+/// screen does not freeze while the pages are laid out; the document travels with its page closures and fonts, and when that cannot be sent (a closure capturing something that
+/// cannot cross isolates, or the web, which has none) it is saved here instead. Short papers stay on the calling isolate: copying them costs more than saving them.
+Future<Uint8List> savePdf(pw.Document doc, {bool offThread = false}) async {
+  lastSaveOffThread = false;
+  if (offThread && !kIsWeb) {
+    try {
+      final bytes = await compute(_saveInIsolate, doc);
+      lastSaveOffThread = true;
+      return bytes;
+    } catch (e) {
+      debugPrint('pdf: could not save in an isolate, saving here: $e');
+    }
+  }
+  return doc.save();
+}
+
+Future<Uint8List> _saveInIsolate(pw.Document doc) => doc.save();
