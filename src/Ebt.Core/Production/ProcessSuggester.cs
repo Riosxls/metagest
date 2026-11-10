@@ -10,7 +10,7 @@ namespace Ebt.Core.Production;
 public enum ProcessSource { PreviousOrder, TemplateCustomer, TemplateDims, Rules }
 
 /// <summary>Kind of shop-floor operation, read from the words of its description (or of the resource written on the legacy paper).</summary>
-public enum OperationKind { Other, Profile, Draw, StraightenCut, Inspection, Brush, Polish }
+public enum OperationKind { Other, Profile, Draw, StraightenCut, Inspection, Brush, Polish, Saw }
 
 public sealed record SuggestedOperation(int Sequence, string Description, string? Tolerance, string? MeasureStart, string? MeasureEnd, int? MachineId, string? MachineCode, string? MachineName);
 
@@ -38,6 +38,7 @@ public sealed class MachineIndex
             OperationKind.Inspection => Find("INSPE"),
             OperationKind.Brush => Find("ESCOV"),
             OperationKind.Polish => Find("POLI"),
+            OperationKind.Saw => Find("SERRA"),
             _ => null
         };
     }
@@ -65,6 +66,8 @@ public sealed class ProcessSuggester(EbtDbContext db)
     public static OperationKind KindOf(string? text)
     {
         var t = Fold(text);
+        // Cutting the ends ("Cortar as pontas") and anything done on the band saw ("Serra de fita") is its own operation, before the generic "cut" of the straightening one.
+        if (t.Contains("SERRA") || t.Contains("PONTA")) return OperationKind.Saw;
         if (t.Contains("PERFIL")) return OperationKind.Profile;
         if (t.Contains("TREFIL")) return OperationKind.Draw;
         if (t.Contains("ENDIREIT") || t.Contains("CORT")) return OperationKind.StraightenCut;

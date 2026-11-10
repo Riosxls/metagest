@@ -10,7 +10,7 @@
     - date: the signature date cell above the "DATA" label near the bottom of sheet1 (Excel serial or dd.mm.yyyy / dd/mm/yyyy); otherwise the year of the
       order number suffix; a date in the future is pulled back a year;
     - operations (sheet2 "OP"): the rows between the cell starting "PROCESSOS SECUNDARIOS" and the cell starting "SOLICITA". Per row: column A = number,
-      E = description, I = requirement/tolerance, K = start, L = end, M = resource (Perfiladeira, Trefiladeira, Visual/Dimensional...). Rows without description
+      E (or F, typed one cell to the right in some rows) = description, I = requirement/tolerance, K = start, L = end, M = resource (Perfiladeira, Trefiladeira, Visual/Dimensional...). Rows without description
       (and the header rows) are dropped.
   Output: ';'-separated UTF-8 CSV, ONE ROW PER OPERATION, header
       of;date;customer;diameter;thickness;length;spec;seq;description;tolerance;start;end;resource
@@ -242,8 +242,16 @@ public static class ProcessReader
                 int last = to == null ? from.Row + 40 : to.Row - 1;
                 for (int r = from.Row + 1; r <= last; r++)
                 {
+                    // The description is in column E; some rows are typed one cell to the right (F).
                     string desc = At(op, r, 5);
+                    if (desc == null)
+                    {
+                        // Column F only counts on a real operation row: it has a resource in M, and the text is not a header or a footer of the sheet.
+                        string alt = At(op, r, 6), res = At(op, r, 13);
+                        if (alt != null && res != null && !Regex.IsMatch(Fold(alt) + " " + Fold(res), @"OPERACAO|DESCRICAO|INICIO|FINAL|RECURSO|MAQ|OBS|RESPONSAVEL|VALIDO|AVALIACAO")) desc = alt;
+                    }
                     if (desc == null || Fold(desc).StartsWith("DESCRICAO")) continue;
+                    desc = Regex.Replace(desc, @"^(?i)cortas?\s+as\s+pontas", "Cortar as pontas");
                     o.Ops.Add(new ProcessOp { Seq = At(op, r, 1), Description = desc, Tolerance = At(op, r, 9), Start = At(op, r, 11), End = At(op, r, 12), Resource = At(op, r, 13) });
                 }
             }

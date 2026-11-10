@@ -125,6 +125,9 @@ public class ProcessSuggestionTests(ApiFixture api)
         Assert.Equal(OperationKind.StraightenCut, ProcessSuggester.KindOf("Endireitar e Cortar 869"));
         Assert.Equal(OperationKind.Inspection, ProcessSuggester.KindOf("Inspeção Final"));
         Assert.Equal(OperationKind.Other, ProcessSuggester.KindOf("Beneficiamento"));
+        Assert.Equal(OperationKind.Saw, ProcessSuggester.KindOf("Cortar as pontas"));
+        Assert.Equal(OperationKind.Saw, ProcessSuggester.KindOf("Serra de fita"));
+        Assert.Equal(OperationKind.StraightenCut, ProcessSuggester.KindOf("Endireitar e Cortar 3000"));
         Assert.Equal(OperationKind.Other, ProcessSuggester.KindOf("Tratamento térmico"));
         // The resource written on the legacy paper decides before the description.
         Assert.Equal(5, ProcessSuggester.MachineFor(index, "Operação 10", "Perfiladeira")!.Id);
