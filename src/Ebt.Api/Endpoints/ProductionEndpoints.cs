@@ -284,6 +284,22 @@ public static class ProductionEndpoints
         g.MapPost("/bulk/fill-materials", async (BulkApplyIn i, ProductionService svc, CancellationToken ct) =>
             Results.Ok(await svc.BulkFillMaterialsAsync(i.Apply, ct))).RequireAuthorization(Policies.Admin);
 
+        // Every tube product without a routing gets its secondary process (see ProductionService.BulkFillRoutingAsync). Preview with apply:false.
+        g.MapPost("/bulk/fill-routing", async (BulkApplyIn i, ProductionService svc, EbtDbContext db, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            var result = await svc.BulkFillRoutingAsync(i.Apply, ct);
+            if (i.Apply)
+            {
+                db.AuditLog.Add(new AuditEntry
+                {
+                    At = DateTimeOffset.UtcNow, User = user.Identity?.Name, Entity = nameof(Product), EntityId = "bulk", Action = "FillRouting",
+                    Changes = System.Text.Json.JsonSerializer.Serialize(new { result.Matched, result.Done, result.Skipped })
+                });
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok(result);
+        }).RequireAuthorization(Policies.Admin);
+
         g.MapPost("/bulk/suggest-process", async (BulkApplyIn i, ProductionService svc, CancellationToken ct) =>
             Results.Ok(await svc.BulkSuggestProcessAsync(i.Apply, ct))).RequireAuthorization(Policies.Admin);
 

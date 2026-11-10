@@ -85,7 +85,7 @@ public sealed class ProcessSuggester(EbtDbContext db)
     {
         OperationKind.Profile or OperationKind.Draw => "± 0,10",
         OperationKind.StraightenCut => lengthMm is not > 0 ? "± 0,10" : lengthMm >= 2500 ? "+30" : lengthMm >= 500 ? "± 0,05" : "± 0,50",
-        OperationKind.Inspection => Dash,
+        OperationKind.Inspection or OperationKind.Saw => Dash,
         _ => null
     };
 

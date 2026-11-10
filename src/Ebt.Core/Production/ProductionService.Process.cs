@@ -160,6 +160,37 @@ public sealed partial class ProductionService
     }
 
     /// <summary>
+    /// Gives every tube product that has no routing its secondary process: the most common legacy process of the same tube (any customer) or, when the tube never appeared in the old
+    /// sheets, the generic rules (perfilar, trefilar to the diameter, endireitar e cortar to the length, inspeção final), with the machine of each operation. The routing is what a new OF copies, so
+    /// the process is on the paper from the first order. Components, coils, scrap and products without all three measures are left alone, and so is any product that already has a routing.
+    /// With <paramref name="apply"/> false it only counts; the sample lists code and where each process came from.
+    /// </summary>
+    public async Task<BulkResult> BulkFillRoutingAsync(bool apply, CancellationToken ct = default)
+    {
+        var products = await db.Products
+            .Where(p => !p.Blocked && p.Shape == TubeShape.Circular && p.DiameterMm > 0 && p.ThicknessMm > 0 && p.LengthMm > 0 && EF.Functions.ILike(p.Name, "TUB_%") && !p.Routing.Any())
+            .OrderBy(p => p.Code).ToListAsync(ct);
+        var machines = await MachineIndex.LoadAsync(db, ct);
+        var sample = new List<string>();
+        var done = 0;
+        foreach (var p in products)
+        {
+            // Without a legacy sheet the generic rules need the roll the tube is profiled from: 14,00 for everything it can be drawn down from.
+            var suggestion = await Suggester.SuggestAsync(p, p.DiameterMm < 14 ? "Rolo 14,00" : null, null, ct, machines: machines);
+            if (suggestion.Operations.Count == 0) continue;
+            if (sample.Count < 30) sample.Add($"{p.Code} ({suggestion.Source}{(suggestion.SourceRef is null ? "" : " " + suggestion.SourceRef)}): {string.Join(" > ", suggestion.Operations.Select(o => o.Description))}");
+            if (apply)
+            {
+                foreach (var op in suggestion.Operations)
+                    db.RoutingOperations.Add(new RoutingOperation { ProductId = p.Id, Sequence = op.Sequence, Description = Clean(op.Description), MachineId = op.MachineId });
+            }
+            done++;
+        }
+        if (apply) await db.SaveChangesAsync(ct);
+        return new BulkResult(products.Count, apply ? done : 0, products.Count - done, sample);
+    }
+
+    /// <summary>
     /// Writes the suggested process on every OF that is still only created and has none, so the paper is never printed empty.
     /// With <paramref name="apply"/> false it only counts. Each process comes from <see cref="ProcessSuggester"/> (last OF of the customer, legacy template, rules).
     /// </summary>

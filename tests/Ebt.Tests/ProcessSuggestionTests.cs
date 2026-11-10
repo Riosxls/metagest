@@ -592,4 +592,31 @@ public class ProcessSuggestionTests(ApiFixture api)
         var json = await (await admin.GetAsync($"/api/production/orders/{order.Id}")).Content.ReadAsStringAsync();
         Assert.Contains("\"machineName\"", json);
     }
+
+    [Fact]
+    public async Task The_bulk_tool_gives_a_tube_product_without_routing_its_secondary_process_once()
+    {
+        var admin = await api.AdminAsync();
+        var d = NewDiameter();
+        var product = await (await admin.Post("/api/products", new ProductIn(Code("R"), "TUBO-C " + d + " X 1 X 3000", ProductKind.Part, TubeShape.Circular, d, null, null, 1m, 3000m, null, null, "73063000", "PC", null, false, null, null))).Read<ProductOut>();
+        var coil = await (await admin.Post("/api/products", new ProductIn(Code("B"), "BOBINA " + d, ProductKind.Part, TubeShape.Circular, d, null, null, 1m, 3000m, null, null, "72112300", "PC", null, false, null, null))).Read<ProductOut>();
+
+        var reader = await api.UserAsync(UserRole.Production);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.Post("/api/production/orders/bulk/fill-routing", new BulkApplyIn(false))).StatusCode);
+        var preview = await (await admin.Post("/api/production/orders/bulk/fill-routing", new BulkApplyIn(false))).Read<BulkResult>();
+        Assert.True(preview.Matched >= 1);
+        Assert.Equal(0, preview.Done);
+        Assert.Empty(await (await admin.GetAsync($"/api/products/{product.Id}/routing")).Read<List<RoutingOperationOut>>());
+
+        var applied = await (await admin.Post("/api/production/orders/bulk/fill-routing", new BulkApplyIn(true))).Read<BulkResult>();
+        Assert.True(applied.Done >= 1);
+        var routing = await (await admin.GetAsync($"/api/products/{product.Id}/routing")).Read<List<RoutingOperationOut>>();
+        Assert.Contains(routing, o => o.Description!.StartsWith("Perfilar"));
+        Assert.Contains(routing, o => o.Description!.StartsWith("Endireitar e Cortar 3000"));
+        Assert.Equal("Inspeção Final", routing.OrderBy(o => o.Sequence).Last().Description);
+        // A coil is not a tube to draw: it keeps no routing. Running it again adds nothing.
+        Assert.Empty(await (await admin.GetAsync($"/api/products/{coil.Id}/routing")).Read<List<RoutingOperationOut>>());
+        await admin.Post("/api/production/orders/bulk/fill-routing", new BulkApplyIn(true));
+        Assert.Equal(routing.Count, (await (await admin.GetAsync($"/api/products/{product.Id}/routing")).Read<List<RoutingOperationOut>>()).Count);
+    }
 }
