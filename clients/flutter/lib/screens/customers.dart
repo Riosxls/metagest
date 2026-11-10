@@ -1,15 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api.dart';
 import '../entities.dart';
 import '../labels.dart';
+import '../reports/pt_text.dart' show ptPhone;
 import '../session.dart';
 import '../theme_tokens.dart';
 import '../widgets/entity_form.dart';
 import '../widgets/load_error.dart';
-import '../widgets/pipeline.dart' show Tone, toneAccent;
+import '../widgets/pipeline.dart' show StatusBadge, Tone, toneAccent;
 import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
 import 'receivables.dart';
@@ -179,6 +181,15 @@ final _shippingFields = [
       ),
 ];
 
+String _orDash(String s) => s.trim().isEmpty ? '—' : s;
+
+/// Initials for the avatar: the first letters of the first two words ("Metalúrgica Gepela Ltda." -> "MG").
+String _initials(String name) {
+  final words = name.trim().split(RegExp(r'\s+')).where((w) => RegExp(r'^[A-Za-zÀ-ú]').hasMatch(w)).toList();
+  if (words.isEmpty) return '?';
+  return (words.first[0] + (words.length > 1 ? words[1][0] : '')).toUpperCase();
+}
+
 /// Customer list with search and creation.
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key, required this.session});
@@ -236,11 +247,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
     columns: [
       col('Cliente', 'name'),
       col('Fantasia', 'tradeName'),
-      ColumnSpec('CNPJ/CPF', (e) => fmtDocument(_company(e)?['document'])),
-      ColumnSpec('Cidade', (e) => _company(e)?['city'] == null ? '' : '${_company(e)!['city']}/${_company(e)!['uf'] ?? ''}'),
-      ColumnSpec('Contato', (e) => fmt(_company(e)?['contact'])),
-      ColumnSpec('E-mail', (e) => fmt(_company(e)?['email'])),
-      ColumnSpec('Telefone', (e) => fmt(_company(e)?['phone'])),
+      ColumnSpec('CNPJ/CPF', (e) => _orDash(fmtDocument(_company(e)?['document']))),
+      ColumnSpec('Cidade', (e) => _company(e)?['city'] == null ? '—' : '${_company(e)!['city']}/${_company(e)!['uf'] ?? ''}'),
+      // A dash says the data is missing (to be asked for), instead of an empty cell that looks like a display slip.
+      ColumnSpec('Contato', (e) => _orDash(fmt(_company(e)?['contact']))),
+      ColumnSpec('E-mail', (e) => _orDash(fmt(_company(e)?['email']))),
+      ColumnSpec('Telefone', (e) => _orDash(ptPhone(_company(e)?['phone']))),
       ColumnSpec('Situação', (e) => e['active'] == true ? 'Ativo' : 'Inativo'),
     ],
     rowColor: (ctx, e) => e['active'] == true ? null : Theme.of(ctx).colorScheme.surfaceContainerHighest,
@@ -345,28 +357,136 @@ class _CustomerScreenState extends State<CustomerScreen> {
                 icon: Icon(_isActive ? Icons.block : Icons.check_circle_outline),
               ),
           ],
-          bottom: const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [
-              Tab(text: 'Empresa'),
-              Tab(text: 'Locais de entrega'),
-              Tab(text: 'Orçamentos'),
-              Tab(text: 'Pedidos'),
-            ],
-          ),
         ),
-        body: TabBarView(
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _CustomerCompany(session: s, customer: _c),
-            _CustomerAddresses(session: s, customerId: id),
-            _CustomerQuotes(session: s, customerId: id, customerName: '${_c['name']}'),
-            _CustomerOrders(session: s, customerId: id),
+            _CustomerHeader(customer: _c),
+            const TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: [
+                Tab(icon: Icon(Icons.business_outlined, size: 20), text: 'Empresa', iconMargin: EdgeInsets.only(bottom: 2)),
+                Tab(icon: Icon(Icons.local_shipping_outlined, size: 20), text: 'Locais de entrega', iconMargin: EdgeInsets.only(bottom: 2)),
+                Tab(icon: Icon(Icons.request_quote_outlined, size: 20), text: 'Orçamentos', iconMargin: EdgeInsets.only(bottom: 2)),
+                Tab(icon: Icon(Icons.receipt_long_outlined, size: 20), text: 'Pedidos', iconMargin: EdgeInsets.only(bottom: 2)),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _CustomerCompany(session: s, customer: _c),
+                  _CustomerAddresses(session: s, customerId: id),
+                  _CustomerQuotes(session: s, customerId: id, customerName: '${_c['name']}'),
+                  _CustomerOrders(session: s, customerId: id),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+/// The customer at a glance, above the tabs: avatar, trade name, situation, where it is and what it pays by default.
+class _CustomerHeader extends StatelessWidget {
+  const _CustomerHeader({required this.customer});
+
+  final Map<String, dynamic> customer;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final co = _company(customer);
+    final active = customer['active'] == true;
+    final trade = fmt(customer['tradeName']);
+    final city = fmt(co?['city']).isEmpty ? '' : '${co!['city']}/${fmt(co['uf'])}';
+    final term = fmt(co?['paymentTermName']);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Row(
+        children: [
+          CircleAvatar(
+            key: const ValueKey('customer-avatar'),
+            radius: 26,
+            backgroundColor: theme.colorScheme.primaryContainer,
+            child: Text(_initials('${customer['name']}'), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onPrimaryContainer, fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (trade.isNotEmpty) Text(trade, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    StatusBadge(active ? 'Ativo' : 'Inativo', tone: active ? Tone.success : Tone.neutral),
+                    if (city.isNotEmpty) StatusBadge(city, tone: Tone.info, icon: Icons.place_outlined),
+                    if (term.isNotEmpty) StatusBadge(term, tone: Tone.progress, icon: Icons.schedule),
+                    if (co?['icmsContributor'] == true) const StatusBadge('Contribuinte de ICMS', tone: Tone.neutral),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One line of the contact card: icon, label, value and a copy button; a missing value shows a dash.
+class _ContactLine extends StatelessWidget {
+  const _ContactLine({required this.icon, required this.label, required this.value});
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                Text(value.isEmpty ? '—' : value, style: theme.textTheme.bodyLarge?.copyWith(color: value.isEmpty ? theme.colorScheme.onSurfaceVariant : null)),
+              ],
+            ),
+          ),
+          if (value.isNotEmpty) _CopyButton(text: value, what: label),
+        ],
+      ),
+    );
+  }
+}
+
+class _CopyButton extends StatelessWidget {
+  const _CopyButton({required this.text, required this.what});
+
+  final String text;
+  final String what;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: 'Copiar $what',
+    icon: const Icon(Icons.copy_outlined, size: 18),
+    onPressed: () async {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$what copiado')));
+    },
+  );
 }
 
 class _CustomerCompany extends StatelessWidget {
@@ -379,31 +499,74 @@ class _CustomerCompany extends StatelessWidget {
   Widget build(BuildContext context) {
     final a = _company(customer);
     final filled = a != null && a.entries.any((e) => e.key != 'icmsContributor' && e.value != null && '${e.value}'.isNotEmpty);
+    final street = [a?['street'], a?['number'], a?['complement']].where((x) => x != null && '$x'.isNotEmpty).join(', ');
+    final place = [a?['district'], fmt(a?['city']).isEmpty ? null : '${a!['city']}/${fmt(a['uf'])}'].where((x) => x != null && '$x'.isNotEmpty).join(' · ');
+    final zip = fmt(a?['zipCode']);
+    final addressCopy = _addressLine(a);
+    final identity = Section(
+      title: 'Dados da empresa',
+      child: !filled
+          ? const Text('Sem dados cadastrados. Use o lápis (Editar cadastro) para informar CNPJ/CPF, endereço e contato.')
+          : InfoGrid([
+              ('Nome', fmt(customer['name'])),
+              ('Fantasia', fmt(customer['tradeName'])),
+              ('CNPJ/CPF', fmtDocument(a['document'])),
+              ('Inscrição estadual', fmt(a['stateRegistration'])),
+            ]),
+    );
+    final address = Section(
+      title: 'Endereço principal',
+      actions: [if (addressCopy.isNotEmpty) _CopyButton(text: addressCopy, what: 'endereço')],
+      child: addressCopy.isEmpty
+          ? const Text('Sem endereço cadastrado.')
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(street, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+                if (place.isNotEmpty) Text(place, style: Theme.of(context).textTheme.bodyLarge),
+                if (zip.isNotEmpty) Text('CEP $zip', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ],
+            ),
+    );
+    final contact = Section(
+      title: 'Contato',
+      child: Column(
+        children: [
+          _ContactLine(icon: Icons.person_outline, label: 'Contato', value: fmt(a?['contact'])),
+          _ContactLine(icon: Icons.mail_outline, label: 'E-mail', value: fmt(a?['email'])),
+          _ContactLine(icon: Icons.phone_outlined, label: 'Telefone', value: ptPhone(a?['phone'])),
+        ],
+      ),
+    );
+    final taxNote = fmt(a?['taxNote']);
+    final commercial = Section(
+      title: 'Condições comerciais',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InfoGrid([('Prazo padrão', fmt(a?['paymentTermName'])), ('IPI usual', _pct(a?['ipiPercent'])), ('ICMS usual', _pct(a?['icmsPercent']))]),
+          if (taxNote.isNotEmpty)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: const Text('Impostos nos pedidos anteriores'),
+                children: [Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(taxNote)))],
+              ),
+            ),
+        ],
+      ),
+    );
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Section(
-          title: 'Dados da empresa',
-          child: !filled
-              ? const Text('Sem dados cadastrados. Use o lápis (Editar cadastro) para informar CNPJ/CPF, endereço e contato.')
-              : InfoGrid([
-                  ('Nome', fmt(customer['name'])),
-                  ('Fantasia', fmt(customer['tradeName'])),
-                  ('CNPJ/CPF', fmtDocument(a['document'])),
-                  ('Inscrição estadual', fmt(a['stateRegistration'])),
-                  ('Endereço principal', _addressLine(a)),
-                  ('Cidade', fmt(a['city'])),
-                  ('UF', fmt(a['uf'])),
-                  ('CEP', fmt(a['zipCode'])),
-                  ('Contato', fmt(a['contact'])),
-                  ('E-mail', fmt(a['email'])),
-                  ('Telefone', fmt(a['phone'])),
-                  ('Prazo padrão', fmt(a['paymentTermName'])),
-                  ('IPI usual', _pct(a['ipiPercent'])),
-                  ('ICMS usual', _pct(a['icmsPercent'])),
-                  ('Impostos nos pedidos anteriores', fmt(a['taxNote'])),
-                ]),
+        identity,
+        LayoutBuilder(
+          builder: (context, box) => box.maxWidth >= 900
+              ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: address), Expanded(child: contact)])
+              : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [address, contact]),
         ),
+        commercial,
         _CustomerReceivable(
           session: session,
           customerId: customer['id'] as int,
@@ -642,20 +805,38 @@ class _CustomerAddressesState extends State<_CustomerAddresses> {
       onRetry: _reload,
       builder: (context, data) {
         final items = (data as List).cast<Map<String, dynamic>>();
-        if (items.isEmpty) return const Center(child: Text('Nenhum local de entrega'));
-        return ListView.separated(
-          padding: const EdgeInsets.only(bottom: 80),
+        if (items.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.local_shipping_outlined, size: 44, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                const SizedBox(height: 12),
+                const Text('Nenhum local de entrega'),
+                const SizedBox(height: 4),
+                Text('Sem local de entrega, vale o endereço principal da empresa.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ],
+            ),
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
           itemCount: items.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
           itemBuilder: (_, i) {
             final a = items[i];
-            final contact = [a['buyer'], a['email'], a['phone']].where((x) => x != null && '$x'.isNotEmpty).join(' · ');
-            return ListTile(
-              leading: i == 0 ? const Tooltip(message: 'Local padrão', child: Icon(Icons.star_outline)) : const Icon(Icons.place_outlined),
-              title: Text('${a['city'] == null ? 'Local ${a['id']}' : '${a['city']}/${a['uf']}'}${i == 0 ? '  (padrão)' : ''}'),
-              subtitle: Text([_addressLine(a), contact].where((x) => x.isNotEmpty).join('\n')),
-              isThreeLine: _addressLine(a).isNotEmpty && contact.isNotEmpty,
-              onTap: () => _edit(a),
+            final contact = [a['buyer'], a['email'], ptPhone(a['phone'])].where((x) => x != null && '$x'.isNotEmpty).join(' · ');
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                leading: i == 0 ? const Tooltip(message: 'Local padrão', child: Icon(Icons.star)) : const Icon(Icons.place_outlined),
+                title: Text('${a['city'] == null ? 'Local ${a['id']}' : '${a['city']}/${a['uf']}'}${i == 0 ? '  (padrão)' : ''}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text([_addressLine(a), contact].where((x) => x.isNotEmpty).join('\n')),
+                isThreeLine: _addressLine(a).isNotEmpty && contact.isNotEmpty,
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _edit(a),
+              ),
             );
           },
         );

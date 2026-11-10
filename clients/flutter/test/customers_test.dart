@@ -4,6 +4,7 @@ import 'package:ebt_engenharia/api.dart';
 import 'package:ebt_engenharia/screens/customers.dart';
 import 'package:ebt_engenharia/session.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -255,5 +256,25 @@ void main() {
     await _pump(tester, _Env(addresses: [_address(5)]), (s) => CustomerScreen(session: s, customer: _customer()), role: 'Reader');
     expect(find.byTooltip('Inativar'), findsNothing);
     expect(find.text('Editar'), findsNothing);
+  });
+
+  testWidgets('the customer page opens with a summary header and the contact card copies a value', (tester) async {
+    String? copied;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String?;
+      return null;
+    });
+    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    await _pump(tester, _Env(), (s) => CustomerScreen(session: s, customer: _customer()));
+    expect(find.byKey(const ValueKey('customer-avatar')), findsOneWidget);
+    expect(find.text('MA'), findsOneWidget);
+    expect(find.text('Ativo'), findsOneWidget);
+    expect(find.text('Sorocaba/SP'), findsWidgets);
+    expect(find.text('Endereço principal'), findsOneWidget);
+    expect(find.text('Contato'), findsWidgets);
+    await tester.tap(find.byTooltip('Copiar E-mail'));
+    await tester.pump();
+    expect(copied, 'a@alfa.com');
+    expect(find.text('E-mail copiado'), findsOneWidget);
   });
 }
