@@ -165,6 +165,8 @@ public sealed partial class ProductionService
     /// the process is on the paper from the first order. Components, coils, scrap and products without all three measures are left alone, and so is any product that already has a routing.
     /// With <paramref name="apply"/> false it only counts; the sample lists code and where each process came from.
     /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex ExternalTreatment = new("BENEFICIAMENTO|TRATAMENTO|RECOZ|ZINC|TERCEIR", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     public async Task<BulkResult> BulkFillRoutingAsync(bool apply, CancellationToken ct = default)
     {
         var products = await db.Products
@@ -177,12 +179,14 @@ public sealed partial class ProductionService
         {
             // Without a legacy sheet the generic rules need the roll the tube is profiled from: 14,00 for everything it can be drawn down from.
             var suggestion = await Suggester.SuggestAsync(p, p.DiameterMm < 14 ? "Rolo 14,00" : null, null, ct, machines: machines, stepDown: true);
-            if (suggestion.Operations.Count == 0) continue;
-            if (sample.Count < 30) sample.Add($"{p.Code} ({suggestion.Source}{(suggestion.SourceRef is null ? "" : " " + suggestion.SourceRef)}): {string.Join(" > ", suggestion.Operations.Select(o => o.Description))}");
+            // Outside treatments (annealing, galvanizing, "Beneficiamento Externo") were a requirement of one customer's order, not of the tube: they stay out of the product's routing.
+            var ops = suggestion.Operations.Where(o => !ExternalTreatment.IsMatch(ProcessSuggester.Fold(o.Description))).ToList();
+            if (ops.Count == 0) continue;
+            if (sample.Count < 30) sample.Add($"{p.Code} ({suggestion.Source}{(suggestion.SourceRef is null ? "" : " " + suggestion.SourceRef)}): {string.Join(" > ", ops.Select(o => o.Description))}");
             if (apply)
             {
-                foreach (var op in suggestion.Operations)
-                    db.RoutingOperations.Add(new RoutingOperation { ProductId = p.Id, Sequence = op.Sequence, Description = Clean(op.Description), MachineId = op.MachineId });
+                foreach (var (op, i) in ops.Select((o, i) => (o, i)))
+                    db.RoutingOperations.Add(new RoutingOperation { ProductId = p.Id, Sequence = (i + 1) * 10, Description = Clean(op.Description), MachineId = op.MachineId });
             }
             done++;
         }
