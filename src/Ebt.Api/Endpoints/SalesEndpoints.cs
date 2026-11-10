@@ -428,6 +428,18 @@ public static class SalesEndpoints
     {
         var g = app.MapGroup("/api/sales/orders").WithTags("Sales").RequireAuthorization(Policies.Read).AddEndpointFilter(new RowVersionFilter<SalesOrder>());
 
+        // "Cliente novo" / "Item novo" boxes of the pedido interno and the OF: is this the first order of the customer, and the first of this product for it?
+        // Looks at earlier sales orders and production orders (the imported legacy OFs hold the old history); test records do not count.
+        app.MapGet("/api/sales/customers/{customerId:int}/novelty", async (int customerId, int? productId, int? exceptOrderId, int? exceptProductionId, EbtDbContext db, CancellationToken ct) =>
+        {
+            var orders = db.SalesOrders.AsNoTracking().Where(o => o.CustomerId == customerId && o.Source != DataSource.Test && (exceptOrderId == null || o.Id < exceptOrderId));
+            var ofs = db.ProductionOrders.AsNoTracking().Where(o => o.CustomerId == customerId && o.Source != DataSource.Test && o.Status != ProductionOrderStatus.Cancelled && (exceptProductionId == null || o.Id < exceptProductionId));
+            var customerKnown = await orders.AnyAsync(ct) || await ofs.AnyAsync(ct);
+            var itemKnown = productId is { } p && (await db.SalesOrderLines.AsNoTracking().AnyAsync(l => l.ProductId == p && l.Order!.CustomerId == customerId && l.Order.Source != DataSource.Test && (exceptOrderId == null || l.OrderId < exceptOrderId), ct)
+                || await ofs.AnyAsync(o => o.ProductId == p, ct));
+            return Results.Ok(new { customerNew = !customerKnown, itemNew = !itemKnown });
+        }).RequireAuthorization(Policies.Read).WithTags("Sales");
+
         // Shortcut of the product picker: what this customer already bought or was quoted (newest first), then the products linked to it.
         app.MapGet("/api/sales/customers/{customerId:int}/products", async (int customerId, EbtDbContext db, int? take, CancellationToken ct) =>
         {

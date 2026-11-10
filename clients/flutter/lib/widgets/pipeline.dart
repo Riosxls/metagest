@@ -529,6 +529,8 @@ class NextStepCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final (bg, fg) = toneColors(context, tone);
     final theme = Theme.of(context);
+    // The button that moves the flow forward (the filled one) always sits last, at the right of the secondary ones.
+    final actions = [...this.actions.where((w) => w is! FilledButton), ...this.actions.whereType<FilledButton>()];
     return Card(
       color: bg,
       child: Padding(

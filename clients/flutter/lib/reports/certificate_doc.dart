@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../entities.dart';
 import 'pdf_theme.dart';
+import 'pt_text.dart';
 
 /// Letterhead of each company, as printed on the paper certificates.
 const _letterhead = {
@@ -112,11 +113,11 @@ Future<Uint8List> buildCertificatePdf(Map<String, dynamic> c) async {
                     _field('Nº Pedido:', _s(c['customerPo'])),
                     _field('Lote MP:', _s(c['rawMaterialLot'])),
                     _field('Quantidade:', qty),
-                    _field('N° do Produto:', _s(c['productCode'])),
-                    _field('Descrição:', _s(c['description'])),
+                    _field('Nº do Produto:', _s(c['productCode'])),
+                    _field('Descrição:', ptText(c['description'])),
                     _field('Código Cliente:', _s(c['customerPartNumber'])),
-                    _field('Descrição Cliente:', _s(c['customerPartDescription'])),
-                    _field('Cliente:', _s(c['customerName'])),
+                    _field('Descrição Cliente:', ptText(c['customerPartDescription'])),
+                    _field('Cliente:', ptText(c['customerName'])),
                   ],
                 ),
               ),

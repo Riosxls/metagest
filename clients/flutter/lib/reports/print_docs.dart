@@ -10,6 +10,7 @@ import '../labels.dart';
 import '../screens/customers.dart' show fmtDocument;
 import '../widgets/print_panel.dart' show printPdf;
 import 'pdf_theme.dart';
+import 'pt_text.dart';
 
 /// Dados da empresa no cabeçalho do orçamento, lidos dos parâmetros fiscais (`GET /api/fiscal/settings`). O que não foi cadastrado não é impresso:
 /// nada de CNPJ ou endereço inventado numa folha que vai ao cliente.
@@ -234,9 +235,9 @@ Future<Uint8List> buildQuotePdf(ApiClient api, Map<String, dynamic> q) async {
   final date = q['sentAt'] ?? q['createdAt'];
   return _build('Orçamento ${q['reference']}', () => [
     _box('Cliente', [
-      ('Nome', _s(q['customerName'])),
+      ('Nome', ptText(q['customerName'])),
       ('CNPJ', _customerDocument(customer)),
-      ('Endereço de entrega', _s(q['addressText'])),
+      ('Endereço de entrega', ptText(q['addressText'])),
     ]),
     pw.SizedBox(height: 6),
     _box('Orçamento', [
@@ -353,36 +354,90 @@ pw.Widget _checkLabel(bool checked, String label) => pw.Row(children: [_checkBox
 
 pw.Widget _codeLabel(String label, String value) => pw.Row(children: [pw.Text('$label  ', style: _t(8.5, bold: true)), pw.Text(value, style: _t(9, bold: true, color: _blue))]);
 
-pw.Widget _identBox({required String productCode, required String customerCode}) => _frame([
-  _formRow([(1, _checkLabel(false, 'CLIENTE NOVO')), (1, _checkLabel(true, 'CLIENTE CADASTRADO')), (1, _codeLabel('CÓD. PRODUTO:', productCode))], height: 26),
-  _formRow([(1, _checkLabel(false, 'ITEM NOVO')), (1, _checkLabel(false, 'ITEM JÁ FORNECIDO')), (1, _codeLabel('CÓD. CLIENTE:', customerCode))], height: 26, lastRow: true),
+/// [novelty] comes from GET /api/sales/customers/{id}/novelty: without it neither "novo" nor "já fornecido" box is ticked (blank is better than wrong).
+pw.Widget _identBox({required String productCode, required String customerCode, ({bool customerNew, bool itemNew})? novelty}) => _frame([
+  _formRow([
+    (1, _checkLabel(novelty?.customerNew == true, 'CLIENTE NOVO')),
+    (1, _checkLabel(novelty != null && !novelty.customerNew, 'CLIENTE CADASTRADO')),
+    (1, _codeLabel('CÓD. PRODUTO:', productCode)),
+  ], height: 26),
+  _formRow([
+    (1, _checkLabel(novelty?.itemNew == true, 'ITEM NOVO')),
+    (1, _checkLabel(novelty != null && !novelty.itemNew, 'ITEM JÁ FORNECIDO')),
+    (1, _codeLabel('CÓD. CLIENTE:', customerCode)),
+  ], height: 26, lastRow: true),
 ]);
 
-pw.Widget _orderedBy() => pw.Padding(
+/// [origin] is how the order arrived (Email, Fax, Verbal); System or null tick nothing.
+pw.Widget _orderedBy(Object? origin) => pw.Padding(
   padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 20),
   child: pw.Row(
     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-    children: [pw.Text('PEDIDO POR:', style: _t(8.5, bold: true)), _checkItem('E-MAIL', false), _checkItem('FAX', false), _checkItem('VERBAL', false)],
+    children: [pw.Text('PEDIDO POR:', style: _t(8.5, bold: true)), _checkItem('E-MAIL', origin == 'Email'), _checkItem('FAX', origin == 'Fax'), _checkItem('VERBAL', origin == 'Verbal')],
   ),
 );
 
+/// Cliente novo / item novo of the order or OF, or null when the server does not answer.
+Future<({bool customerNew, bool itemNew})?> _novelty(ApiClient api, Object? customerId, Object? productId, {Object? exceptOrderId, Object? exceptProductionId}) async {
+  if (customerId == null) return null;
+  try {
+    final q = [if (productId != null) 'productId=$productId', if (exceptOrderId != null) 'exceptOrderId=$exceptOrderId', if (exceptProductionId != null) 'exceptProductionId=$exceptProductionId'].join('&');
+    final r = await api.get('/api/sales/customers/$customerId/novelty?$q') as Map<String, dynamic>;
+    return (customerNew: r['customerNew'] == true, itemNew: r['itemNew'] == true);
+  } catch (e) {
+    debugPrint('print_docs: novelty unavailable, boxes stay blank: $e');
+    return null;
+  }
+}
+
+/// The delivery address chosen on the order (not just the customer's default), or null.
+Future<Map<String, dynamic>?> _orderAddress(ApiClient api, Object? customerId, Object? addressId) async {
+  if (customerId == null || addressId == null) return null;
+  try {
+    final list = (await api.get('/api/customers/$customerId/addresses') as List).cast<Map<String, dynamic>>();
+    for (final a in list) {
+      if (a['id'] == addressId) return a;
+    }
+  } catch (e) {
+    debugPrint('print_docs: order address unavailable, using the customer default: $e');
+  }
+  return null;
+}
+
+Future<Map<String, dynamic>?> _productById(ApiClient api, Object? id) async {
+  if (id == null) return null;
+  try {
+    return await api.get('/api/products/$id') as Map<String, dynamic>;
+  } on ApiException catch (e) {
+    if (e.status != 404) rethrow;
+    return null;
+  }
+}
+
+/// "MATERIAL STKM 11A SAE 1008" -> "STKM 11A SAE 1008": the form already says "Especificação do material".
+String _materialFromDescription(String d) => d.replaceFirst(RegExp(r'^\s*MATERIAL\s*[:\-]?\s*', caseSensitive: false), '').trim();
+
 /// Endereço, CNPJ, IE e contato do cliente (preferindo o cadastro da empresa, depois o endereço padrão).
 class _CustomerBlock {
-  _CustomerBlock(this.name, Map<String, dynamic>? c, String addressText) {
+  /// [chosen] is the address picked on the order: when given it wins over the company/default address.
+  _CustomerBlock(String rawName, Map<String, dynamic>? c, String addressText, {Map<String, dynamic>? chosen}) : name = ptText(rawName) {
     final co = c?['company'] as Map<String, dynamic>?;
-    final ad = c?['defaultAddress'] as Map<String, dynamic>?;
-    String pick(String key) => _s(co?[key]).isNotEmpty ? _s(co?[key]) : _s(ad?[key]);
+    final ad = chosen ?? c?['defaultAddress'] as Map<String, dynamic>?;
+    final first = chosen != null ? ad : co;
+    final second = chosen != null ? co : ad;
+    String pick(String key) => _s(first?[key]).isNotEmpty ? _s(first?[key]) : _s(second?[key]);
     final street = pick('street');
-    address = street.isEmpty ? addressText : [street, pick('number')].where((e) => e.isNotEmpty).join(', ');
-    district = pick('district');
-    city = pick('city');
-    uf = pick('uf');
-    zip = pick('zipCode');
-    cnpj = fmtDocument(co?['document'] ?? ad?['document']);
+    address = street.isEmpty ? ptText(addressText) : ptStreet(street, pick('number'));
+    district = ptText(pick('district'));
+    city = ptText(pick('city'));
+    uf = pick('uf').toUpperCase();
+    zip = ptZip(pick('zipCode'));
+    cnpj = fmtDocument(first?['document'] ?? second?['document']);
     ie = pick('stateRegistration');
-    contact = _s(co?['contact']).isNotEmpty ? _s(co?['contact']) : _s(ad?['buyer']);
-    phone = pick('phone');
-    email = pick('email');
+    final contactRaw = [chosen?['buyer'], co?['contact'], ad?['buyer']].map(_s).firstWhere((e) => e.isNotEmpty, orElse: () => '');
+    contact = ptText(contactRaw);
+    phone = ptPhone(pick('phone'));
+    email = ptEmail(pick('email'));
     code = _s(c?['legacyCode']).isNotEmpty ? _s(c?['legacyCode']) : _s(c?['id']);
   }
 
@@ -393,7 +448,7 @@ class _CustomerBlock {
 pw.Widget _customerBox(_CustomerBlock c) => _frame([
   _formRow([(1, _lbl('CLIENTE:', c.name))]),
   _formRow([(1, _lbl('END:', c.address))]),
-  _formRow([(1, _lbl('BAIRRO:', c.district)), (1, _lbl('MUNÍCIPIO:', c.city))]),
+  _formRow([(1, _lbl('BAIRRO:', c.district)), (1, _lbl('MUNICÍPIO:', c.city))]),
   _formRow([(1, _lbl('CEP:', c.zip)), (1, _lbl('ESTADO:', c.uf))]),
   _formRow([(1, _lbl('CNPJ:', c.cnpj)), (1, _lbl('I.E:', c.ie))]),
   _formRow([(1, _lbl('CONTATO:', c.contact)), (1, _lbl('TEL/ FAX:', c.phone))]),
@@ -436,8 +491,12 @@ String _qty(num q, String unit) => '${fmtNum(q, q == q.roundToDouble() ? 0 : 3)}
 /// Pedido interno de venda (PV N). Uma página por item, conforme o modelo.
 Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) async {
   final customer = await _customer(api, o['customerId']);
-  final c = _CustomerBlock(_s(o['customerName']), customer, _s(o['addressText']));
+  final chosen = await _orderAddress(api, o['customerId'], o['addressId']);
+  final c = _CustomerBlock(_s(o['customerName']), customer, _s(o['addressText']), chosen: chosen);
   final lines = (o['lines'] as List).cast<Map<String, dynamic>>();
+  // Per item: the product (measures) and whether the customer / item is new. Loaded before the pages are built.
+  final products = <Object?, Map<String, dynamic>?>{for (final l in lines) l['productId']: await _productById(api, l['productId'])};
+  final novelty = <Object?, ({bool customerNew, bool itemNew})?>{for (final l in lines) l['productId']: await _novelty(api, o['customerId'], l['productId'], exceptOrderId: o['id'])};
   final created = _s(o['createdAt']).split('T').first;
   final term = _s(o['paymentTermName'] ?? o['customPaymentTerm']);
   final freight = _s(o['freight']);
@@ -454,21 +513,25 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
         final total = double.parse((base * (1 + ipi / 100)).toStringAsFixed(2));
         final description = _s(l['description']).isNotEmpty ? _s(l['description']) : _s(l['productCode']);
         final spec = l['spec'];
-        final measures = _specMeasures(spec);
+        final product = products[l['productId']];
+        // Measures: the line's own spec, else the product's cadastro. The line's description is the material ("MATERIAL STKM 11A SAE 1008"), never the measures.
+        final specMeasures = _specMeasures(spec);
+        final measures = specMeasures.isNotEmpty ? specMeasures : _tubeDimensions(product, '');
         final standard = _specStandard(spec);
+        final materialText = standard.isNotEmpty ? standard : _materialFromDescription(description);
         return pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
             _titleBar('PEDIDO INTERNO DE VENDA', _s(o['reference'])),
             pw.SizedBox(height: 4),
-            _identBox(productCode: _s(l['productCode']), customerCode: c.code),
-            _orderedBy(),
+            _identBox(productCode: _s(l['productCode']), customerCode: c.code, novelty: novelty[l['productId']]),
+            _orderedBy(o['origin']),
             _customerBox(c),
             pw.SizedBox(height: 4),
             _specBox(
-              dimensions: measures.isEmpty ? description : '$measures  ·  $description',
+              dimensions: measures.isEmpty ? ptText(_s(product?['name']).isNotEmpty ? product!['name'] : description) : measures,
               quantity: _qty(qty, _s(l['unit'])),
-              material: standard,
+              material: materialText,
               delivery: fmtDay(l['dueDate']),
               notes: notes,
             ),
@@ -652,7 +715,18 @@ String _materialSpec(List<Map<String, dynamic>> mats) =>
 /// Ordem de fabricação (OF N), conforme o modelo oficial.
 Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o) async {
   final customer = await _customer(api, o['customerId']);
-  final c = _CustomerBlock(_s(customer?['name']), customer, '');
+  // The sales order the OF came from gives the delivery address and how the order arrived (e-mail, fax, verbal).
+  Map<String, dynamic>? salesOrder;
+  if (o['salesOrderId'] != null) {
+    try {
+      salesOrder = await api.get('/api/sales/orders/${o['salesOrderId']}') as Map<String, dynamic>;
+    } on ApiException catch (e) {
+      if (e.status != 404) rethrow;
+    }
+  }
+  final chosen = await _orderAddress(api, o['customerId'], salesOrder?['addressId']);
+  final c = _CustomerBlock(_s(customer?['name']), customer, _s(salesOrder?['addressText']), chosen: chosen);
+  final novelty = await _novelty(api, o['customerId'], o['productId'], exceptProductionId: o['id'], exceptOrderId: o['salesOrderId']);
   Map<String, dynamic>? product;
   try {
     product = await api.get('/api/products/${o['productId']}') as Map<String, dynamic>;
@@ -664,6 +738,10 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
   final mats = (o['materials'] as List).cast<Map<String, dynamic>>();
   final qty = (o['quantity'] as num?) ?? 0;
   final rawMaterial = mats.isEmpty ? '' : (_s(mats.first['description']).isNotEmpty ? _s(mats.first['description']) : _s(mats.first['code']));
+  // Without a BOM the material is the one written on the sales order line.
+  final orderLine = ((salesOrder?['lines'] as List?) ?? const []).cast<Map<String, dynamic>>().where((l) => l['productId'] == o['productId']).firstOrNull;
+  final orderMaterial = orderLine == null ? '' : _materialFromDescription(_s(orderLine['description']));
+  final materialText = _materialSpec(mats).isNotEmpty ? _materialSpec(mats) : orderMaterial;
   final blankRows = ops.length >= 7 ? 1 : 14 - ops.length * 2;
   final none = pw.SizedBox();
   pw.Widget small(String t) => pw.Text(t, style: _t(8.5));
@@ -680,15 +758,15 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
     children: [
       _titleBar('ORDEM DE FABRICAÇÃO', _s(o['customerPo']).isNotEmpty ? _s(o['customerPo']) : _s(o['reference'])),
       pw.SizedBox(height: 4),
-      _identBox(productCode: _s(o['productCode']), customerCode: c.code),
-      _orderedBy(),
+      _identBox(productCode: _s(o['productCode']), customerCode: c.code, novelty: novelty),
+      _orderedBy(salesOrder?['origin']),
       _customerBox(c),
       pw.SizedBox(height: 4),
-      _specBox(dimensions: _tubeDimensions(product, _s(o['productName'])), quantity: _qty(qty, _s(o['productUnit'])), material: _materialSpec(mats), delivery: fmtDay(o['dueDate']), notes: _s(o['notes'])),
+      _specBox(dimensions: _tubeDimensions(product, _s(o['productName'])), quantity: _qty(qty, _s(o['productUnit'])), material: materialText, delivery: fmtDay(o['dueDate']), notes: _s(o['notes'])),
       _frame([
         _sectionTitle('PROCESSO', fill: true),
-        _formRow([(1, _centered(small('Materia Prima:'))), (2, small(rawMaterial)), (1, _centered(small('Lote'))), (1, none)], height: 17),
-        _formRow([(2, _lbl('Tubo Primario ( Perfila ):', '', 8)), (3, pw.Center(child: pw.Text(_s(o['primaryTube']), style: _t(9.5, bold: true))))], height: 20, lastRow: true),
+        _formRow([(1, _centered(small('Matéria-Prima:'))), (2, small(rawMaterial.isEmpty ? orderMaterial : rawMaterial)), (1, _centered(small('Lote'))), (1, none)], height: 17),
+        _formRow([(2, _lbl('Tubo Primário (Perfilar):', '', 8)), (3, pw.Center(child: pw.Text(_s(o['primaryTube']), style: _t(9.5, bold: true))))], height: 20, lastRow: true),
       ]),
       pw.SizedBox(height: 4),
       _frame([
@@ -696,23 +774,23 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
         pw.Row(
           children: [
             pw.Expanded(flex: _opFlex[0], child: head('Nº Operação', left: false, height: 30)),
-            pw.Expanded(flex: _opFlex[1], child: head('Descrição da Operação (mm)', height: 30)),
+            pw.Expanded(flex: _opFlex[1], child: head('Descrição da Operação', height: 30)),
             pw.Expanded(flex: _opFlex[2], child: head('Requisitos/\nTolerância (mm)', height: 30)),
             pw.Expanded(
               flex: _opFlex[3] + _opFlex[4],
-              child: pw.Column(children: [head('MEDIDAS', height: 15, width: double.infinity), pw.Row(children: [pw.Expanded(child: head('INICIO', height: 15)), pw.Expanded(child: head('FINAL', height: 15))])]),
+              child: pw.Column(children: [head('MEDIDAS', height: 15, width: double.infinity), pw.Row(children: [pw.Expanded(child: head('INÍCIO', height: 15)), pw.Expanded(child: head('FINAL', height: 15))])]),
             ),
-            pw.Expanded(flex: _opFlex[5], child: pw.Column(children: [head('Recursos necessário', height: 15, width: double.infinity), head('Maq. / Ferramenta', height: 15, width: double.infinity)])),
+            pw.Expanded(flex: _opFlex[5], child: pw.Column(children: [head('Recursos necessários', height: 15, width: double.infinity), head('Máq. / Ferramenta', height: 15, width: double.infinity)])),
           ],
         ),
         for (final op in ops) ...[
           _opRow([
             small(_s(op['sequence'])),
-            _opText(_s(op['description']), 1),
+            _opText(ptText(op['description']), 1),
             _opText(_s(op['tolerance']), 2),
             small(_s(op['measureStart'])),
             small(_s(op['measureEnd'])),
-            _opText(op['external'] == true ? 'Terceiro' : (_s(op['machineName']).isNotEmpty ? _s(op['machineName']) : _s(op['machineCode'])), 5),
+            _opText(op['external'] == true ? 'Terceiro' : (_s(op['machineName']).isNotEmpty ? ptText(op['machineName']) : _s(op['machineCode'])), 5),
           ]),
           _opRow([none, none, none, none, none, none]),
         ],
@@ -766,7 +844,7 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
         ], height: 26),
         _formRow([(3, _centered(small('DIAM EXT:'))), (1, none), (1, none), (3, _centered(small('ESPESSURA:'))), (1, none), (1, none)], height: 18),
         _formRow([(3, _centered(small('DIAM INT:(se solicitado)'))), (1, none), (1, none), (3, _centered(small('COMPRIMENTO:'))), (1, none), (1, none)], height: 18),
-        _formRow([(2, _centered(small('DATA:'))), (3, _centered(small('/          /'))), (3, _centered(small('RESPONSAVEL:'))), (2, none)], height: 18),
+        _formRow([(2, _centered(small('DATA:'))), (3, _centered(small('/          /'))), (3, _centered(small('RESPONSÁVEL:'))), (2, none)], height: 18),
         _formRow([
           (2, _centered(small('SITUAÇÃO'))),
           (2, pw.Row(mainAxisAlignment: pw.MainAxisAlignment.center, children: [small('APROVADO'), pw.SizedBox(width: 4), _checkBox(false, w: 26)])),
