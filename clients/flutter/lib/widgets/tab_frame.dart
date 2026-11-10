@@ -24,7 +24,7 @@ class TabGroup {
 }
 
 /// Strip of tabs of a [TabGroup]. A tab is a normal screen of the shell, so [onSelect] navigates and each tab keeps its own state.
-/// The selected chip scrolls into view (a phone shows only three or four), and Left / Right move between the tabs.
+/// The selected tab scrolls into view (a phone shows only three or four), and Left / Right move between the tabs.
 class TabStrip extends StatefulWidget {
   const TabStrip({super.key, required this.tabs, required this.current, required this.onSelect});
 
@@ -34,6 +34,49 @@ class TabStrip extends StatefulWidget {
 
   @override
   State<TabStrip> createState() => _TabStripState();
+}
+
+/// One tab of a [TabStrip]: the label with a bar under it when [selected]. [anchor] marks it for scrolling into view.
+class StripTab extends StatelessWidget {
+  const StripTab({super.key, required this.anchor, required this.label, required this.selected, required this.onTap});
+
+  final GlobalKey anchor;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      child: InkWell(
+        key: anchor,
+        onTap: onTap,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 14),
+              Text(label, style: theme.textTheme.titleSmall?.copyWith(color: color, fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
+              const SizedBox(height: 10),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                height: 3,
+                decoration: BoxDecoration(color: selected ? theme.colorScheme.primary : Colors.transparent, borderRadius: const BorderRadius.vertical(top: Radius.circular(3))),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _TabStripState extends State<TabStrip> {
@@ -73,25 +116,26 @@ class _TabStripState extends State<TabStrip> {
     child: FocusTraversalGroup(
       child: CallbackShortcuts(
         bindings: {const SingleActivator(LogicalKeyboardKey.arrowLeft): () => _step(-1), const SingleActivator(LogicalKeyboardKey.arrowRight): () => _step(1)},
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
-          child: Row(
-            children: [
-              for (final t in widget.tabs)
-                Padding(
-                  key: _key(t.id),
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
+        // Tabs in the usual sense: plain text on a line, the current one in the accent colour with a bar under it (the strip of the customer page looks the same).
+        child: DecoratedBox(
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant))),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              children: [
+                for (final t in widget.tabs)
+                  StripTab(
                     key: ValueKey('tab-${t.id}'),
-                    label: Text(t.label),
+                    anchor: _key(t.id),
+                    label: t.label,
                     selected: t.id == widget.current,
-                    onSelected: (_) {
+                    onTap: () {
                       if (t.id != widget.current) widget.onSelect(t.id);
                     },
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

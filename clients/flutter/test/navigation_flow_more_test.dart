@@ -1,6 +1,7 @@
 import 'package:ebt_engenharia/screens/shell.dart';
 import 'package:ebt_engenharia/widgets/discard_guard.dart';
 import 'package:ebt_engenharia/widgets/record_nav.dart';
+import 'package:ebt_engenharia/widgets/tab_frame.dart' show StripTab;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -141,7 +142,7 @@ void tabGroupTests() {
     expect(find.byKey(const ValueKey('tab-balances')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('tab-low-stock')));
     await tester.pumpAndSettle();
-    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('tab-low-stock'))).selected, isTrue);
+    expect(tester.widget<StripTab>(find.byKey(const ValueKey('tab-low-stock'))).selected, isTrue);
     // The sidebar entry stays marked while another tab shows.
     expect(tester.widget<ListTile>(find.byKey(const ValueKey('nav-balances'))).selected, isTrue);
   });

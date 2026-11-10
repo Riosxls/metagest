@@ -9,6 +9,7 @@ import 'package:ebt_engenharia/widgets/alerts.dart';
 import 'package:ebt_engenharia/widgets/command_palette.dart';
 import 'package:ebt_engenharia/widgets/discard_guard.dart';
 import 'package:ebt_engenharia/widgets/pipeline.dart';
+import 'package:ebt_engenharia/widgets/tab_frame.dart' show StripTab;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -57,7 +58,7 @@ void main() {
     expect(find.byKey(const ValueKey('nav-locations')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('tab-locations')));
     await tester.pumpAndSettle();
-    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('tab-locations'))).selected, isTrue);
+    expect(tester.widget<StripTab>(find.byKey(const ValueKey('tab-locations'))).selected, isTrue);
     expect(tile(tester, 'nav-balances').selected, isTrue);
   });
 
@@ -68,7 +69,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(Shell.lastLocation[session]!.path, '/s/%2Fapi%2Fmaterial-classes');
     await pumpAgain(tester, session);
-    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('tab-/api/material-classes'))).selected, isTrue);
+    expect(tester.widget<StripTab>(find.byKey(const ValueKey('tab-/api/material-classes'))).selected, isTrue);
   });
 
   testWidgets('a pasted link to an API-path screen is recognised', (tester) async {
@@ -78,7 +79,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Abrir link colado'));
     await tester.pumpAndSettle();
-    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('tab-/api/materials'))).selected, isTrue);
+    expect(tester.widget<StripTab>(find.byKey(const ValueKey('tab-/api/materials'))).selected, isTrue);
   });
 
   testWidgets('switching tabs is not a trip: Back leaves the group, and the tabs stay out of Recentes', (tester) async {
@@ -212,18 +213,18 @@ void main() {
     // Left from the last tab selects the one before it.
     // Tab until a chip of the strip has the focus.
     for (var i = 0; i < 40; i++) {
-      if (FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<ChoiceChip>() != null) break;
+      if (FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<StripTab>() != null) break;
       await tester.sendKeyEvent(LogicalKeyboardKey.tab);
       await tester.pump();
     }
-    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<ChoiceChip>(), isNotNull);
+    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<StripTab>(), isNotNull);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
     // Right from the last tab goes nowhere; left from it selects the one before.
-    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('tab-/api/fiscal/tax-rules'))).selected, isTrue);
+    expect(tester.widget<StripTab>(find.byKey(const ValueKey('tab-/api/fiscal/tax-rules'))).selected, isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pumpAndSettle();
-    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('tab-/api/sales/payment-terms'))).selected, isTrue);
+    expect(tester.widget<StripTab>(find.byKey(const ValueKey('tab-/api/sales/payment-terms'))).selected, isTrue);
   });
 
   testWidgets('a group is one card on the phone overview, naming its tabs', (tester) async {

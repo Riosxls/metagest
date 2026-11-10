@@ -7,6 +7,7 @@ import '../entities.dart';
 import '../labels.dart';
 import '../reports/nf_doc.dart';
 import '../reports/print_docs.dart';
+import '../reports/pt_text.dart' show ptText;
 import '../session.dart';
 import '../theme_tokens.dart';
 import '../widgets/actions.dart';
@@ -164,7 +165,7 @@ class _ProductionOrdersScreenState extends State<ProductionOrdersScreen> {
             ],
           ),
         ),
-        col('Cliente', 'customerName'),
+        ColumnSpec('Cliente', (e) => ptText(e['customerName'])),
       ],
       rowColor: (_, e) => productionLate(e) ? cs.errorContainer : null,
       onTap: (e) => openProductionOrder(context, widget.session, e['id'] as int),
