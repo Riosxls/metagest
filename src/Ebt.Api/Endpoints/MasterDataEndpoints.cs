@@ -231,6 +231,23 @@ public static class MasterDataEndpoints
             await db.CustomerAddresses.AsNoTracking().Where(a => a.CustomerId == customerId).OrderBy(a => a.LegacyCode).ThenBy(a => a.Id)
                 .Select(a => ToOut(a)).ToListAsync(ct)).RequireAuthorization(Policies.Read);
 
+        // A customer with no delivery address delivers to its main address: the first time an order needs one, the main address is copied as the delivery address.
+        g.MapPost("/from-main", async (int customerId, EbtDbContext db, CancellationToken ct) =>
+        {
+            var c = await db.Customers.Include(x => x.Addresses).FirstOrDefaultAsync(x => x.Id == customerId, ct);
+            if (c is null) return Results.NotFound();
+            if (c.Addresses.Count == 0 && Digits(c.Document, 11, 14) && !string.IsNullOrWhiteSpace(c.Uf) && !string.IsNullOrWhiteSpace(c.Street))
+            {
+                db.CustomerAddresses.Add(new CustomerAddress
+                {
+                    CustomerId = customerId, Document = c.Document!, StateRegistration = c.StateRegistration, IcmsContributor = c.IcmsContributor, Street = c.Street, Number = c.Number,
+                    Complement = c.Complement, District = c.District, City = c.City, Uf = c.Uf!.ToUpperInvariant(), ZipCode = c.ZipCode, Buyer = c.Contact, Email = c.Email, Phone = c.Phone
+                });
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok(await db.CustomerAddresses.AsNoTracking().Where(a => a.CustomerId == customerId).OrderBy(a => a.LegacyCode).ThenBy(a => a.Id).Select(a => ToOut(a)).ToListAsync(ct));
+        }).RequireAuthorization(Policies.Read);
+
         g.MapPost("/", async (int customerId, CustomerAddressIn i, EbtDbContext db, CancellationToken ct) =>
         {
             if (!await db.Customers.AnyAsync(c => c.Id == customerId, ct)) return Results.NotFound();

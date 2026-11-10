@@ -915,7 +915,15 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
 
   Future<void> _loadAddresses(int customerId, {bool keep = false}) async {
     try {
-      final r = await api.get('/api/customers/$customerId/addresses');
+      var r = await api.get('/api/customers/$customerId/addresses');
+      if (r is List && r.isEmpty) {
+        // No delivery address: the main address of the cadastro is the delivery address (the server copies it once).
+        try {
+          r = await api.post('/api/customers/$customerId/addresses/from-main', {});
+        } catch (e) {
+          debugPrint('sales_quotes: no main address to deliver to either: $e');
+        }
+      }
       final list = (r is List ? r : (r as Map<String, dynamic>)['items'] as List).cast<Map<String, dynamic>>();
       // The customer may have changed again while this answer was on its way: its addresses are not this customer's.
       if (!mounted || _customerId != customerId) return;

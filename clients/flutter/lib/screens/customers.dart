@@ -87,12 +87,12 @@ Map<String, dynamic>? _defaultAddress(Map<String, dynamic> c) => c['defaultAddre
 
 Map<String, dynamic>? _company(Map<String, dynamic> c) => c['company'] as Map<String, dynamic>?;
 
-// Company data lives on the customer itself, independent from the delivery locais.
+// Company data lives on the customer itself, independent from the delivery locais. Its address is the main one; a customer without a delivery address delivers there.
 const _companyFields = [
   FieldSpec('document', 'CNPJ/CPF', hint: 'Somente números ou com pontuação'),
   FieldSpec('stateRegistration', 'Inscrição estadual'),
   FieldSpec('icmsContributor', 'Contribuinte de ICMS', type: FieldType.boolean, defaultValue: false),
-  FieldSpec('street', 'Endereço fiscal'),
+  FieldSpec('street', 'Endereço principal'),
   FieldSpec('number', 'Número'),
   FieldSpec('complement', 'Complemento'),
   FieldSpec('district', 'Bairro'),
@@ -391,7 +391,7 @@ class _CustomerCompany extends StatelessWidget {
                   ('Fantasia', fmt(customer['tradeName'])),
                   ('CNPJ/CPF', fmtDocument(a['document'])),
                   ('Inscrição estadual', fmt(a['stateRegistration'])),
-                  ('Endereço fiscal', _addressLine(a)),
+                  ('Endereço principal', _addressLine(a)),
                   ('Cidade', fmt(a['city'])),
                   ('UF', fmt(a['uf'])),
                   ('CEP', fmt(a['zipCode'])),

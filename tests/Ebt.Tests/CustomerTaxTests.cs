@@ -243,4 +243,21 @@ public class CustomerTaxTests(ApiFixture api)
         Assert.Empty(again.DeliveryAddresses!);
         Assert.Empty(again.IeCorrected!);
     }
+
+    [Fact]
+    public async Task A_customer_without_a_delivery_address_delivers_to_its_main_address()
+    {
+        var admin = await api.AdminAsync();
+        var company = new CustomerCompany(Cnpj(), "112470391112", true, "Rua Padre Isidoro", "182", null, "Vila Nova York", "São Paulo", "SP", "03479020", "Adelaide", "a@x.com", "1135151910");
+        var customer = await (await admin.Post("/api/customers", new CustomerIn("Principal " + Code("C", 8), null, null, ConsumerType.Normal, Company: company))).Read<CustomerOut>();
+        var first = await (await admin.PostAsync($"/api/customers/{customer.Id}/addresses/from-main", null)).Read<List<CustomerAddressOut>>();
+        var copy = Assert.Single(first);
+        Assert.Equal("Rua Padre Isidoro", copy.Street);
+        Assert.Equal("182", copy.Number);
+        Assert.Equal("Adelaide", copy.Buyer);
+        // Asking again adds nothing; a customer that already has a delivery address is left alone.
+        Assert.Single(await (await admin.PostAsync($"/api/customers/{customer.Id}/addresses/from-main", null)).Read<List<CustomerAddressOut>>());
+        var bare = await (await admin.Post("/api/customers", new CustomerIn("Sem endereco " + Code("C", 8), null, null, ConsumerType.Normal))).Read<CustomerOut>();
+        Assert.Empty(await (await admin.PostAsync($"/api/customers/{bare.Id}/addresses/from-main", null)).Read<List<CustomerAddressOut>>());
+    }
 }
