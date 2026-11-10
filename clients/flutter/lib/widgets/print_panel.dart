@@ -96,7 +96,14 @@ class _PrintPanelState extends State<PrintPanel> {
   @override
   void initState() {
     super.initState();
+    PrintLog.changes.addListener(_loadDays);
     _loadDays();
+  }
+
+  @override
+  void dispose() {
+    PrintLog.changes.removeListener(_loadDays);
+    super.dispose();
   }
 
   @override

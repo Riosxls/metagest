@@ -37,6 +37,9 @@ public class SmartSearchTests(ApiFixture api)
         Assert.Equal([a.Code], await Find("71,3x0,9x6000"));
         Assert.Equal([a.Code], await Find("Ø71,3 X 0,90 X 6000 MM"));
         Assert.Equal([b.Code], await Find("71,3 x 1,25"));
+        // Still typing the wall: "71,3 x 0" already shows the 0,9 one, "71,3 x 1" the 1,25 one.
+        Assert.Equal([a.Code], await Find("71,3 x 0"));
+        Assert.Equal([b.Code], await Find("71,3 x 1"));
         Assert.Equal([a.Code, c.Code], await Find($"0,9 6000 {tag}"));
         Assert.Equal([c.Code], await Find($"72 0,9 {tag.ToLower()}"));
         Assert.Empty(await Find("71,3 x 5"));

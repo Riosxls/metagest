@@ -16,23 +16,31 @@ public static class SmartSearch
     private static readonly Regex Number = new(@"^\d+(?:[.,]\d+)?$", RegexOptions.Compiled);
     private static readonly Regex Chain = new(@"^\s*[ØøΦ]?\s*(?<n>\d+(?:[.,]\d+)?)(?:\s*(?:mm)?\s*[x×*]\s*(?<n>\d+(?:[.,]\d+)?))+\s*(?:mm)?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    public sealed record Parsed(IReadOnlyList<decimal> Chain, IReadOnlyList<string> Words);
+    /// <param name="LastStep">When the chain ends right where the text ends (the user is still typing the last number), the size of one unit of its last decimal place: "0,9" -> 0.1, "0" -> 1. Otherwise 0.</param>
+    public sealed record Parsed(IReadOnlyList<decimal> Chain, IReadOnlyList<string> Words, decimal LastStep = 0m);
 
     /// <summary>Splits the text into an optional leading "A x B x C" chain of dimensions and the remaining words (folded: no accents, lower case).</summary>
     public static Parsed Parse(string? text)
     {
         var s = text ?? "";
         var chain = new List<decimal>();
+        var step = 0m;
         var m = Chain.Match(s);
         if (m.Success)
         {
             foreach (Capture c in m.Groups["n"].Captures) chain.Add(ParseNumber(c.Value));
+            if (m.Length == s.Length && !char.IsWhiteSpace(s[^1]) && !s.TrimEnd().EndsWith("mm", StringComparison.OrdinalIgnoreCase))
+            {
+                var last = m.Groups["n"].Captures[^1].Value;
+                var cut = last.IndexOfAny(['.', ',']);
+                step = cut < 0 ? 1m : (decimal)Math.Pow(10, -(last.Length - cut - 1));
+            }
             s = s[m.Length..];
         }
         var words = PriceHistoryImporter.Fold(s).ToLowerInvariant()
             .Split([' ', '\t', ';'], StringSplitOptions.RemoveEmptyEntries)
             .Select(w => w.Trim().Trim('Ø', 'ø', '*', '×')).Where(w => w.Length > 0 && w is not ("x" or "mm")).ToList();
-        return new Parsed(chain, words);
+        return new Parsed(chain, words, step);
     }
 
     private static decimal ParseNumber(string raw) => decimal.Parse(raw.Replace(',', '.'), CultureInfo.InvariantCulture);
@@ -49,7 +57,11 @@ public static class SmartSearch
             var hi = c.Select(v => v + Tolerance).ToArray();
             decimal a0 = lo[0], a1 = hi[0], b0 = lo[1], b1 = hi[1];
             if (c.Count == 2)
+            {
+                // Still typing the wall ("8 x 0" on the way to "8 x 0,9"): every wall that starts with what was typed counts.
+                if (parsed.LastStep > 0m) b1 = c[1] + parsed.LastStep - Tolerance;
                 q = q.Where(p => ((p.DiameterMm >= a0 && p.DiameterMm <= a1) || (p.WidthMm >= a0 && p.WidthMm <= a1)) && p.ThicknessMm >= b0 && p.ThicknessMm <= b1);
+            }
             else if (c.Count == 3)
             {
                 decimal c0 = lo[2], c1 = hi[2];

@@ -11,6 +11,9 @@ import '../prefs.dart';
 class PrintLog {
   static const _key = 'printed-docs';
 
+  /// Goes up every time a paper is marked, so a panel that stays open behind another page (the order behind its OF) shows the new mark.
+  static final changes = ValueNotifier<int>(0);
+
   static Future<bool> isDone(String doc) async {
     try {
       return ((await SharedPreferences.getInstance()).getStringList(_key) ?? const []).contains(doc);
@@ -60,6 +63,7 @@ class PrintLog {
       final list = prefs.getStringList(_key) ?? <String>[];
       if (!list.contains(doc)) await prefs.setStringList(_key, [...list.length > 500 ? list.sublist(list.length - 500) : list, doc]);
       await prefs.setString('$_atPrefix$doc', DateTime.now().toIso8601String());
+      changes.value++;
     } catch (e) {
       debugPrint('print_gate: Local storage is best effort; the in-memory value stays: $e');
       // Local storage is best effort; the in-memory value stays.
