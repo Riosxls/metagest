@@ -8,12 +8,12 @@ namespace Ebt.Core.Sales;
 /// <summary>One internal sales order ("Pedido Interno de Venda") as read from the legacy workbooks: its number (<c>04183-25</c>), the customer as typed on it and the taxes it charged.</summary>
 public sealed record TaxOrderRow(string? Reference, DateOnly? Date, string? Customer, string? Document, string? Uf, decimal? Icms, decimal? Ipi,
     string? Street = null, string? District = null, string? City = null, string? ZipCode = null, string? StateRegistration = null,
-    string? Contact = null, string? Phone = null, string? Email = null, string? PaymentTerm = null);
+    string? Contact = null, string? Phone = null, string? Email = null, string? PaymentTerm = null, string? ProductCode = null, string? Material = null);
 
 public sealed record CustomerTaxMatch(int CustomerId, string CustomerName, string MatchedBy, int Orders, decimal? Ipi, decimal? Icms, string Note, bool Applied);
 
 public sealed record CustomerTaxResult(int Read, int Used, int Skipped, IReadOnlyList<CustomerTaxMatch> Matches, IReadOnlyList<string> Unmatched,
-    IReadOnlyList<string>? Created = null, IReadOnlyList<string>? Ambiguous = null);
+    IReadOnlyList<string>? Created = null, IReadOnlyList<string>? Ambiguous = null, int ContactsFilled = 0, int Materials = 0);
 
 /// <summary>
 /// Learns each customer's usual IPI and ICMS from the old internal sales orders and stores them on the customer (company data): the IPI and ICMS of the
@@ -45,10 +45,11 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
             var (id, by) = Find(known, r);
             if (id is null) { unmatched.Add(string.IsNullOrWhiteSpace(r.Customer) ? "(sem nome)" : r.Customer.Trim()); continue; }
             if (!byCustomer.TryGetValue(id.Value, out var entry)) byCustomer[id.Value] = entry = (by, []);
-            entry.Orders.Add(new Order(r.Date ?? new DateOnly(year, 1, 1), seq, r.Reference?.Trim(), NormalizeUf(r.Uf), r.Icms, r.Ipi));
+            entry.Orders.Add(new Order(r.Date ?? new DateOnly(year, 1, 1), seq, r.Reference?.Trim(), NormalizeUf(r.Uf), r.Icms, r.Ipi, r));
         }
 
         var matches = new List<CustomerTaxMatch>();
+        var contactsFilled = 0;
         foreach (var (id, (by, orders)) in byCustomer.OrderBy(e => e.Key))
         {
             orders.Sort((a, b) => a.Date != b.Date ? a.Date.CompareTo(b.Date) : a.Seq.CompareTo(b.Seq));
@@ -63,10 +64,66 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
                 c.IcmsPercent = icms;
                 c.TaxNote = note;
             }
+            // Contact data the cadastro lacks is completed from the latest order that has it; what is already there is never replaced.
+            string? Latest(Func<TaxOrderRow, string?> pick) => orders.Select(o => Clean(pick(o.Row))).LastOrDefault(v => v is not null);
+            var filled = false;
+            void Fill(string? current, string? value, Action<string> set) { if (string.IsNullOrWhiteSpace(current) && value is not null) { filled = true; if (apply) set(value); } }
+            Fill(c.Contact, Smart(Latest(r => r.Contact)), v => c.Contact = v);
+            Fill(c.Email, Latest(r => r.Email)?.ToLowerInvariant(), v => c.Email = v);
+            Fill(c.Phone, Latest(r => r.Phone), v => c.Phone = v);
+            var ie = Latest(r => r.StateRegistration);
+            if (Digits(ie).Length >= 5 && string.IsNullOrWhiteSpace(c.StateRegistration)) { filled = true; if (apply) { c.StateRegistration = ie; c.IcmsContributor = true; } }
+            if (filled) contactsFilled++;
             matches.Add(new CustomerTaxMatch(id, c.Name, by, orders.Count, ipi, icms, note, apply && take));
         }
+        var materials = await LearnMaterialsAsync(rows, known, apply, ct);
         if (apply) await db.SaveChangesAsync(ct);
-        return new CustomerTaxResult(rows.Count, matches.Sum(m => m.Orders), skipped, matches, unmatched.ToList(), created, ambiguous);
+        return new CustomerTaxResult(rows.Count, matches.Sum(m => m.Orders), skipped, matches, unmatched.ToList(), created, ambiguous, contactsFilled, materials);
+    }
+
+    /// <summary>The material of each customer + product code, as the old orders wrote it (the latest order wins, with how many said it).</summary>
+    private async Task<int> LearnMaterialsAsync(IReadOnlyList<TaxOrderRow> rows, List<Known> known, bool apply, CancellationToken ct)
+    {
+        var found = new Dictionary<(int Customer, string Product), (DateOnly Date, int Seq, string Material, int Count)>();
+        foreach (var r in rows)
+        {
+            var material = Clean(r.Material);
+            var product = Clean(r.ProductCode);
+            if (material is null || product is null || product.Length > 40 || material.Length > 200 || material.StartsWith("TUBO", StringComparison.OrdinalIgnoreCase)) continue;
+            var (id, _, _) = Lookup(known, r);
+            if (id is null) continue;
+            var (year, seq) = Parse(r);
+            if (year > DateTime.Now.Year) continue;
+            var date = r.Date ?? new DateOnly(year, 1, 1);
+            var key = (id.Value, product);
+            found.TryGetValue(key, out var old);
+            var newer = old.Count == 0 || (date, seq).CompareTo((old.Date, old.Seq)) >= 0;
+            found[key] = (newer ? date : old.Date, newer ? seq : old.Seq, newer ? material : old.Material, old.Count + 1);
+        }
+        if (!apply) return found.Count;
+        var existing = await db.OrderMaterials.ToListAsync(ct);
+        foreach (var ((customer, product), v) in found)
+        {
+            var row = existing.FirstOrDefault(e => e.CustomerId == customer && e.ProductCode == product);
+            if (row is null) db.OrderMaterials.Add(new Entities.OrderMaterial { CustomerId = customer, ProductCode = product, Material = v.Material, Orders = v.Count, LastDate = v.Date });
+            else { row.Material = v.Material; row.Orders = v.Count; row.LastDate = v.Date; }
+        }
+        return found.Count;
+    }
+
+    /// <summary>The material to print on an order line that has none: what this customer's latest order for the product said, else what most orders of any customer said.</summary>
+    public async Task<string?> SuggestMaterialAsync(int customerId, int productId, CancellationToken ct = default)
+    {
+        var line = await db.SalesOrderLines.AsNoTracking()
+            .Where(l => l.ProductId == productId && l.Order!.CustomerId == customerId && l.Standard != null && l.Standard != "")
+            .OrderByDescending(l => l.Order!.CreatedAt).Select(l => l.Standard).FirstOrDefaultAsync(ct);
+        if (line is not null) return line;
+        var code = await db.Products.AsNoTracking().Where(p => p.Id == productId).Select(p => p.Code).FirstOrDefaultAsync(ct);
+        if (code is null) return null;
+        var own = await db.OrderMaterials.AsNoTracking().Where(m => m.CustomerId == customerId && m.ProductCode == code).Select(m => m.Material).FirstOrDefaultAsync(ct);
+        if (own is not null) return own;
+        return await db.OrderMaterials.AsNoTracking().Where(m => m.ProductCode == code).GroupBy(m => m.Material)
+            .OrderByDescending(g => g.Sum(m => m.Orders)).ThenByDescending(g => g.Max(m => m.LastDate)).Select(g => g.Key).FirstOrDefaultAsync(ct);
     }
 
     /// <summary>
@@ -156,7 +213,7 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
         return hit.Count == 1 ? hit[0] : null;
     }
 
-    private sealed record Order(DateOnly Date, int Seq, string? Reference, string Uf, decimal? Icms, decimal? Ipi);
+    private sealed record Order(DateOnly Date, int Seq, string? Reference, string Uf, decimal? Icms, decimal? Ipi, TaxOrderRow Row);
 
     private static (int? Id, string By) Find(List<Known> known, TaxOrderRow r)
     {

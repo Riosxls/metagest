@@ -23,12 +23,23 @@ public partial class EbtDbContext
     public DbSet<SalesEvent> SalesEvents => Set<SalesEvent>();
     public DbSet<PriceHistory> PriceHistory => Set<PriceHistory>();
     public DbSet<PriceSimulation> PriceSimulations => Set<PriceSimulation>();
+    public DbSet<OrderMaterial> OrderMaterials => Set<OrderMaterial>();
 
     partial void ConfigureSales(ModelBuilder b)
     {
         b.HasSequence<int>(SalesQuoteNumbers);
         b.HasSequence<int>(SalesOrderNumbers);
         b.HasSequence<int>(DeliveryNumbers);
+
+        // Reference data from the legacy internal sales orders; not part of the data reset.
+        b.Entity<OrderMaterial>(e =>
+        {
+            e.ToTable("order_materials");
+            e.HasIndex(x => new { x.CustomerId, x.ProductCode }).IsUnique();
+            e.Property(x => x.ProductCode).HasMaxLength(40);
+            e.Property(x => x.Material).HasMaxLength(200);
+            e.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         // Reference data from the legacy sales workbook; not part of the data reset.
         b.Entity<PriceHistory>(e =>

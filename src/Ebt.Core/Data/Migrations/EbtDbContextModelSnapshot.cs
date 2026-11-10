@@ -2715,6 +2715,49 @@ namespace Ebt.Core.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ebt.Core.Entities.OrderMaterial", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer")
+                        .HasColumnName("customer_id");
+
+                    b.Property<DateOnly>("LastDate")
+                        .HasColumnType("date")
+                        .HasColumnName("last_date");
+
+                    b.Property<string>("Material")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("material");
+
+                    b.Property<int>("Orders")
+                        .HasColumnType("integer")
+                        .HasColumnName("orders");
+
+                    b.Property<string>("ProductCode")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("product_code");
+
+                    b.HasKey("Id")
+                        .HasName("pk_order_materials");
+
+                    b.HasIndex("CustomerId", "ProductCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_materials_customer_id_product_code");
+
+                    b.ToTable("order_materials", (string)null);
+                });
+
             modelBuilder.Entity("Ebt.Core.Entities.OutsideShipment", b =>
                 {
                     b.Property<int>("Id")
@@ -7205,6 +7248,18 @@ namespace Ebt.Core.Data.Migrations
                     b.Navigation("Customer");
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Ebt.Core.Entities.OrderMaterial", b =>
+                {
+                    b.HasOne("Ebt.Core.Entities.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_order_materials_customers_customer_id");
+
+                    b.Navigation("Customer");
                 });
 
             modelBuilder.Entity("Ebt.Core.Entities.OutsideShipment", b =>

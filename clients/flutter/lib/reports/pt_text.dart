@@ -263,6 +263,35 @@ String ptZip(Object? value) {
   return d.length == 8 ? '${d.substring(0, 5)}-${d.substring(5)}' : raw.trim();
 }
 
+/// State registration (I.E.) with the dots of its state: SP 123.456.789.012, SC 123.456.789, PR 123.45678-90, RS 123/4567890, MG 123.456.789/0123, RJ 12.345.67-8.
+/// Other states, "ISENTO" and anything that does not have the digits of its state stay as typed.
+String ptIe(Object? value, [Object? uf]) {
+  final raw = value == null ? '' : '$value'.trim();
+  final d = raw.replaceAll(RegExp(r'\D'), '');
+  if (d.isEmpty || RegExp(r'[A-Za-z]').hasMatch(raw)) return raw;
+  final state = '${uf ?? ''}'.toUpperCase();
+  String cut(List<int> parts, List<String> seps) {
+    var out = '';
+    var at = 0;
+    for (var i = 0; i < parts.length; i++) {
+      out += d.substring(at, at + parts[i]);
+      at += parts[i];
+      if (i < seps.length) out += seps[i];
+    }
+    return out;
+  }
+
+  if (state == 'SP' && d.length == 12) return cut([3, 3, 3, 3], ['.', '.', '.']);
+  if (state == 'SC' && d.length == 9) return cut([3, 3, 3], ['.', '.']);
+  if (state == 'PR' && d.length == 10) return cut([3, 5, 2], ['.', '-']);
+  if (state == 'RS' && d.length == 10) return cut([3, 7], ['/']);
+  if (state == 'MG' && d.length == 13) return cut([3, 3, 3, 4], ['.', '.', '/']);
+  if (state == 'RJ' && d.length == 8) return cut([2, 3, 2, 1], ['.', '.', '-']);
+  // Without the state, twelve digits are a São Paulo registration.
+  if (state.isEmpty && d.length == 12) return cut([3, 3, 3, 3], ['.', '.', '.']);
+  return raw;
+}
+
 /// Telephone as (11) 4546-8895.
 String ptPhone(Object? value) {
   final raw = value == null ? '' : '$value';

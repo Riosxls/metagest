@@ -25,11 +25,15 @@ public static class CustomerTaxEndpoints
                 db.AuditLog.Add(new AuditEntry
                 {
                     At = DateTimeOffset.UtcNow, User = user.Identity?.Name, Entity = "Customer", EntityId = "tax-import", Action = "Import",
-                    Changes = JsonSerializer.Serialize(new { result.Read, result.Used, result.Skipped, customers = result.Matches.Count(m => m.Applied), created = result.Created?.Count ?? 0, unmatched = result.Unmatched.Count })
+                    Changes = JsonSerializer.Serialize(new { result.Read, result.Used, result.Skipped, customers = result.Matches.Count(m => m.Applied), created = result.Created?.Count ?? 0, contacts = result.ContactsFilled, materials = result.Materials, unmatched = result.Unmatched.Count })
                 });
                 await db.SaveChangesAsync(ct);
             }
             return Results.Ok(result);
         }).WithTags("Customers").RequireAuthorization(Policies.Admin);
+
+        // The material for the "Especificação do material" of an order paper whose line carries none.
+        app.MapGet("/api/sales/material-suggestion", async (int customerId, int productId, CustomerTaxImporter importer, CancellationToken ct) =>
+            Results.Ok(new { material = await importer.SuggestMaterialAsync(customerId, productId, ct) })).WithTags("Sales").RequireAuthorization(Policies.Read);
     }
 }

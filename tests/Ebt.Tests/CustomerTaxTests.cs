@@ -159,4 +159,43 @@ public class CustomerTaxTests(ApiFixture api)
         Assert.Equal(2, (await (await admin.GetAsync($"/api/customers?q={word}")).Read<Page<System.Text.Json.JsonElement>>()).Items.Count);
         Assert.NotEqual(0, known.Id);
     }
+
+    [Fact]
+    public async Task Missing_contact_data_is_completed_and_the_usual_material_of_a_product_is_learned_from_the_old_orders()
+    {
+        var admin = await api.AdminAsync();
+        var cnpj = Cnpj();
+        var customer = await (await admin.Post("/api/customers", new CustomerIn("Contato " + Code("C", 8), null, null, ConsumerType.Normal, Company: Company(cnpj)))).Read<CustomerOut>();
+        var product = await (await admin.Post("/api/products", Tube(Code("M")))).Read<ProductOut>();
+        var rows = new List<TaxOrderRow>
+        {
+            new("00001-25", new DateOnly(2025, 1, 5), "Nome no pedido", cnpj, "SP", 18m, 5m, Contact: "SR. ANTIGO", Material: "BK DIN 2391", ProductCode: product.Code),
+            new("00002-26", new DateOnly(2026, 2, 5), "Nome no pedido", cnpj, "SP", 18m, 3.25m, Contact: "SR. NOVO", Phone: "(11) 2982-5522", Email: "Novo@X.com", StateRegistration: "115.467.772.113", Material: "BK DIN 2393", ProductCode: product.Code),
+            new("00003-26", new DateOnly(2026, 2, 6), "Nome no pedido", cnpj, "SP", 18m, 3.25m, Material: "TUBO-C 08,00 X 0,90 X 6000 MM", ProductCode: product.Code),
+        };
+
+        var preview = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(false, false, rows))).Read<CustomerTaxResult>();
+        Assert.Equal(1, preview.ContactsFilled);
+        Assert.Equal(1, preview.Materials);
+        Assert.Null((await (await admin.GetAsync($"/api/sales/material-suggestion?customerId={customer.Id}&productId={product.Id}")).Read<System.Text.Json.JsonElement>()).GetProperty("material").GetString());
+
+        await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, false, rows));
+        var read = await (await admin.GetAsync($"/api/customers/{customer.Id}")).Read<CustomerOut>();
+        Assert.Equal("Sr. Novo", read.Company!.Contact);
+        Assert.Equal("(11) 2982-5522", read.Company.Phone);
+        Assert.Equal("novo@x.com", read.Company.Email);
+        Assert.Equal("115.467.772.113", read.Company.StateRegistration);
+        Assert.True(read.Company.IcmsContributor);
+        var material = await (await admin.GetAsync($"/api/sales/material-suggestion?customerId={customer.Id}&productId={product.Id}")).Read<System.Text.Json.JsonElement>();
+        Assert.Equal("BK DIN 2393", material.GetProperty("material").GetString()); // the latest order; the tube name is never a material
+
+        // Another customer of the same product falls back to what most orders said.
+        var other = await (await admin.Post("/api/customers", new CustomerIn("Outro " + Code("C", 8), null, null, ConsumerType.Normal))).Read<CustomerOut>();
+        var fallback = await (await admin.GetAsync($"/api/sales/material-suggestion?customerId={other.Id}&productId={product.Id}")).Read<System.Text.Json.JsonElement>();
+        Assert.Equal("BK DIN 2393", fallback.GetProperty("material").GetString());
+
+        // Contact data already in the cadastro is never replaced.
+        var again = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, true, rows))).Read<CustomerTaxResult>();
+        Assert.Equal(0, again.ContactsFilled);
+    }
 }

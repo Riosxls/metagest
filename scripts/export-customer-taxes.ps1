@@ -139,7 +139,8 @@ public static class TaxReader
         string[] extra = new[] {
             After(cells, new Pattern(@"^END\s?:")), After(cells, new Pattern(@"^BAIRRO\s?:")), After(cells, new Pattern(@"^MUNICIPIO\s?:")),
             After(cells, new Pattern(@"^CEP\s?:")), After(cells, new Pattern(@"^I\.?\s?E\s?:")), After(cells, new Pattern(@"^CONTATO\s?:")),
-            After(cells, new Pattern(@"^TEL")), After(cells, new Pattern(@"^E\s?-?\s?MAIL\s?:")), After(cells, new Pattern(@"^PRAZO DE PAG"))
+            After(cells, new Pattern(@"^TEL")), After(cells, new Pattern(@"^E\s?-?\s?MAIL\s?:")), After(cells, new Pattern(@"^PRAZO DE PAG")),
+            After(cells, new Pattern(@"^COD\.? PRODUTO\s?:")), After(cells, new Pattern(@"^ESPECIFICACAO DO MATERIAL\s?:"))
         };
         List<string> parts = new List<string> { Path.GetFileName(path), (name ?? "").Replace(";", ","), ufv.Replace(";", ","), date, f(icmsV), f(ipiV), cnpjV };
         parts.AddRange(extra.Select(e => (e ?? "").Replace(";", ",").Trim()));
@@ -170,6 +171,8 @@ Get-ChildItem $Folder -Filter '*.xlsx' | Where-Object { $_.Name -notlike '~$*' }
         phone     = $p[13]
         email     = $p[14]
         paymentTerm = $p[15]
+        productCode = $p[16]
+        material  = $p[17]
     })
 }
 $body = [pscustomobject]@{ apply = [bool]$Apply; overwrite = [bool]$Overwrite; createMissing = [bool]$CreateMissing; rows = $rows }

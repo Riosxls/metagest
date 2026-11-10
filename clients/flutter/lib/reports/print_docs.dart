@@ -415,7 +415,20 @@ Future<Map<String, dynamic>?> _productById(ApiClient api, Object? id) async {
 }
 
 /// "MATERIAL STKM 11A SAE 1008" -> "STKM 11A SAE 1008": the form already says "Especificação do material".
-String _materialFromDescription(String d) => d.replaceFirst(RegExp(r'^\s*MATERIAL\s*[:\-]?\s*', caseSensitive: false), '').trim();
+/// A description that is only the tube's name ("TUBO-C 08,00 X 0,90 X 6000 MM") says nothing about the material and gives "".
+String _materialFromDescription(String d) =>
+    RegExp(r'^\s*TUBO', caseSensitive: false).hasMatch(d) ? '' : d.replaceFirst(RegExp(r'^\s*MATERIAL\s*[:\-]?\s*', caseSensitive: false), '').trim();
+
+/// The material the customer's old orders gave for this product ("BK DIN 2393"), or '' when none is known.
+Future<String> _usualMaterial(ApiClient api, Object? customerId, Object? productId) async {
+  if (customerId == null || productId == null) return '';
+  try {
+    final r = await api.get('/api/sales/material-suggestion?customerId=$customerId&productId=$productId') as Map<String, dynamic>;
+    return _s(r['material']);
+  } on ApiException {
+    return '';
+  }
+}
 
 /// Endereço, CNPJ, IE e contato do cliente (preferindo o cadastro da empresa, depois o endereço padrão).
 class _CustomerBlock {
@@ -433,7 +446,7 @@ class _CustomerBlock {
     uf = pick('uf').toUpperCase();
     zip = ptZip(pick('zipCode'));
     cnpj = fmtDocument(first?['document'] ?? second?['document']);
-    ie = pick('stateRegistration');
+    ie = ptIe(pick('stateRegistration'), uf);
     final contactRaw = [chosen?['buyer'], co?['contact'], ad?['buyer']].map(_s).firstWhere((e) => e.isNotEmpty, orElse: () => '');
     contact = ptText(contactRaw);
     phone = ptPhone(pick('phone'));
@@ -453,6 +466,14 @@ pw.Widget _customerBox(_CustomerBlock c) => _frame([
   _formRow([(1, _lbl('CNPJ:', c.cnpj)), (1, _lbl('I.E:', c.ie))]),
   _formRow([(1, _lbl('CONTATO:', c.contact)), (1, _lbl('TEL/ FAX:', c.phone))]),
   _formRow([(1, _lbl('E-MAIL:', c.email))], lastRow: true),
+]);
+
+/// "FATURAR PARA": which of the two companies the order is invoiced by (chosen when the order is created).
+pw.Widget _billToBox(String billTo) => _frame([
+  _formRow([
+    (1, pw.Align(alignment: pw.Alignment.centerRight, child: pw.Padding(padding: const pw.EdgeInsets.only(right: 16), child: pw.Text('FATURAR PARA:', style: _t(9.5, bold: true))))),
+    (1, pw.Row(mainAxisAlignment: pw.MainAxisAlignment.center, children: [_checkItem('EBT', billTo == 'Ebt'), pw.SizedBox(width: 24), _checkItem('BST', billTo == 'Bts')])),
+  ], height: 22, lastRow: true),
 ]);
 
 pw.Widget _specBox({required String dimensions, required String quantity, required String material, required String delivery, required String notes}) => _frame([
@@ -497,6 +518,8 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
   // Per item: the product (measures) and whether the customer / item is new. Loaded before the pages are built.
   final products = <Object?, Map<String, dynamic>?>{for (final l in lines) l['productId']: await _productById(api, l['productId'])};
   final novelty = <Object?, ({bool customerNew, bool itemNew})?>{for (final l in lines) l['productId']: await _novelty(api, o['customerId'], l['productId'], exceptOrderId: o['id'])};
+  final usual = <Object?, String>{for (final l in lines) l['productId']: await _usualMaterial(api, o['customerId'], l['productId'])};
+  final billTo = _s(o['billTo']);
   final created = _s(o['createdAt']).split('T').first;
   final term = _s(o['paymentTermName'] ?? o['customPaymentTerm']);
   final freight = _s(o['freight']);
@@ -516,9 +539,10 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
         final product = products[l['productId']];
         // Measures: the line's own spec, else the product's cadastro. The line's description is the material ("MATERIAL STKM 11A SAE 1008"), never the measures.
         final specMeasures = _specMeasures(spec);
-        final measures = specMeasures.isNotEmpty ? specMeasures : _tubeDimensions(product, '');
+        final measures = specMeasures.isNotEmpty ? '$specMeasures mm' : _tubeDimensions(product, '');
         final standard = _specStandard(spec);
-        final materialText = standard.isNotEmpty ? standard : _materialFromDescription(description);
+        final fromDescription = _materialFromDescription(description);
+        final materialText = standard.isNotEmpty ? standard : (fromDescription.isNotEmpty ? fromDescription : (usual[l['productId']] ?? ''));
         return pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
@@ -527,6 +551,8 @@ Future<Uint8List> buildSalesOrderPdf(ApiClient api, Map<String, dynamic> o) asyn
             _identBox(productCode: _s(l['productCode']), customerCode: c.code, novelty: novelty[l['productId']]),
             _orderedBy(o['origin']),
             _customerBox(c),
+            pw.SizedBox(height: 4),
+            _billToBox(billTo),
             pw.SizedBox(height: 4),
             _specBox(
               dimensions: measures.isEmpty ? ptText(_s(product?['name']).isNotEmpty ? product!['name'] : description) : measures,
@@ -705,7 +731,7 @@ String _tubeDimensions(Map<String, dynamic>? p, String fallback) {
       ? [_mm(p['widthMm']), _mm(p['heightMm'])].where((e) => e.isNotEmpty).join(' x ')
       : (_mm(p['diameterMm']).isEmpty ? '' : 'Ø ${_mm(p['diameterMm'])}');
   final parts = [size, _mm(p['thicknessMm']), _mm(p['lengthMm'])].where((e) => e.isNotEmpty).toList();
-  return parts.isEmpty ? fallback : parts.join(' x ');
+  return parts.isEmpty ? fallback : '${parts.join(' x ')} mm';
 }
 
 /// Especificação do material: matérias-primas da estrutura (BOM) da ordem.
@@ -740,7 +766,8 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
   final rawMaterial = mats.isEmpty ? '' : (_s(mats.first['description']).isNotEmpty ? _s(mats.first['description']) : _s(mats.first['code']));
   // Without a BOM the material is the one written on the sales order line.
   final orderLine = ((salesOrder?['lines'] as List?) ?? const []).cast<Map<String, dynamic>>().where((l) => l['productId'] == o['productId']).firstOrNull;
-  final orderMaterial = orderLine == null ? '' : _materialFromDescription(_s(orderLine['description']));
+  var orderMaterial = orderLine == null ? '' : _materialFromDescription(_s(orderLine['description']));
+  if (orderMaterial.isEmpty) orderMaterial = await _usualMaterial(api, o['customerId'], o['productId']);
   final materialText = _materialSpec(mats).isNotEmpty ? _materialSpec(mats) : orderMaterial;
   final blankRows = ops.length >= 7 ? 1 : 14 - ops.length * 2;
   final none = pw.SizedBox();
