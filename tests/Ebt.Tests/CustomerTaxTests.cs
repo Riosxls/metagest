@@ -14,6 +14,7 @@ public class CustomerTaxTests(ApiFixture api)
     private static string Cnpj() => Random.Shared.NextInt64(10_000_000_000_000, 99_999_999_999_999).ToString();
     private static string Word() => new(Guid.NewGuid().ToString("N").Take(8).Select(c => (char)('a' + c % 26)).ToArray());
     private static ProductIn Tube(string code) => new(code, "Tubo " + code, ProductKind.Part, TubeShape.Circular, 25.4m, null, null, 1.5m, 1000m, null, null, "73063010", "PC", 50, false, null, null);
+    private static ProductIn Tube(string code, decimal diameter, decimal wall, decimal length) => new(code, "Tubo " + code, ProductKind.Part, TubeShape.Circular, diameter, null, null, wall, length, null, null, "73063010", "PC", 50, false, null, null);
 
     private static CustomerCompany Company(string cnpj, decimal? ipi = null, decimal? icms = null, string? note = null) =>
         new(cnpj, null, false, null, null, null, null, null, "SP", null, null, null, null, IpiPercent: ipi, IcmsPercent: icms, TaxNote: note);
@@ -306,5 +307,35 @@ public class CustomerTaxTests(ApiFixture api)
         await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, false, rows));
         var material = await (await admin.GetAsync($"/api/sales/material-suggestion?customerId={customer.Id}&productId={product.Id}")).Read<System.Text.Json.JsonElement>();
         Assert.Equal("NBR-6591-BK", material.GetProperty("material").GetString());
+    }
+
+    [Fact]
+    public async Task The_client_code_and_the_product_of_an_empty_code_cell_come_from_the_sheets()
+    {
+        var admin = await api.AdminAsync();
+        var cnpj = Cnpj();
+        var company = new CustomerCompany(cnpj, "112470391112", true, "Rua Padre Isidoro", "182", null, "Vila Nova York", "São Paulo", "SP", "03479020", null, null, null);
+        var customer = await (await admin.Post("/api/customers", new CustomerIn("Codigo " + Code("C", 8), null, null, ConsumerType.Normal, Company: company))).Read<CustomerOut>();
+        // Tube 8,00 x 1,00 x 6000 under a random code of the shape of the real ones; the sheets leave the code cell empty and write the dimensions.
+        var code = $"{Random.Shared.Next(100, 999)}.{Random.Shared.Next(100, 999)}.60";
+        var product = await (await admin.Post("/api/products", Tube(code, 7.77m, 1.11m, 6000m))).Read<ProductOut>();
+        var rows = new List<TaxOrderRow>
+        {
+            new("00001-26", new DateOnly(2026, 3, 1), "Codigo", cnpj, "SP", 18m, 3.25m, ClientCode: "41", Dimensions: "T 7,77 X 1,11 X 6000 mm", Material: "BK DIN 2393"),
+            new("00002-26", new DateOnly(2026, 3, 2), "Codigo", cnpj, "SP", 18m, 3.25m, ClientCode: "41", Dimensions: "T 7,77 X 1,11 X 6000 mm", Material: "BK DIN 2393"),
+            new("00003-26", new DateOnly(2026, 3, 3), "Codigo", cnpj, "SP", 18m, 3.25m, ClientCode: "37", Dimensions: "T 7,77 X 1,11 X 6000 mm", Material: "BK DIN 2393"),
+        };
+        var result = await (await admin.Post("/api/customers/tax-import", new CustomerTaxImportIn(true, false, rows))).Read<CustomerTaxResult>();
+        Assert.Contains(result.ClientCodes!, c => c.EndsWith("-> 41"));
+        var read = await (await admin.GetAsync($"/api/customers/{customer.Id}")).Read<CustomerOut>();
+        Assert.Equal("41", read.ClientCode);
+        // The product is found by its dimensions, so the customer is no stranger to it.
+        var novelty = await (await admin.GetAsync($"/api/sales/customers/{customer.Id}/novelty?productId={product.Id}")).Read<System.Text.Json.JsonElement>();
+        Assert.False(novelty.GetProperty("itemNew").GetBoolean());
+        // Saving the customer without the field keeps the code; an empty text clears it.
+        var kept = await (await admin.Put($"/api/customers/{customer.Id}", new CustomerIn(read.Name, null, null, ConsumerType.Normal))).Read<CustomerOut>();
+        Assert.Equal("41", kept.ClientCode);
+        var cleared = await (await admin.Put($"/api/customers/{customer.Id}", new CustomerIn(read.Name, null, null, ConsumerType.Normal, ClientCode: ""))).Read<CustomerOut>();
+        Assert.Null(cleared.ClientCode);
     }
 }

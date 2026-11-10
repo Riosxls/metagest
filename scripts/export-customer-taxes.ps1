@@ -186,7 +186,7 @@ public static class TaxReader
             After(cells, new Pattern(@"^END\s?:")), After(cells, new Pattern(@"^BAIRRO\s?:")), After(cells, new Pattern(@"^MUNICIPIO\s?:")),
             After(cells, new Pattern(@"^CEP\s?:")), After(cells, new Pattern(@"^I\.?\s?E\s?:")), After(cells, new Pattern(@"^CONTATO\s?:")),
             After(cells, new Pattern(@"^TEL")), After(cells, new Pattern(@"^E\s?-?\s?MAIL\s?:")), After(cells, new Pattern(@"^PRAZO DE PAG")),
-            After(cells, new Pattern(@"^COD\.? PRODUTO\s?:")), After(cells, new Pattern(@"^ESPECIFICACAO DO MATERIAL\s?:")), Delivery(cells), Notes(path)
+            After(cells, new Pattern(@"^COD\.? PRODUTO\s?:")), After(cells, new Pattern(@"^ESPECIFICACAO DO MATERIAL\s?:")), Delivery(cells), Notes(path), After(cells, new Pattern(@"^COD\.? CLIENTE\s?:")), After(cells, new Pattern(@"^DIMENSOES DO TUBO"))
         };
         List<string> parts = new List<string> { Path.GetFileName(path), (name ?? "").Replace(";", ","), ufv.Replace(";", ","), date, f(icmsV), f(ipiV), cnpjV };
         parts.AddRange(extra.Select(e => (e ?? "").Replace(";", ",").Trim()));
@@ -221,6 +221,8 @@ Get-ChildItem $Folder -Filter '*.xlsx' | Where-Object { $_.Name -notlike '~$*' }
         material  = $p[17]
         deliveryAddress = $p[18]
         notes     = $p[19]
+        clientCode = $p[20]
+        dimensions = $p[21]
     })
 }
 $body = [pscustomobject]@{ apply = [bool]$Apply; overwrite = [bool]$Overwrite; createMissing = [bool]$CreateMissing; rows = $rows }

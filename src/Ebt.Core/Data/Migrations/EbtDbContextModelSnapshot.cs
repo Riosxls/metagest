@@ -811,6 +811,10 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("city");
 
+                    b.Property<string>("ClientCode")
+                        .HasColumnType("text")
+                        .HasColumnName("client_code");
+
                     b.Property<string>("Complement")
                         .HasColumnType("text")
                         .HasColumnName("complement");

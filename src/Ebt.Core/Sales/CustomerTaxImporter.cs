@@ -8,12 +8,12 @@ namespace Ebt.Core.Sales;
 /// <summary>One internal sales order ("Pedido Interno de Venda") as read from the legacy workbooks: its number (<c>04183-25</c>), the customer as typed on it and the taxes it charged.</summary>
 public sealed record TaxOrderRow(string? Reference, DateOnly? Date, string? Customer, string? Document, string? Uf, decimal? Icms, decimal? Ipi,
     string? Street = null, string? District = null, string? City = null, string? ZipCode = null, string? StateRegistration = null,
-    string? Contact = null, string? Phone = null, string? Email = null, string? PaymentTerm = null, string? ProductCode = null, string? Material = null, string? DeliveryAddress = null, string? Notes = null);
+    string? Contact = null, string? Phone = null, string? Email = null, string? PaymentTerm = null, string? ProductCode = null, string? Material = null, string? DeliveryAddress = null, string? Notes = null, string? ClientCode = null, string? Dimensions = null);
 
 public sealed record CustomerTaxMatch(int CustomerId, string CustomerName, string MatchedBy, int Orders, decimal? Ipi, decimal? Icms, string Note, bool Applied);
 
 public sealed record CustomerTaxResult(int Read, int Used, int Skipped, IReadOnlyList<CustomerTaxMatch> Matches, IReadOnlyList<string> Unmatched,
-    IReadOnlyList<string>? Created = null, IReadOnlyList<string>? Ambiguous = null, int ContactsFilled = 0, int Materials = 0, IReadOnlyList<string>? IeCorrected = null, IReadOnlyList<string>? DeliveryAddresses = null, int NotesLearned = 0);
+    IReadOnlyList<string>? Created = null, IReadOnlyList<string>? Ambiguous = null, int ContactsFilled = 0, int Materials = 0, IReadOnlyList<string>? IeCorrected = null, IReadOnlyList<string>? DeliveryAddresses = null, int NotesLearned = 0, IReadOnlyList<string>? ClientCodes = null);
 
 /// <summary>
 /// Learns each customer's usual IPI and ICMS from the old internal sales orders and stores them on the customer (company data): the IPI and ICMS of the
@@ -29,6 +29,8 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
     public async Task<CustomerTaxResult> ImportAsync(IReadOnlyList<TaxOrderRow> rows, bool apply, bool overwrite, bool createMissing = false, CancellationToken ct = default)
     {
         var (created, ambiguous) = createMissing ? await CreateMissingAsync(rows, apply, ct) : ([], []);
+        dimsIndex = (await db.Products.AsNoTracking().Where(p => p.DiameterMm != null && p.ThicknessMm != null && p.LengthMm != null).Select(p => new { p.Code, p.DiameterMm, p.ThicknessMm, p.LengthMm }).ToListAsync(ct))
+            .Select(p => (p.Code, D: p.DiameterMm!.Value, W: p.ThicknessMm!.Value, L: p.LengthMm!.Value)).ToList();
         var customers = await db.Customers.Include(c => c.Addresses).ToListAsync(ct);
         var known = customers.Select(c => new Known(c.Id, c.Name, KeyOf(c.Name), KeyOf(c.TradeName ?? ""),
             new[] { Digits(c.Document) }.Concat(c.Addresses.Select(a => Digits(a.Document))).Where(d => d.Length >= 11).ToHashSet())).ToList();
@@ -101,8 +103,74 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
         var materials = await LearnMaterialsAsync(rows, known, apply, ct);
         if (apply) await db.SaveChangesAsync(ct);
         var notes = await LearnNotesAsync(rows, known, apply, ct);
+        var clientCodes = new List<string>();
+        LearnClientCodes(rows, known, customers, apply, clientCodes);
         if (apply) await db.SaveChangesAsync(ct);
-        return new CustomerTaxResult(rows.Count, matches.Sum(m => m.Orders), skipped, matches, unmatched.ToList(), created, ambiguous, contactsFilled, materials, ieCorrected, deliveries, notes);
+        return new CustomerTaxResult(rows.Count, matches.Sum(m => m.Orders), skipped, matches, unmatched.ToList(), created, ambiguous, contactsFilled, materials, ieCorrected, deliveries, notes, clientCodes);
+    }
+
+    private List<(string Code, decimal D, decimal W, decimal L)> dimsIndex = [];
+
+    /// <summary>"T 8,00 X 1,00 X 6000 mm" as diameter, wall and length; the length may be missing (a roll).</summary>
+    internal static (decimal D, decimal W, decimal? L)? ParseDimensions(string? text)
+    {
+        var m = Regex.Match(PriceHistoryImporter.Fold(text ?? ""), @"(\d[\d.,]*)\s*X\s*(\d[\d.,]*)(?:\s*X\s*(\d[\d.,]*))?");
+        if (!m.Success) return null;
+        static decimal? Num(string v, bool length)
+        {
+            v = v.Trim('.', ',');
+            if (length && Regex.IsMatch(v, @"^\d{1,3}\.\d{3}$")) v = v.Replace(".", "");
+            return decimal.TryParse(v.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? d : null;
+        }
+        return Num(m.Groups[1].Value, false) is { } dia && Num(m.Groups[2].Value, false) is { } wall ? (dia, wall, m.Groups[3].Success ? Num(m.Groups[3].Value, true) : null) : null;
+    }
+
+    /// <summary>
+    /// The product code of an order sheet: the code cell when it looks like one ("080.100.60"), else the product of the cadastro with the dimensions written on the sheet.
+    /// Older sheets leave the code cell empty (or write "ITEM NOVO" in it), but the tube is always in the dimensions.
+    /// </summary>
+    private string? ProductCodeOf(TaxOrderRow r)
+    {
+        var code = Clean(r.ProductCode);
+        if (code is not null && ProductCodeShape.IsMatch(code)) return code;
+        if (ParseDimensions(r.Dimensions) is not { } dims || dims.L is not { } len) return null;
+        return dimsIndex.FirstOrDefault(p => Math.Abs(p.D - dims.D) <= 0.005m && Math.Abs(p.W - dims.W) <= 0.0005m && Math.Abs(p.L - len) <= 1m).Code;
+    }
+
+    /// <summary>
+    /// The customer code printed on the papers ("CÓD. CLIENTE"), from the sheets: the number most sheets of the customer carry (3 digits at most, at least 60% of its sheets when there are
+    /// two or more). A code that two customers would get stays with the one that has more sheets.
+    /// </summary>
+    private void LearnClientCodes(IReadOnlyList<TaxOrderRow> rows, List<Known> known, List<Entities.Customer> customers, bool apply, List<string> changes)
+    {
+        var tally = new Dictionary<int, Dictionary<string, int>>();
+        foreach (var r in rows)
+        {
+            var code = Clean(r.ClientCode);
+            if (code is null || !Regex.IsMatch(code, @"^\d{1,3}$")) continue;
+            var (id, _, _) = Lookup(known, r);
+            if (id is null) continue;
+            if (!tally.TryGetValue(id.Value, out var m)) tally[id.Value] = m = [];
+            var key = code.TrimStart('0');
+            if (key.Length == 0) continue;
+            m[key] = m.GetValueOrDefault(key) + 1;
+        }
+        var top = new Dictionary<int, (string Code, int N)>();
+        foreach (var (id, m) in tally)
+        {
+            var total = m.Values.Sum();
+            var best = m.OrderByDescending(v => v.Value).First();
+            if (total < 2 || best.Value * 10 >= total * 6) top[id] = (best.Key, best.Value);
+        }
+        var owner = top.GroupBy(t => t.Value.Code).ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.Value.N).First().Key);
+        foreach (var (id, t) in top.OrderBy(e => e.Key))
+        {
+            if (owner[t.Code] != id) continue;
+            var c = customers.First(x => x.Id == id);
+            if (c.ClientCode == t.Code) continue;
+            changes.Add($"{c.Name}: {c.ClientCode ?? c.LegacyCode ?? "-"} -> {t.Code}");
+            if (apply) c.ClientCode = t.Code;
+        }
     }
 
     /// <summary>The material of each customer + product code, as the old orders wrote it (the latest order wins, with how many said it).</summary>
@@ -114,7 +182,7 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
             var material = Clean(r.Material);
             if (material is not null && (material.Length > 200 || material.StartsWith("TUBO", StringComparison.OrdinalIgnoreCase))) material = null;
             // A row without a product code still says the customer bought before: it is kept under "-".
-            var product = Clean(r.ProductCode) ?? "-";
+            var product = ProductCodeOf(r) ?? Clean(r.ProductCode) ?? "-";
             if (product.Length > 40) continue;
             var (id, _, _) = Lookup(known, r);
             if (id is null) continue;
@@ -197,8 +265,8 @@ public sealed class CustomerTaxImporter(EbtDbContext db)
             var note = TechnicalNote(r.Notes);
             if (!tallies.TryGetValue(id.Value, out var t)) tallies[id.Value] = t = (new NoteTally(), []);
             t.All.Add(note, date);
-            var code = Clean(r.ProductCode);
-            if (code is null || !ProductCodeShape.IsMatch(code)) continue;
+            var code = ProductCodeOf(r);
+            if (code is null) continue;
             if (!t.Products.TryGetValue(code, out var p)) t.Products[code] = p = new NoteTally();
             p.Add(note, date);
         }

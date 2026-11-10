@@ -11,6 +11,8 @@ public class Customer : IHasSource
     public int Id { get; set; }
     public DataSource Source { get; set; }
     public string? LegacyCode { get; set; }
+    /// <summary>The customer code printed on the pedido interno and the OF ("CÓD. CLIENTE"), as the paper sheets numbered it. Not the legacy-system code.</summary>
+    public string? ClientCode { get; set; }
     public required string Name { get; set; }
     public string? TradeName { get; set; }
     public ConsumerType ConsumerType { get; set; }

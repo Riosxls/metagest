@@ -214,6 +214,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       fields: [
         const FieldSpec('name', 'Nome / razão social', required: true),
         const FieldSpec('tradeName', 'Nome fantasia'),
+        const FieldSpec('clientCode', 'Código do cliente', hint: 'Impresso como CÓD. CLIENTE no pedido interno e na OF'),
         ..._companyFormFields(),
       ],
       onSubmit: (b) async {
@@ -296,6 +297,7 @@ class _CustomerScreenState extends State<CustomerScreen> {
       'name': _c['name'],
       'tradeName': _c['tradeName'],
       'legacyCode': _c['legacyCode'],
+      'clientCode': _c['clientCode'],
       'consumerType': _c['consumerType'],
       'active': _c['active'],
       ...changes,
@@ -316,6 +318,7 @@ class _CustomerScreenState extends State<CustomerScreen> {
         const FieldSpec('name', 'Nome / razão social', required: true),
         const FieldSpec('tradeName', 'Nome fantasia'),
         const FieldSpec('legacyCode', 'Código antigo'),
+        const FieldSpec('clientCode', 'Código do cliente', hint: 'Impresso como CÓD. CLIENTE no pedido interno e na OF'),
         ..._companyFormFields(),
       ],
       initial: {..._c, if (company != null) for (final e in _normalizeUf(company, 'uf').entries) 'company.${e.key}': e.value},
@@ -512,6 +515,7 @@ class _CustomerCompany extends StatelessWidget {
               ('Fantasia', fmt(customer['tradeName'])),
               ('CNPJ/CPF', fmtDocument(a['document'])),
               ('Inscrição estadual', fmt(a['stateRegistration'])),
+              ('Código do cliente', fmt(customer['clientCode'])),
             ]),
     );
     final address = Section(

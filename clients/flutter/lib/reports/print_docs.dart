@@ -484,7 +484,8 @@ class _CustomerBlock {
     contact = ptText(contactRaw);
     phone = ptPhone(pick('phone'));
     email = ptEmail(pick('email'));
-    code = _s(c?['legacyCode']).isNotEmpty ? _s(c?['legacyCode']) : _s(c?['id']);
+    // The code the paper sheets always carried ("CÓD. CLIENTE"); the id of the database is not a customer code and is never printed in its place.
+    code = _s(c?['clientCode']).isNotEmpty ? _s(c?['clientCode']) : _s(c?['legacyCode']);
   }
 
   final String name;
@@ -719,15 +720,25 @@ pw.Widget _freightBox({required String freight, required String place}) => pw.Co
           pw.Column(
             children: [
               pw.Row(children: [_checkBox(freight == 'Cif', w: 30), pw.SizedBox(width: 8), pw.Text('ENTREGA POR NOSSA CONTA', style: _t(8.5, bold: true))]),
-              pw.SizedBox(height: 3),
-              pw.Text('LOCAL DE ENTREGA:', style: _t(8.5, bold: true)),
-              pw.SizedBox(width: 200, child: pw.Text(place, style: _t(8.5, bold: true, color: _blue), textAlign: pw.TextAlign.center)),
+              // The customer collects: there is no place to deliver to.
+              if (freight != 'CustomerPickup') ...[
+                pw.SizedBox(height: 3),
+                pw.Text('LOCAL DE ENTREGA:', style: _t(8.5, bold: true)),
+                pw.SizedBox(width: 200, child: pw.Text(place, style: _t(8.5, bold: true, color: _blue), textAlign: pw.TextAlign.center)),
+              ],
             ],
           ),
         ],
       ),
       pw.SizedBox(height: 4),
-      pw.Text('TRANSPORTADORA:', style: _t(8.5, bold: true)),
+      pw.Row(
+        children: [
+          pw.Text('TRANSPORTADORA: ', style: _t(8.5, bold: true)),
+          // FOB: the carrier is the customer's; pickup: the customer comes with its own vehicle.
+          if (freight == 'Fob') pw.Text('indicada pelo cliente (FOB)', style: _t(8.5, bold: true, color: _blue)),
+          if (freight == 'CustomerPickup') pw.Text('o cliente retira na fábrica', style: _t(8.5, bold: true, color: _blue)),
+        ],
+      ),
       pw.SizedBox(height: 4),
       pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -738,6 +749,14 @@ pw.Widget _freightBox({required String freight, required String place}) => pw.Co
 );
 
 const _opFlex = [8, 32, 17, 10, 10, 23];
+
+/// The resource column of a process row: the machine; for the final inspection what the paper always said ("Visual/Dimensional"); "Terceiro" for outside work.
+String _opResource(Map<String, dynamic> op) {
+  if (op['external'] == true) return 'Terceiro';
+  final name = _s(op['machineName']);
+  if (RegExp(r'inspe[cç]', caseSensitive: false).hasMatch(name) || RegExp(r'inspe[cç]', caseSensitive: false).hasMatch(_s(op['description']))) return 'Visual/Dimensional';
+  return name.isNotEmpty ? ptText(name) : _s(op['machineCode']);
+}
 
 /// Printable width of the A4 page (margins 36 + 36) and the room the text of a process column really has (padding 3 + 3, border 1).
 const _opPageWidth = 595.28 - 72;
@@ -879,7 +898,7 @@ Future<Uint8List> buildProductionOrderPdf(ApiClient api, Map<String, dynamic> o)
             _opText(_s(op['tolerance']), 2),
             small(_s(op['measureStart'])),
             small(_s(op['measureEnd'])),
-            _opText(op['external'] == true ? 'Terceiro' : (_s(op['machineName']).isNotEmpty ? ptText(op['machineName']) : _s(op['machineCode'])), 5),
+            _opText(_opResource(op), 5),
           ]),
           _opRow([none, none, none, none, none, none]),
         ],

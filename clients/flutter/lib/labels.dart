@@ -147,7 +147,7 @@ const salesOrderStatuses = {
 };
 const deliveryStatuses = {'Planned': 'Programada', 'Shipped': 'Expedida', 'Delivered': 'Entregue', 'Cancelled': 'Cancelada'};
 const certificateStatuses = {'Draft': 'Rascunho', 'Issued': 'Emitido', 'Cancelled': 'Cancelado'};
-const freightTerms = {'Cif': 'CIF (frete nosso)', 'Fob': 'FOB (frete do cliente)', 'CustomerPickup': 'Retira na fábrica'};
+const freightTerms = {'Cif': 'CIF (frete nosso)', 'Fob': 'FOB (frete do cliente)', 'CustomerPickup': 'Retirada pelo cliente'};
 const pipelineStages = {
   'quote': 'Orçamento',
   'sent': 'Enviada',
