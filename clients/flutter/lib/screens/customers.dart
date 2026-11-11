@@ -11,6 +11,7 @@ import '../reports/pt_text.dart' show ptEmail, ptPhone, ptText;
 import '../session.dart';
 import '../theme_tokens.dart';
 import '../widgets/contact_list.dart';
+import '../widgets/duplicates.dart';
 import '../widgets/entity_form.dart';
 import '../widgets/load_error.dart';
 import '../widgets/pipeline.dart' show StatusBadge, Tone, toneAccent;
@@ -410,6 +411,7 @@ class _CustomerScreenState extends State<CustomerScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _CustomerHeader(customer: _c),
+            DuplicatesBanner(session: s, kind: 'customers', id: id, onOpen: (other) => unawaited(openCustomer(context, s, other))),
             const TabBar(
               isScrollable: true,
               tabAlignment: TabAlignment.start,

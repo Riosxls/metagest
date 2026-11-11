@@ -6,6 +6,7 @@ import '../api.dart';
 import '../entities.dart';
 import '../session.dart';
 import '../theme_tokens.dart';
+import '../widgets/duplicates.dart';
 import '../widgets/entity_form.dart';
 import '../widgets/load_error.dart';
 import '../widgets/record_nav.dart';
@@ -123,6 +124,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with SingleTi
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _Summary(product: p, onRevisions: () => _tabs.animateTo(3)),
+                DuplicatesBanner(session: widget.session, kind: 'products', id: widget.productId, onOpen: (other) => unawaited(openProduct(context, widget.session, other))),
                 Expanded(
                   child: TabBarView(
                     controller: _tabs,
