@@ -5,6 +5,7 @@ import '../entities.dart';
 import '../reports/pt_text.dart' show ptEmail, ptText;
 import '../session.dart';
 import '../widgets/contact_list.dart';
+import '../widgets/duplicates.dart';
 import '../widgets/entity_form.dart';
 import '../widgets/load_error.dart';
 import '../widgets/record_list.dart';
@@ -150,13 +151,20 @@ class _SupplierScreenState extends State<SupplierScreen> {
             ],
           ),
         ),
-        body: TabBarView(
+        body: Column(
           children: [
-            PerformanceView(session: s, supplierId: id),
-            _SupplierMaterials(session: s, supplierId: id),
-            OverdueScreen(session: s, supplierId: id),
-            OrdersScreen(session: s, supplierId: id, supplierName: '${_s['name']}'),
-            ReceiptsView(session: s, query: {'supplierId': id}, allowNew: true, supplierId: id, supplierName: '${_s['name']}'),
+            DuplicatesBanner(session: s, kind: 'suppliers', id: id, onOpen: (other) => unawaited(openSupplier(context, s, other))),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  PerformanceView(session: s, supplierId: id),
+                  _SupplierMaterials(session: s, supplierId: id),
+                  OverdueScreen(session: s, supplierId: id),
+                  OrdersScreen(session: s, supplierId: id, supplierName: '${_s['name']}'),
+                  ReceiptsView(session: s, query: {'supplierId': id}, allowNew: true, supplierId: id, supplierName: '${_s['name']}'),
+                ],
+              ),
+            ),
           ],
         ),
       ),

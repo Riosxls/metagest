@@ -1203,6 +1203,56 @@ namespace Ebt.Core.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ebt.Core.Entities.DuplicateDismissal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("HighId")
+                        .HasColumnType("integer")
+                        .HasColumnName("high_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("LowId")
+                        .HasColumnType("integer")
+                        .HasColumnName("low_id");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.HasKey("Id")
+                        .HasName("pk_duplicate_dismissals");
+
+                    b.HasIndex("Kind", "LowId", "HighId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_duplicate_dismissals_kind_low_id_high_id");
+
+                    b.ToTable("duplicate_dismissals", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_duplicate_dismissals_order", "low_id < high_id");
+                        });
+                });
+
             modelBuilder.Entity("Ebt.Core.Entities.Employee", b =>
                 {
                     b.Property<int>("Id")

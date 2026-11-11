@@ -23,6 +23,7 @@ import 'certificates.dart';
 import 'customers.dart';
 import 'dashboard.dart';
 import 'deliveries.dart';
+import 'duplicates.dart';
 import 'entity_list.dart';
 import 'fiscal.dart';
 import 'low_stock.dart';
@@ -203,6 +204,7 @@ List<NavItem> _screens() => [
   for (final spec in productionMasters) NavItem(spec.path, spec.icon, spec.title, 'PCP', (s, f, go) => EntityListScreen(session: s, spec: spec)),
   NavItem('settings', Icons.tune, 'Parâmetros', 'Sistema', (s, f, go) => SettingsScreen(session: s)),
   NavItem('fiscal-settings', Icons.receipt_outlined, 'Parâmetros fiscais', 'Sistema', (s, f, go) => FiscalSettingsScreen(session: s)),
+  NavItem('duplicates', Icons.content_copy_outlined, 'Cadastros duplicados', 'Sistema', (s, f, go) => DuplicatesScreen(session: s, initialKind: f)),
   NavItem('users', Icons.group_outlined, 'Usuários', 'Sistema', (s, f, go) => UsersScreen(session: s), admin: true),
   NavItem('permissions', Icons.lock_outline, 'Permissões', 'Sistema', (s, f, go) => PermissionsScreen(session: s), admin: true),
   NavItem('audit', Icons.history, 'Auditoria', 'Sistema', (s, f, go) => AuditScreen(session: s), admin: true),

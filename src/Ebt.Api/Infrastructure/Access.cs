@@ -28,6 +28,7 @@ public static class Access
         [FiscalPolicies.Emit] = [A, UserRole.Sales, UserRole.SalesManager],
         [ReceivablePolicies.Post] = [A, UserRole.Sales, UserRole.SalesManager],
         [CertificatePolicies.Issue] = [A, UserRole.Engineering, UserRole.Production, UserRole.SalesManager],
+        [DuplicatePolicies.Review] = [A, UserRole.Engineering, UserRole.Purchasing, UserRole.Sales, UserRole.SalesManager],
         [SalesPolicies.PriceEdit] = [A, UserRole.SalesManager],
         [SteelPolicies.Write] = [A, UserRole.Stock, UserRole.Purchasing],
         [ViabilityPolicies.Quality] = [A, UserRole.Engineering],

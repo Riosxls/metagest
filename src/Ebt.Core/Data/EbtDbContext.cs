@@ -178,6 +178,7 @@ public partial class EbtDbContext(DbContextOptions<EbtDbContext> options) : DbCo
         ConfigureSteel(b);
         ConfigureBackup(b);
         ConfigureIdempotency(b);
+        ConfigureDuplicates(b);
     }
 
     partial void ConfigureInventory(ModelBuilder b);
@@ -197,4 +198,6 @@ public partial class EbtDbContext(DbContextOptions<EbtDbContext> options) : DbCo
     partial void ConfigureBackup(ModelBuilder b);
 
     partial void ConfigureIdempotency(ModelBuilder b);
+
+    partial void ConfigureDuplicates(ModelBuilder b);
 }

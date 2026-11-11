@@ -64,7 +64,7 @@ const auditEntities = [
 ];
 
 /// Portuguese names for audit entities that are not shown by their class name.
-const auditEntityLabels = {  'PurchasingSettings': 'Parâmetros de Suprimentos',  'BackupSettings': 'Cópia de segurança',  'Customer': 'Cliente',  'CustomerAddress': 'Endereço de cliente',  'Supplier': 'Fornecedor',  'SupplierAddress': 'Endereço de fornecedor',  'Product': 'Produto',  'Material': 'Matéria-prima',  'AppUser': 'Usuário',  'StockSettings': 'Parâmetros de Estoque',  'StockLocation': 'Local de estoque',  'StockClosing': 'Fechamento de estoque',  'StockDocument': 'Documento de estoque',  'Quote': 'Orçamento',  'SalesOrder': 'Pedido de venda',  'Delivery': 'Entrega',  'ProductionOrder': 'Ordem de fabricação',  'PurchaseRequisition': 'Requisição de compra',  'PurchaseOrder': 'Pedido de compra',  'FiscalDocument': 'Nota fiscal',  'FiscalSettings': 'Parâmetros fiscais',  'QualityCertificate': 'Certificado',  'ReceivablePayment': 'Baixa de recebimento',};
+const auditEntityLabels = {  'PurchasingSettings': 'Parâmetros de Suprimentos',  'BackupSettings': 'Cópia de segurança',  'Customer': 'Cliente',  'CustomerAddress': 'Endereço de cliente',  'Supplier': 'Fornecedor',  'SupplierAddress': 'Endereço de fornecedor',  'Product': 'Produto',  'Material': 'Matéria-prima',  'AppUser': 'Usuário',  'StockSettings': 'Parâmetros de Estoque',  'StockLocation': 'Local de estoque',  'StockClosing': 'Fechamento de estoque',  'StockDocument': 'Documento de estoque',  'Quote': 'Orçamento',  'SalesOrder': 'Pedido de venda',  'Delivery': 'Entrega',  'ProductionOrder': 'Ordem de fabricação',  'PurchaseRequisition': 'Requisição de compra',  'PurchaseOrder': 'Pedido de compra',  'FiscalDocument': 'Nota fiscal',  'FiscalSettings': 'Parâmetros fiscais',  'QualityCertificate': 'Certificado',  'ReceivablePayment': 'Baixa de recebimento',  'DuplicateDismissal': 'Marca de não duplicado',};
 
 const policyDescriptions = {
   'read': 'Consultar todos os cadastros e telas',
@@ -82,6 +82,7 @@ const policyDescriptions = {
   'sales-ship': 'Confirmar a expedição física das entregas (estoque, vendas)',
   'fiscal-emit': 'Emitir a nota fiscal de venda (na expedição ou depois dela)',
   'receivables-post': 'Dar baixa e estornar pagamentos nas duplicatas (contas a receber)',
+  'duplicates-review': 'Marcar dois cadastros como "não é duplicado" (clientes, produtos e fornecedores)',
   'certificates-issue': 'Emitir, cancelar e dispensar certificados de qualidade',
   'price-edit': 'Alterar a tabela de preços',
   'customers': 'Manter clientes',

@@ -139,6 +139,7 @@ class Session extends ChangeNotifier {
   bool get canIssueCertificate => permissions.contains('certificates-issue');
   bool get canEmitInvoice => permissions.contains('fiscal-emit');
   bool get canPostReceivables => permissions.contains('receivables-post');
+  bool get canReviewDuplicates => permissions.contains('duplicates-review');
   bool get canEditPrices => permissions.contains('price-edit');
   bool get canSignQuality => permissions.contains('viability-quality');
   bool get canSignProduction => permissions.contains('viability-production');

@@ -1,0 +1,188 @@
+import 'dart:convert';
+
+import 'package:ebt_engenharia/api.dart';
+import 'package:ebt_engenharia/main.dart' show appTheme;
+import 'package:ebt_engenharia/screens/duplicates.dart';
+import 'package:ebt_engenharia/session.dart';
+import 'package:ebt_engenharia/widgets/duplicates.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'role_permissions.dart';
+
+http.Response json(Object body, [int status = 200]) => http.Response(jsonEncode(body), status, headers: {'content-type': 'application/json; charset=utf-8'});
+
+Map<String, dynamic> rec(int id, String label, {String? detail}) => {'id': id, 'label': label, 'detail': detail, 'active': true};
+
+Map<String, dynamic> pair(Map<String, dynamic> a, Map<String, dynamic> b, int score, List<String> reasons) => {
+  'a': a,
+  'b': b,
+  'score': score,
+  'reasons': [
+    for (final r in reasons) {'code': 'x', 'text': r, 'score': score},
+  ],
+};
+
+Session sessionFor(String role, MockClient client) =>
+    Session(
+        api: ApiClient(baseUrl: 'http://api.test', client: client, token: 'tok'),
+      )
+      ..username = 'ana'
+      ..role = role
+      ..permissions = rolePermissions[role]!;
+
+Future<void> pumpApp(WidgetTester tester, Widget home) async {
+  SharedPreferences.setMockInitialValues({});
+  tester.view.physicalSize = const Size(1400, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: appTheme(Brightness.light),
+      locale: const Locale('pt', 'BR'),
+      supportedLocales: const [Locale('pt', 'BR')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      home: Scaffold(body: home),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+void main() {
+  final self = rec(1, 'Aço Alfa Ltda', detail: '11.222.333/0001-81');
+  final other = rec(2, 'ACO ALFA S.A.', detail: 'Embu/SP');
+
+  testWidgets('the banner lists the records that look alike with the reason, and a reviewer can mark the pair as not a duplicate', (tester) async {
+    var matches = [
+      pair(self, other, 100, ['Mesmo CNPJ/CPF', 'Mesmo nome']),
+    ];
+    var dismissed = <Map<String, dynamic>>[];
+    final posts = <http.Request>[];
+    final client = MockClient((r) async {
+      if (r.url.path == '/api/customers/1/duplicates') return json({'matches': matches, 'dismissed': dismissed});
+      if (r.method == 'POST' && r.url.path == '/api/duplicates/customers/1/2/dismiss') {
+        posts.add(r);
+        matches = [];
+        dismissed = [
+          {'id': 5, 'other': other, 'reason': 'Filiais', 'createdBy': 'ana', 'createdAt': '2026-11-11T10:00:00Z'},
+        ];
+        return http.Response('', 204);
+      }
+      if (r.method == 'DELETE' && r.url.path == '/api/duplicates/customers/1/2/dismiss') {
+        dismissed = [];
+        matches = [
+          pair(self, other, 100, ['Mesmo CNPJ/CPF']),
+        ];
+        return http.Response('', 204);
+      }
+      return json({});
+    });
+    final opened = <int>[];
+    await pumpApp(tester, DuplicatesBanner(session: sessionFor('Sales', client), kind: 'customers', id: 1, onOpen: opened.add));
+
+    expect(find.text('Possíveis duplicados (1)'), findsOneWidget);
+    expect(find.text('ACO ALFA S.A.'), findsWidgets);
+    expect(find.textContaining('Mesmo CNPJ/CPF · Mesmo nome · 100%'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Abrir'));
+    expect(opened, [2]);
+
+    await tester.tap(find.text('Não é duplicado'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('prompt-text')), 'Filiais');
+    await tester.tap(find.widgetWithText(FilledButton, 'Marcar'));
+    await tester.pumpAndSettle();
+    expect(jsonDecode(posts.single.body), {'reason': 'Filiais'});
+    // The pair left the suspects and shows under the cleared ones, with a way back.
+    expect(find.text('Possíveis duplicados (1)'), findsNothing);
+    expect(find.text('Marcados como não duplicados (1)'), findsOneWidget);
+    await tester.tap(find.text('Marcados como não duplicados (1)'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Filiais · por ana'), findsOneWidget);
+    await tester.tap(find.text('Voltar a sinalizar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Possíveis duplicados (1)'), findsOneWidget);
+  });
+
+  testWidgets('a role without the review permission only reads the suspects', (tester) async {
+    final client = MockClient(
+      (r) async => json({
+        'matches': [
+          pair(self, other, 90, ['Mesmo nome']),
+        ],
+        'dismissed': <Object>[],
+      }),
+    );
+    await pumpApp(tester, DuplicatesBanner(session: sessionFor('Reader', client), kind: 'products', id: 1, onOpen: (_) {}));
+    expect(find.text('Possíveis duplicados (1)'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Abrir'), findsOneWidget);
+    expect(find.text('Não é duplicado'), findsNothing);
+  });
+
+  testWidgets('the banner is invisible with nothing to say or when the list cannot be read', (tester) async {
+    await pumpApp(
+      tester,
+      DuplicatesBanner(
+        session: sessionFor('Sales', MockClient((r) async => json({'matches': <Object>[], 'dismissed': <Object>[]}))),
+        kind: 'customers',
+        id: 1,
+        onOpen: (_) {},
+      ),
+    );
+    expect(find.byKey(const ValueKey('duplicates-banner')), findsNothing);
+    await pumpApp(
+      tester,
+      DuplicatesBanner(session: sessionFor('Sales', MockClient((r) async => json({'message': 'x'}, 500))), kind: 'suppliers', id: 1, onOpen: (_) {}),
+    );
+    expect(find.byKey(const ValueKey('duplicates-banner')), findsNothing);
+  });
+
+  testWidgets('the list screen shows the groups of each kind and marks a pair as not a duplicate', (tester) async {
+    final asked = <String>[];
+    var groups = [
+      {
+        'members': [self, other],
+        'pairs': [
+          pair(self, other, 100, ['Mesmo CNPJ/CPF']),
+        ],
+        'score': 100,
+      },
+    ];
+    final client = MockClient((r) async {
+      asked.add('${r.method} ${r.url.path}');
+      if (r.method == 'GET' && r.url.path == '/api/duplicates/customers') return json({'groups': groups, 'pairs': groups.length, 'records': 2 * groups.length});
+      if (r.method == 'GET' && r.url.path == '/api/duplicates/products') return json({'groups': <Object>[], 'pairs': 0, 'records': 0});
+      if (r.method == 'POST' && r.url.path == '/api/duplicates/customers/1/2/dismiss') {
+        groups = [];
+        return http.Response('', 204);
+      }
+      return json({'groups': <Object>[], 'pairs': 0, 'records': 0});
+    });
+    await pumpApp(tester, DuplicatesScreen(session: sessionFor('SalesManager', client)));
+
+    expect(find.text('1 grupo com 1 par suspeito'), findsOneWidget);
+    expect(find.text('Aço Alfa Ltda'), findsWidgets);
+    expect(find.textContaining('Mesmo CNPJ/CPF · 100%'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('dismiss-1-2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Marcar'));
+    await tester.pumpAndSettle();
+    expect(asked, contains('POST /api/duplicates/customers/1/2/dismiss'));
+    expect(find.text('Nenhum duplicado suspeito'), findsOneWidget);
+
+    await tester.tap(find.text('Produtos'));
+    await tester.pumpAndSettle();
+    expect(asked, contains('GET /api/duplicates/products'));
+    expect(find.text('Nenhum duplicado suspeito'), findsOneWidget);
+  });
+
+  testWidgets('the list screen reports a load failure with a retry', (tester) async {
+    await pumpApp(tester, DuplicatesScreen(session: sessionFor('Sales', MockClient((r) async => json({'message': 'Banco indisponível'}, 500)))));
+    expect(find.text('Tentar novamente'), findsOneWidget);
+  });
+}
