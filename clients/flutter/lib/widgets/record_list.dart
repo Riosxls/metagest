@@ -194,23 +194,35 @@ class RecordListState extends State<RecordList> {
           color: n > 0 ? theme.colorScheme.secondaryContainer : Colors.transparent,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 0,
+            // Left: select-all, count and Cancelar. Right: the screen's actions, so a destructive one sits apart at the far end.
+            child: Row(
               children: [
-                if (_selectingAll)
-                  const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
-                else
-                  Checkbox(
-                    key: const ValueKey('select-all'),
-                    tristate: true,
-                    value: all ? true : (n > 0 ? null : false),
-                    onChanged: total == 0 ? null : (_) => all ? sel.clear() : unawaited(selectAllMatching()),
+                Expanded(
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    children: [
+                      if (_selectingAll)
+                        const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
+                      else
+                        Checkbox(
+                          key: const ValueKey('select-all'),
+                          tristate: true,
+                          value: all ? true : (n > 0 ? null : false),
+                          onChanged: total == 0 ? null : (_) => all ? sel.clear() : unawaited(selectAllMatching()),
+                        ),
+                      Text(n == 0 ? 'Selecionar todos${total > 0 ? ' ($total)' : ''}' : (all ? 'Todos os $total selecionados' : '$n selecionado${n > 1 ? 's' : ''}'), key: const ValueKey('selection-count')),
+                      TextButton(key: const ValueKey('selection-cancel'), onPressed: sel.exit, child: const Text('Cancelar')),
+                    ],
                   ),
-                Text(n == 0 ? 'Selecionar todos${total > 0 ? ' ($total)' : ''}' : (all ? 'Todos os $total selecionados' : '$n selecionado${n > 1 ? 's' : ''}'), key: const ValueKey('selection-count')),
-                TextButton(key: const ValueKey('selection-cancel'), onPressed: sel.exit, child: const Text('Cancelar')),
-                if (n > 0) ...?widget.selectionActions?.call(context, sel),
+                ),
+                if (n > 0)
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Wrap(alignment: WrapAlignment.end, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 6, children: [...?widget.selectionActions?.call(context, sel)]),
+                    ),
+                  ),
               ],
             ),
           ),

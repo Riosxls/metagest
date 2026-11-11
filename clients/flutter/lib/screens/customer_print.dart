@@ -44,7 +44,8 @@ Future<void> exportCustomersPdf(BuildContext context, ApiClient api, List<Map<St
   }
 }
 
-/// Imprimir / Exportar PDF buttons of the customer list's selection bar, plus Excluir for those who may edit customers ([onDeleted] reloads the list).
+/// Buttons of the customer list's selection bar: Imprimir and Exportar PDF (tonal), then Excluir (red, last, behind a divider) for those who may edit
+/// customers ([onDeleted] reloads the list).
 List<Widget> customerSelectionActions(
   BuildContext context,
   ApiClient api,
@@ -52,27 +53,33 @@ List<Widget> customerSelectionActions(
   required List<String> Function() filters,
   bool canDelete = false,
   VoidCallback? onDeleted,
-}) => [
-  OutlinedButton.icon(
-    key: const ValueKey('customers-print'),
-    onPressed: () => unawaited(printCustomers(context, api, selection.rows, filters: filters())),
-    icon: const Icon(Icons.print_outlined),
-    label: const Text('Imprimir'),
-  ),
-  OutlinedButton.icon(
-    key: const ValueKey('customers-export'),
-    onPressed: () => unawaited(exportCustomersPdf(context, api, selection.rows, filters: filters())),
-    icon: const Icon(Icons.picture_as_pdf_outlined),
-    label: const Text('Exportar PDF'),
-  ),
-  if (canDelete)
-    OutlinedButton.icon(
-      key: const ValueKey('customers-delete'),
-      onPressed: () => unawaited(deleteCustomers(context, api, selection).then((n) => n > 0 ? onDeleted?.call() : null)),
-      icon: const Icon(Icons.delete_outline),
-      label: const Text('Excluir'),
+}) {
+  final cs = Theme.of(context).colorScheme;
+  return [
+    FilledButton.tonalIcon(
+      key: const ValueKey('customers-print'),
+      onPressed: () => unawaited(printCustomers(context, api, selection.rows, filters: filters())),
+      icon: const Icon(Icons.print_outlined),
+      label: const Text('Imprimir'),
     ),
-];
+    FilledButton.tonalIcon(
+      key: const ValueKey('customers-export'),
+      onPressed: () => unawaited(exportCustomersPdf(context, api, selection.rows, filters: filters())),
+      icon: const Icon(Icons.picture_as_pdf_outlined),
+      label: const Text('Exportar PDF'),
+    ),
+    if (canDelete) ...[
+      SizedBox(height: 24, child: VerticalDivider(width: 16, color: cs.outline)),
+      FilledButton.icon(
+        key: const ValueKey('customers-delete'),
+        style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError),
+        onPressed: () => unawaited(deleteCustomers(context, api, selection).then((n) => n > 0 ? onDeleted?.call() : null)),
+        icon: const Icon(Icons.delete_outline),
+        label: const Text('Excluir'),
+      ),
+    ],
+  ];
+}
 
 /// App bar menu of a customer page: print the sheet or save it as a PDF.
 class CustomerPdfMenu extends StatelessWidget {
