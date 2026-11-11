@@ -1019,7 +1019,9 @@ Future<Uint8List> buildCustomerContactPdf(ApiClient api, Map<String, dynamic> c)
       _box('Dados da empresa', [
         ('CNPJ/CPF', fmtDocument(co['document'])),
         ('Inscrição estadual', ptIe(co['stateRegistration'], co['uf'])),
-        ('Código do cliente', code),
+        ('Contribuinte de ICMS', co['icmsContributor'] == true ? 'Sim' : 'Não'),
+        ('Código do cliente', _s(c['clientCode'])),
+        ('Código antigo', _s(c['legacyCode'])),
         ('Situação', c['active'] == true ? 'Ativo' : 'Inativo'),
       ]),
       pw.SizedBox(height: 6),
@@ -1027,7 +1029,12 @@ Future<Uint8List> buildCustomerContactPdf(ApiClient api, Map<String, dynamic> c)
       pw.SizedBox(height: 6),
       _box('Contato', [('Contato', ptText(co['contact'])), ('E-mail', ptEmail(co['email'])), ('Telefone', ptPhone(co['phone']))]),
       pw.SizedBox(height: 6),
-      _box('Condições comerciais', [('Prazo padrão', _s(co['paymentTermName'])), ('Impostos usuais', tax)]),
+      _box('Condições comerciais', [
+        ('Prazo padrão', _s(co['paymentTermName'])),
+        ('Limite de crédito', co['creditLimit'] is num ? 'R\$ ${fmtMoney(co['creditLimit'])}' : ''),
+        ('Impostos usuais', tax),
+      ]),
+      if (_s(co['taxNote']).trim().isNotEmpty) _text('Impostos nos pedidos anteriores', _s(co['taxNote']).trim()),
       if (places.isNotEmpty) ...[
         pw.SizedBox(height: 10),
         pw.Text('Locais de entrega', style: _b(10)),
@@ -1042,6 +1049,83 @@ Future<Uint8List> buildCustomerContactPdf(ApiClient api, Map<String, dynamic> c)
     header: (_) => _header('Ficha do cliente', code, issuer),
   );
 }
+
+/// Customer list as a landscape spreadsheet: one row per customer, the header row repeated on every page, page numbers and the total at the end.
+/// [filters] are lines describing what narrowed the list (search text, situation); they print under the title.
+Future<Uint8List> buildCustomersListPdf(ApiClient api, List<Map<String, dynamic>> customers, {List<String> filters = const []}) async {
+  final issuer = await _Issuer.load(api);
+  final doc = pw.Document(title: 'Lista de clientes', theme: await _theme());
+  const headers = ['Código', 'Cliente', 'CNPJ/CPF', 'Insc. estadual', 'Cidade/UF', 'Contato', 'Telefone', 'E-mail', 'Prazo', 'Limite (R\$)', 'IPI', 'ICMS', 'Situação'];
+  const flex = <double>[1.1, 3.6, 2.2, 1.9, 2.1, 1.9, 1.9, 3.0, 1.6, 1.5, 0.8, 0.8, 1.0];
+  const right = {9, 10, 11};
+  String pct(Object? v) => v is num ? '${fmt(v)}%' : '';
+  List<String> row(Map<String, dynamic> c) {
+    final co = (c['company'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+    final name = ptText(c['name']);
+    final trade = ptText(c['tradeName']);
+    final city = [ptText(co['city']), _s(co['uf']).toUpperCase()].where((e) => e.isNotEmpty).join('/');
+    return [
+      _s(c['clientCode']).isNotEmpty ? _s(c['clientCode']) : _s(c['legacyCode']),
+      trade.isEmpty || trade == name ? name : '$name\n$trade',
+      fmtDocument(co['document']),
+      ptIe(co['stateRegistration'], co['uf']),
+      city,
+      ptText(co['contact']),
+      ptPhone(co['phone']),
+      ptEmail(co['email']),
+      _s(co['paymentTermName']),
+      co['creditLimit'] is num ? fmtMoney(co['creditLimit']) : '',
+      pct(co['ipiPercent']),
+      pct(co['icmsPercent']),
+      c['active'] == true ? 'Ativo' : 'Inativo',
+    ];
+  }
+
+  final now = DateTime.now();
+  final stamp = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+  final count = '${customers.length} ${customers.length == 1 ? 'cliente' : 'clientes'}';
+  doc.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4.landscape,
+      margin: const pw.EdgeInsets.all(24),
+      header: (_) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(children: [pw.Expanded(child: pw.Text(issuer.name, style: _b(12))), pw.Text('Lista de clientes', style: _b(13))]),
+          if (filters.isNotEmpty) pw.Text(filters.join('   |   '), style: _n(8)),
+          pw.Divider(thickness: 0.8, height: 8),
+        ],
+      ),
+      footer: (c) => pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [pw.Text('$count · emitido em $stamp', style: _n(7)), pw.Text('Página ${c.pageNumber}/${c.pagesCount}', style: _n(7))],
+      ),
+      build: (_) => [
+        pw.Table(
+          columnWidths: {for (var i = 0; i < flex.length; i++) i: pw.FlexColumnWidth(flex[i])},
+          border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey400, width: 0.3), bottom: pw.BorderSide(color: PdfColors.grey600, width: 0.5)),
+          // The header row is drawn again at the top of every page the table spills onto.
+          children: [
+            pw.TableRow(
+              repeat: true,
+              decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+              children: [for (var i = 0; i < headers.length; i++) _cell(headers[i], bold: true, right: right.contains(i))],
+            ),
+            for (final c in customers) pw.TableRow(children: [for (final (i, v) in row(c).indexed) _cell(v, right: right.contains(i))]),
+          ],
+        ),
+        pw.SizedBox(height: 8),
+        pw.Text('Total: $count', style: _b(9)),
+      ],
+    ),
+  );
+  return savePdf(doc, offThread: customers.length > 150);
+}
+
+/// What the customer print does for a selection: one customer gets its sheet (portrait, [buildCustomerContactPdf]), two or more get the list
+/// (landscape, [buildCustomersListPdf]). The sheet reads the delivery places from the API, so [customers] may be the rows of the list.
+Future<Uint8List> buildCustomersPdf(ApiClient api, List<Map<String, dynamic>> customers, {List<String> filters = const []}) =>
+    customers.length == 1 ? buildCustomerContactPdf(api, customers.single) : buildCustomersListPdf(api, customers, filters: filters);
 
 /// Simulação de preço: one A4 sheet with the measures, the suggested price and the similar sales it came from. It is an internal working paper,
 /// never a proposal. [s] is the plain data the simulator screen collects (see `PriceSimulatorPanel`): shape, measures, spec, customer, quantity,

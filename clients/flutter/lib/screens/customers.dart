@@ -17,6 +17,8 @@ import '../widgets/pipeline.dart' show StatusBadge, Tone, toneAccent;
 import '../widgets/print_panel.dart' show printPdf;
 import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
+import '../widgets/record_selection.dart';
+import 'customer_print.dart';
 import 'receivables.dart';
 import 'sales_common.dart';
 import 'sales_quotes.dart' show newQuote;
@@ -230,7 +232,14 @@ class CustomersScreen extends StatefulWidget {
 
 class _CustomersScreenState extends State<CustomersScreen> {
   final _list = GlobalKey<RecordListState>();
+  final _selection = RecordSelection();
   String? _active = 'true';
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
 
   Future<void> _new() async {
     final s = widget.session;
@@ -275,6 +284,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
         : null,
     // Contact-style list: avatar, name and trade name, then the data a salesperson reaches for (CNPJ, e-mail and who to ask for, phone, city), grouped under letters.
     pillSearch: true,
+    selection: _selection,
+    selectionActions: (ctx, sel) => customerSelectionActions(ctx, widget.session.api, sel, filters: () => customerPrintFilters(search: _list.currentState?.searchText ?? '', active: _active)),
     rowBuilder: (context, e, wide) => _customerRow(context, widget.session.api, e, wide),
     groupOf: (e) => contactLetter('${e['name']}'),
     listHeader: const ContactsHeader(titles: ['NOME', 'CNPJ/CPF', 'E-MAIL', 'TELEFONE', 'CIDADE'], flex: _contactFlex, actions: 3),
@@ -385,6 +396,7 @@ class _CustomerScreenState extends State<CustomerScreen> {
         appBar: AppBar(
           title: Text('${_c['name']}${_isActive ? '' : ' (inativo)'}', overflow: TextOverflow.ellipsis),
           actions: [
+            CustomerPdfMenu(api: s.api, customer: _c),
             IconButton(tooltip: 'Editar cadastro', onPressed: _edit, icon: const Icon(Icons.edit_outlined)),
             if (s.canCustomers)
               IconButton(

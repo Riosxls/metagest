@@ -11,6 +11,7 @@ import '../api.dart';
 import '../entities.dart';
 import '../prefs.dart';
 import 'record_nav.dart';
+import 'record_selection.dart';
 
 /// One entry of a [RecordList] row menu; the list reloads after [run].
 class RowAction {
@@ -51,7 +52,16 @@ class RecordList extends StatefulWidget {
     this.groupOf,
     this.listHeader,
     this.pillSearch = true,
+    this.selection,
+    this.selectionActions,
   });
+
+  /// When set, every row gets a checkbox and a bar above the list offers "select all" (every row matching the search and filters, not only
+  /// this page), the count and [selectionActions]. The screen owns the object and reads the chosen rows from it.
+  final RecordSelection? selection;
+
+  /// Buttons of the selection bar (print, export...), built with the rows selected so far.
+  final List<Widget> Function(BuildContext context, RecordSelection selection)? selectionActions;
 
   /// A contact-style list: each row is drawn by the screen (avatar, name, a few columns), grouped under letters by [groupOf], in place of the table and the cards.
   final Widget Function(BuildContext context, Map<String, dynamic> e, bool wide)? rowBuilder;
@@ -141,6 +151,81 @@ class RecordListState extends State<RecordList> {
   int _row = -1;
   final _listFocus = FocusNode(debugLabel: 'record-list');
   final _searchFocus = FocusNode();
+
+  /// The search text in use (trimmed), for a screen that prints what narrowed the list.
+  String get searchText => _q;
+
+  bool _selectingAll = false;
+
+  /// Ticks every row that matches the search and the filters, reading all the pages (not just the one on screen).
+  Future<void> selectAllMatching() async {
+    final sel = widget.selection;
+    if (sel == null || _selectingAll) return;
+    setState(() => _selectingAll = true);
+    try {
+      final all = <Map<String, dynamic>>[];
+      var skip = 0;
+      while (true) {
+        final raw = await widget.api.get(widget.path, {...widget.query, widget.searchParam: _q, 'skip': skip, 'take': 500});
+        final page = raw is List ? PageResult(raw.cast<Map<String, dynamic>>(), raw.length, 0, raw.length) : PageResult.fromJson(raw as Map<String, dynamic>);
+        all.addAll(page.items);
+        skip += page.items.length;
+        if (page.items.isEmpty || skip >= page.total) break;
+      }
+      sel.addAll(all);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Falha ao selecionar: ${friendlyError(e)}')));
+    } finally {
+      if (mounted) setState(() => _selectingAll = false);
+    }
+  }
+
+  /// The select-all box: ticked when every matching row is selected, dashed when some are.
+  Widget _selectionBar() {
+    final sel = widget.selection!;
+    return ListenableBuilder(
+      listenable: sel,
+      builder: (context, _) {
+        final total = _page?.total ?? 0;
+        final n = sel.count;
+        final all = total > 0 && n >= total && (_page?.items.every(sel.contains) ?? false);
+        final theme = Theme.of(context);
+        return Material(
+          color: n > 0 ? theme.colorScheme.secondaryContainer : Colors.transparent,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 0,
+              children: [
+                if (_selectingAll)
+                  const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
+                else
+                  Checkbox(
+                    key: const ValueKey('select-all'),
+                    tristate: true,
+                    value: all ? true : (n > 0 ? null : false),
+                    onChanged: total == 0 ? null : (_) => all ? sel.clear() : unawaited(selectAllMatching()),
+                  ),
+                Text(n == 0 ? 'Selecionar todos${total > 0 ? ' ($total)' : ''}' : (all ? 'Todos os $total selecionados' : '$n selecionado${n > 1 ? 's' : ''}'), key: const ValueKey('selection-count')),
+                if (n > 0) TextButton(key: const ValueKey('selection-clear'), onPressed: sel.clear, child: const Text('Limpar seleção')),
+                if (n > 0) ...?widget.selectionActions?.call(context, sel),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _check(Map<String, dynamic> e) {
+    final sel = widget.selection!;
+    return ListenableBuilder(
+      listenable: sel,
+      builder: (_, _) => Checkbox(key: ValueKey('select-${RecordSelection.keyOf(e)}'), value: sel.contains(e), onChanged: (v) => sel.set(e, v ?? false)),
+    );
+  }
 
   Map<String, dynamic>? _highlighted(List<Map<String, dynamic>> items) => _row >= 0 && _row < items.length ? items[_row] : null;
 
@@ -451,6 +536,7 @@ class RecordListState extends State<RecordList> {
               ),
             ),
             if (_loading) const LinearProgressIndicator() else const SizedBox(height: 4),
+            if (widget.selection != null && page != null && page.items.isNotEmpty) _selectionBar(),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -579,6 +665,7 @@ class RecordListState extends State<RecordList> {
   static const _actionsCol = 48.0;
   static const _chevronCol = 24.0;
   static const _sortSlot = 24.0;
+  static const _checkCol = 40.0;
 
   bool get _chevron => widget.rowChevron && widget.onTap != null;
 
@@ -613,7 +700,7 @@ class RecordListState extends State<RecordList> {
     // A table narrower than its window leaves a blank band on the right: the text columns share the spare room, so the table always fills the width.
     final avail = _availWidth;
     if (avail != null && out.isNotEmpty) {
-      final extras = (widget.rowActions != null ? _actionsCol + _spacing : 0) + (_chevron ? _chevronCol + _spacing : 0);
+      final extras = (widget.rowActions != null ? _actionsCol + _spacing : 0) + (_chevron ? _chevronCol + _spacing : 0) + (widget.selection != null ? _checkCol + _spacing : 0);
       final used = _margin * 2 + out.fold(0.0, (a, b) => a + b) + _spacing * (out.length - 1) + extras;
       final grow = [for (var i = 0; i < out.length; i++) if (!widget.columns[i].numeric) i];
       final base = grow.fold(0.0, (a, i) => a + out[i]);
@@ -650,14 +737,18 @@ class RecordListState extends State<RecordList> {
       rows.add(
         Material(
           color: _rowTint(context, e, items) ?? Colors.transparent,
-          child: InkWell(onTap: widget.onTap == null ? null : () => _tap(e), child: widget.rowBuilder!(context, e, wide)),
+          child: InkWell(
+            onTap: widget.onTap == null ? null : () => _tap(e),
+            child: widget.selection == null ? widget.rowBuilder!(context, e, wide) : Row(children: [_check(e), Expanded(child: widget.rowBuilder!(context, e, wide))]),
+          ),
         ),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (wide && widget.listHeader != null) widget.listHeader!,
+        if (wide && widget.listHeader != null)
+          widget.selection == null ? widget.listHeader! : Row(children: [const SizedBox(width: 48), Expanded(child: widget.listHeader!)]),
         Expanded(
           child: Scrollbar(
             controller: _vertical,
@@ -746,6 +837,7 @@ class RecordListState extends State<RecordList> {
             child: Row(
               children: [
                 const SizedBox(width: _margin),
+                if (widget.selection != null) const SizedBox(width: _checkCol + _spacing),
                 for (var i = 0; i < widths.length; i++) ...[
                   if (i > 0) const SizedBox(width: _spacing),
                   cell(i),
@@ -774,6 +866,7 @@ class RecordListState extends State<RecordList> {
       sortColumnIndex: _sortColumn,
       sortAscending: _ascending,
       columns: [
+        if (widget.selection != null) const DataColumn(label: SizedBox(width: _checkCol)),
         for (var i = 0; i < widget.columns.length; i++) DataColumn(label: SizedBox(width: widths[i]), numeric: widget.columns[i].numeric),
         if (widget.rowActions != null) const DataColumn(label: SizedBox(width: _actionsCol)),
         if (_chevron) const DataColumn(label: SizedBox(width: _chevronCol)),
@@ -787,6 +880,7 @@ class RecordListState extends State<RecordList> {
             selected: identical(e, _highlighted(items)),
             onSelectChanged: widget.onTap == null ? null : (_) => _tap(e),
             cells: [
+              if (widget.selection != null) DataCell(SizedBox(width: _checkCol, child: _check(e))),
               for (var i = 0; i < widget.columns.length; i++)
                 DataCell(
                   SizedBox(
@@ -852,6 +946,7 @@ class RecordListState extends State<RecordList> {
     separatorBuilder: (_, _) => const Divider(height: 1),
     itemBuilder: (_, i) {
       final e = items[i];
+      final leading = widget.selection == null ? null : _check(e);
       final cols = [
         for (final c in widget.columns)
           if (!c.hideOnNarrow) c,
@@ -863,6 +958,7 @@ class RecordListState extends State<RecordList> {
         return ListTile(
           tileColor: _rowTint(context, e, items),
           selected: identical(e, _highlighted(items)),
+          leading: leading,
           title: widget.phoneTile!(context, e),
           trailing: _trailing(e),
           onTap: widget.onTap == null ? null : () => _tap(e),
@@ -871,6 +967,7 @@ class RecordListState extends State<RecordList> {
       return ListTile(
         tileColor: _rowTint(context, e, items),
         selected: identical(e, _highlighted(items)),
+        leading: leading,
         title: Text(
           '${cols[0].value(e)}  ${cols.length > 1 ? cols[1].value(e) : ''}',
           maxLines: 2,
