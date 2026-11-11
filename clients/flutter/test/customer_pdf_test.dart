@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ebt_engenharia/api.dart';
 import 'package:ebt_engenharia/entities.dart';
 import 'package:ebt_engenharia/reports/print_docs.dart';
+import 'package:ebt_engenharia/screens/customer_delete.dart';
 import 'package:ebt_engenharia/screens/customer_print.dart';
 import 'package:ebt_engenharia/widgets/record_list.dart';
 import 'package:ebt_engenharia/widgets/record_selection.dart';
@@ -71,6 +72,7 @@ ApiClient _api({int total = 130}) {
 int _pages(List<int> bytes) => RegExp(r'/Type\s*/Page\b').allMatches(latin1.decode(bytes, allowInvalid: true)).length;
 
 void main() {
+  deleteTests();
   group('customer PDFs', () {
     test('one customer: a single portrait page', () async {
       final api = _api();
@@ -84,7 +86,11 @@ void main() {
     test('several customers: a landscape list that spills over pages, in order', () async {
       final api = _api();
       final rows = [for (var i = 1; i <= 120; i++) _customer(i)];
-      final bytes = await buildCustomersPdf(api, rows, filters: customerPrintFilters(search: 'CLIENTE', active: 'true'));
+      final bytes = await buildCustomersPdf(
+        api,
+        rows,
+        filters: customerPrintFilters(search: 'CLIENTE', active: 'true'),
+      );
       final p = _firstPage(bytes);
       expect(p.w, greaterThan(p.h), reason: 'landscape');
       expect(_pages(bytes), greaterThan(1));
@@ -234,7 +240,13 @@ void main() {
       tester.view.physicalSize = const Size(1400, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      await tester.pumpWidget(MaterialApp(home: Scaffold(body: RecordList(api: _api(), path: '/api/customers', columns: [col('Cliente', 'name')]))));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RecordList(api: _api(), path: '/api/customers', columns: [col('Cliente', 'name')]),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(Checkbox), findsNothing);
       expect(find.byKey(const ValueKey('select-mode')), findsNothing);
@@ -253,3 +265,73 @@ void main() {
     });
   });
 }
+
+void deleteTests() {
+  group('delete selected customers', () {
+    Future<List<String>> run(WidgetTester tester, RecordSelection sel, Set<int> refused, {bool confirmDelete = true, bool keepDialog = false}) async {
+      final calls = <String>[];
+      final client = MockClient((r) async {
+        if (r.method == 'DELETE') {
+          calls.add(r.url.path);
+          final id = int.parse(r.url.pathSegments.last);
+          return refused.contains(id) ? _json({'title': 'Customer is linked to products'}, 409) : http.Response('', 204);
+        }
+        return _json({}, 404);
+      });
+      final api = ApiClient(baseUrl: 'http://api.test', client: client, token: 't');
+      late BuildContext ctx;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (c) {
+              ctx = c;
+              return const Scaffold();
+            },
+          ),
+        ),
+      );
+      final future = deleteCustomers(ctx, api, sel);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(confirmDelete ? 'Excluir' : 'Voltar'));
+      await tester.pumpAndSettle();
+      if (!keepDialog && find.text('Fechar').evaluate().isNotEmpty) await tester.tap(find.text('Fechar'));
+      await tester.pumpAndSettle();
+      if (keepDialog) {
+        pending = future;
+      } else {
+        lastResult = await future;
+      }
+      return calls;
+    }
+
+    testWidgets('asks first, deletes every selected customer, and leaves none selected', (tester) async {
+      final sel = RecordSelection()..addAll([_customer(1), _customer(2)]);
+      final calls = await run(tester, sel, {});
+      expect(calls, ['/api/customers/1', '/api/customers/2']);
+      expect(lastResult, 2);
+      expect(sel.isEmpty, isTrue);
+    });
+
+    testWidgets('Voltar deletes nothing', (tester) async {
+      final sel = RecordSelection()..addAll([_customer(1)]);
+      final calls = await run(tester, sel, {}, confirmDelete: false);
+      expect(calls, isEmpty);
+      expect(lastResult, 0);
+      expect(sel.count, 1);
+    });
+
+    testWidgets('a customer still in use is refused, named in the result and stays selected', (tester) async {
+      final sel = RecordSelection()..addAll([_customer(1), _customer(2)]);
+      await run(tester, sel, {2}, keepDialog: true);
+      expect(find.textContaining('CLIENTE 2 LTDA'), findsOneWidget);
+      await tester.tap(find.text('Fechar'));
+      await tester.pumpAndSettle();
+      lastResult = await pending!;
+      expect(lastResult, 1);
+      expect(sel.rows.map((r) => r['id']), [2]);
+    });
+  });
+}
+
+int lastResult = -1;
+Future<int>? pending;
