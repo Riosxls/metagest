@@ -12,7 +12,8 @@ if ($Remove) {
     exit 0
 }
 $script = Join-Path $PSScriptRoot 'backup-agent.ps1'
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$script`""
+# conhost --headless: no console window at all. powershell.exe -WindowStyle Hidden still flashes a window every minute (the watchdog trigger).
+$action = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`""
 $triggers = @(
     (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME),
     (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1))

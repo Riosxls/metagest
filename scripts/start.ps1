@@ -171,6 +171,7 @@ if (-not $NoDocker) {
         if ($oldImage -and $newImage -and $oldImage -ne $newImage) { & docker tag $oldImage metagest-api:previous }
         $gitSha = if (Test-Path (Join-Path $Root '.git')) { (& git -C $Root rev-parse --short HEAD 2>$null | Select-Object -First 1) } else { $null }
         if ($gitSha -and $newImage) { & docker tag metagest-api:latest "metagest-api:$gitSha" }
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'prune-images.ps1') -Quiet
     }
     Pop-Location
     if ($code -ne 0) { Fail "docker compose failed (API port $ApiPort, DB port $DbPort). See the message above; if a port is 'forbidden by access permissions' set EBT_API_PORT / EBT_DB_PORT to another port and retry." }

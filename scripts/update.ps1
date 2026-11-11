@@ -109,6 +109,7 @@ try {
     if (Wait-Ready $WaitSeconds) {
         Write-Host ""
         Write-Host "Atualização concluída: ${Image}:$sha está no ar." -ForegroundColor Green
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'prune-images.ps1')
         if ($oldId -and $oldId -ne $newId) { Write-Host "Para voltar: docker tag ${Image}:previous ${Image}:latest; docker compose -p metagest up -d --no-deps --force-recreate --pull never api" }
         exit 0
     }
