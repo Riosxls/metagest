@@ -10,6 +10,7 @@ import '../session.dart';
 import '../widgets/dash.dart';
 import 'dashboard.dart';
 import 'dashboard_data.dart';
+import 'fiscal_readiness.dart';
 import 'quick_actions.dart';
 import 'sales_orders.dart' show SalesOrdersScreen;
 
@@ -76,6 +77,7 @@ class _ModuleScreenState extends State<ModuleScreen> {
       'Engenharia' => fetchEngineering(api, dashboardCounted),
       'Estoque' => fetchStock(api),
       'Suprimentos' => fetchPurchasing(api),
+      'Fiscal' => FiscalReadiness.fetch(api),
       _ => fetchProduction(api, legacyDays: legacyOverdueDays),
     };
   }
@@ -126,6 +128,7 @@ class _ModuleScreenState extends State<ModuleScreen> {
       GridItem(DashTile(icon: icon, label: label, value: value, hint: hint, alert: alarm, onTap: onTap));
 
   Widget _content(Object data) {
+    if (data is FiscalReadiness) return FiscalChecklist(readiness: data, onNavigate: widget.onNavigate);
     final items = switch (data) {
       final CommercialDashboard d => _commercial(d),
       final DashboardData d => _engineering(d),
@@ -386,7 +389,7 @@ class _ModuleScreenState extends State<ModuleScreen> {
                       actions: moduleQuickActions(widget.session, section, go: widget.onNavigate == null ? null : (id) => widget.onNavigate!(id)),
                       onDone: _refresh,
                     ),
-                    Text('Indicadores', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+                    Text(section == 'Fiscal' ? 'Pronto para emitir?' : 'Indicadores', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
                     const SizedBox(height: 8),
                     FutureBuilder<Object>(
                       future: _data,

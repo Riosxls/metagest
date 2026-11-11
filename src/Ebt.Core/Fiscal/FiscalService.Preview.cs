@@ -41,9 +41,9 @@ public sealed partial class FiscalService
         if (string.IsNullOrWhiteSpace(s.Street) || string.IsNullOrWhiteSpace(s.District) || string.IsNullOrWhiteSpace(s.City)) missing.Add("endereço");
         if (Digits(s.CityIbgeCode).Length != 7) missing.Add("código IBGE do município");
         if (Digits(s.ZipCode).Length != 8) missing.Add("CEP");
-        if (missing.Count > 0) Add("Emitente", $"Dados do emitente incompletos: {string.Join(", ", missing)}.", "Configurações > Fiscal > Dados do emitente");
-        if (!s.Enabled) Add("Emissão", "A emissão fiscal está desligada: a NF seria digitada à mão na expedição.", "Configurações > Fiscal > Ligar a emissão", blocking: false);
-        if (sefaz.IsSimulated) Add("SEFAZ", "Sem certificado digital A1: a NF é só simulada, sem valor fiscal.", "Configurações > Fiscal > Certificado digital", blocking: false);
+        if (missing.Count > 0) Add("Emitente", $"Dados do emitente incompletos: {string.Join(", ", missing)}.", "Fiscal > Emitente e emissão");
+        if (!s.Enabled) Add("Emissão", "A emissão fiscal está desligada: a NF seria digitada à mão na expedição.", "Fiscal > Emitente e emissão (Editar parâmetros)", blocking: false);
+        if (sefaz.IsSimulated) Add("SEFAZ", "Sem certificado digital A1: a NF é só simulada, sem valor fiscal.", "Fiscal > Emitente e emissão (certificado A1 no servidor)", blocking: false);
 
         // Recipient
         var customer = await db.Customers.AsNoTracking().FirstAsync(c => c.Id == order.CustomerId, ct);
@@ -69,7 +69,7 @@ public sealed partial class FiscalService
         var cfop = await db.Cfops.AsNoTracking().FirstOrDefaultAsync(c => c.Code == cfopCode, ct);
         if (cfop is null || !cfop.Active || cfop.Kind != FiscalKind.Sale)
         {
-            Add("CFOP", $"CFOP {cfopCode} não está cadastrado ou ativo como venda.", "Configurações > Fiscal > CFOPs");
+            Add("CFOP", $"CFOP {cfopCode} não está cadastrado ou ativo como venda.", "Fiscal > Importar do sistema antigo");
             cfop = new Cfop { Code = cfopCode, Description = "CFOP não cadastrado", Kind = FiscalKind.Sale, Taxed = true, IcmsCst = "00", IpiCst = "50", PisCst = "01", CofinsCst = "01" };
         }
         else if (cfop.Code[0] is '5' && interstate) Add("CFOP", $"CFOP {cfop.Code} é para dentro de {s.Uf}, mas o cliente é de {recipientUf}.", "Cadastro do cliente > Endereços > CFOP padrão");
@@ -108,7 +108,7 @@ public sealed partial class FiscalService
         }
         if (noNcm.Count > 0) Add("Produtos", $"Sem NCM válido (8 dígitos): {string.Join(", ", noNcm)}.", "Engenharia > Produtos > NCM");
         if (noPrice.Count > 0) Add("Preço", $"Sem preço: {string.Join(", ", noPrice)}.", "Pedido de venda ou tabela mensal de preços");
-        if (noRule.Count > 0) Add("Impostos", $"Sem regra de imposto (usa o padrão do CFOP, a confirmar com o contador): {string.Join(", ", noRule)}.", "Configurações > Fiscal > Regras de imposto", blocking: false);
+        if (noRule.Count > 0) Add("Impostos", $"Sem regra de imposto (usa o padrão do CFOP, a confirmar com o contador): {string.Join(", ", noRule)}.", "Fiscal > Parâmetros fiscais > Regras de imposto", blocking: false);
 
         doc.ProductsTotal = doc.Lines.Sum(l => l.Total);
         AllocateFreight(doc);

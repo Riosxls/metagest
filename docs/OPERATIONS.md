@@ -18,7 +18,7 @@ powershell -File scripts\backup.ps1 -CopyTo \\server\ti  # also copy it to anoth
 
 ### Automatic backup (set in the app)
 
-Admins choose the schedule in **Configurações > Administração > Cópia de segurança > Configurar backup**: on/off, frequency (hourly, every 6 hours, daily, weekly), time of day, weekday, the folder, drive or share the copy goes to, and how many dumps to keep. "Fazer backup agora" asks for one right away.
+Admins choose the schedule in **Preferências > Administração > Backup > Configurar backup**: on/off, frequency (hourly, every 6 hours, daily, weekly), time of day, weekday, the folder, drive or share the copy goes to, and how many dumps to keep. "Fazer backup agora" asks for one right away.
 
 The API container cannot run `pg_dump` (no Docker access, read-only), so the plan is stored in the table `backup_settings` and a small agent on the server computer carries it out:
 
@@ -40,7 +40,7 @@ powershell -File scripts\install-backup-agent.ps1 -Remove    # unregister
 
 ## Restore
 
-### From the app (Configurações > Administração > Cópia de segurança > Restaurar backup)
+### From the app (Preferências > Administração > Backup > Restaurar backup)
 
 Pick a backup in the list (this computer and the destination folder are both listed), press "Restaurar este backup…", read the warning and type `RESTAURAR`. Restoring replaces ALL current data with the data of that backup; everything done after it is lost, the system is unavailable for a few minutes and everyone has to sign in again.
 
@@ -235,13 +235,13 @@ suggestion learns from them:
 3. **What the suggester does** for a new OF (or `POST /api/production/orders/{id}/process/suggest`, which saves nothing): copies the process of the last OF of the same customer and product, else the legacy
    process of the same customer and tube, else the most common legacy process of that tube, else the generic rules (Perfilar/Trefilar "± 0,10", Endireitar e Cortar "+30" from 2500 mm, "± 0,05" from 500 mm,
    "± 0,50" below, Inspeção Final "-"). Machines come from the machine names (perfiladeira, trefila, endireitadeira/corte, inspeção, escova, politriz), not from codes.
-4. **Complete the OFs already created** (admin, Configurações > Administração): `POST /api/production/orders/bulk/complete-requirements` with `{"apply": false}` previews, `true` applies. Only OFs that are still
+4. **Complete the OFs already created** (admin, Preferências > Administração > Manutenção de dados): `POST /api/production/orders/bulk/complete-requirements` with `{"apply": false}` previews, `true` applies. Only OFs that are still
    Created, standard, without shop-floor reports; only EMPTY tolerances/machines are filled (from the same suggestion), nothing written is overwritten, and the old "Visual/Dimensional" tolerance on the inspection
    becomes "-" with the inspection machine. The run is audited.
 
 ### Fiscal data of the old system
 
-The NF needs data that the registers did not bring: issuer (CNPJ, IE, address, IBGE, CRT), carriers, the CFOP 6101, tax rules per product x customer and the monthly prices. Run `powershell -File scriptsexport-fiscal-data.ps1` (BST: `-Db C:UsersitaloDesktopEBTDHBSTDB -NfContr C:UsersitaloDesktopBSTDHBstSINFNFCONTR.DBF -Source BST -Out fiscal-data-bst.json`), then in the app open Configurações > Administração > "Dados fiscais do sistema antigo", choose `fiscal-data.json`, read the preview and confirm. It never overwrites a filled issuer field, never lowers the next NF number and never turns emission on. Afterwards open an order and use the "Emitir nota fiscal" button to see what is still missing for that customer and product. ICMS rates come from the legacy per-UF table (NF050: SP 18%, RJ/MG/SC/RS 12%, AM 7%, the other states are 0 there): have the accountant confirm them before enabling emission.
+The NF needs data that the registers did not bring: issuer (CNPJ, IE, address, IBGE, CRT), carriers, the CFOP 6101, tax rules per product x customer and the monthly prices. Run `powershell -File scriptsexport-fiscal-data.ps1` (BST: `-Db C:UsersitaloDesktopEBTDHBSTDB -NfContr C:UsersitaloDesktopBSTDHBstSINFNFCONTR.DBF -Source BST -Out fiscal-data-bst.json`), then in the app open Fiscal > Importar do sistema antigo (admin), choose `fiscal-data.json`, read the preview and confirm. It never overwrites a filled issuer field, never lowers the next NF number and never turns emission on. Afterwards open an order and use the "Emitir nota fiscal" button to see what is still missing for that customer and product. ICMS rates come from the legacy per-UF table (NF050: SP 18%, RJ/MG/SC/RS 12%, AM 7%, the other states are 0 there): have the accountant confirm them before enabling emission.
 
 ## E-mail (quote sending)
 

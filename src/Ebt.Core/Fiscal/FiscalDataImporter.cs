@@ -102,7 +102,7 @@ public sealed class FiscalDataImporter(EbtDbContext db)
             if (next > s.NextNumber && next > maxIssued) { s.NextNumber = next; changed++; notes.Add($"Próximo número da NF subiu para {next}."); }
             else if (next < s.NextNumber) notes.Add($"Próximo número do sistema antigo ({next}) é menor que o atual ({s.NextNumber}): mantido o atual.");
         }
-        if (!s.Enabled) notes.Add("A emissão continua desligada: ligue em Configurações > Fiscal quando o certificado A1 estiver pronto.");
+        if (!s.Enabled) notes.Add("A emissão continua desligada: ligue em Fiscal > Emitente e emissão quando o certificado A1 estiver pronto.");
         return new("issuer", "Dados do emitente", 1, 0, changed > 0 ? 1 : 0, changed > 0 ? 0 : 1, 0, notes);
     }
 

@@ -662,7 +662,28 @@ final priceList = EntitySpec(
   writePolicy: 'price-edit',
 );
 
-final salesMasters = [priceList, paymentTerms, monthlyPrices, taxRules];
+/// Price list and prazos stay in Comercial; the NF prices, tax rules and carriers belong to the Fiscal module ([fiscalMasters]).
+final salesMasters = [priceList, paymentTerms];
+
+final fiscalMasters = [taxRules, monthlyPrices, carriers];
+
+final carriers = EntitySpec(
+  title: 'Transportadoras',
+  singular: 'Transportadora',
+  path: '/api/fiscal/carriers',
+  icon: Icons.local_shipping_outlined,
+  fields: const [
+    FieldSpec('name', 'Nome', required: true, hint: 'Até 60 caracteres'),
+    FieldSpec('document', 'CNPJ ou CPF', hint: 'Só números: 14 (CNPJ) ou 11 (CPF)'),
+    FieldSpec('stateRegistration', 'Inscrição estadual'),
+    FieldSpec('address', 'Endereço'),
+    FieldSpec('city', 'Município'),
+    FieldSpec('uf', 'UF', hint: 'Sigla de 2 letras, ex.: SP'),
+    FieldSpec('vehicleUf', 'UF da placa do veículo', hint: 'Sigla de 2 letras'),
+  ],
+  columns: [col('Nome', 'name'), col('CNPJ/CPF', 'document'), col('Município', 'city'), col('UF', 'uf')],
+  writePolicy: 'fiscal-emit',
+);
 
 String fmtTime(Object? v) {
   final s = v == null ? '' : '$v';

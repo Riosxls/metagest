@@ -9,7 +9,7 @@ import 'settings_notifications.dart';
 import 'settings_sections.dart';
 import 'settings_widgets.dart';
 
-/// Personal preferences of the signed-in user on this device (not the system parameters under Parâmetros).
+/// Personal preferences of the signed-in user on this device, plus the two administrator tools (Backup, Manutenção de dados). The system parameters are the screens of the avatar menu (Parâmetros dos módulos) and the Fiscal module.
 /// [section] opens a specific section, for example `'account'`.
 Future<void> showUserSettings(BuildContext context, Session session, {String? section}) => showDialog<void>(
   context: context,
@@ -41,7 +41,7 @@ final _sections = <_Section>[
   _Section('data', Icons.devices_other_outlined, 'Dispositivo', (c, s, open, out) => DataSection(session: s)),
   _Section('about', Icons.info_outline, 'Sobre', (c, s, open, out) => AboutSection(session: s)),
   _Section('backup', Icons.backup_outlined, 'Backup', (c, s, open, out) => BackupSection(session: s)),
-  _Section('admin', Icons.storage_outlined, 'Dados do sistema', (c, s, open, out) => AdminSection(session: s, open: open)),
+  _Section('admin', Icons.storage_outlined, 'Manutenção de dados', (c, s, open, out) => AdminSection(session: s, open: open)),
 ];
 
 class _SubView {
@@ -178,11 +178,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
           if (canGoBack)
             IconButton(
               key: const ValueKey('settings-back-to-menu'),
-              tooltip: 'Voltar às configurações',
+              tooltip: 'Voltar às preferências',
               onPressed: () => _guard(() => setState(() => _selected = null)),
               icon: const Icon(Icons.arrow_back),
             ),
-          Expanded(child: Text('Configurações', style: theme.textTheme.titleLarge)),
+          Expanded(child: Text('Preferências', style: theme.textTheme.titleLarge)),
           IconButton(key: const ValueKey('settings-close'), tooltip: 'Fechar', onPressed: _close, icon: const Icon(Icons.close)),
         ],
       ),
@@ -192,7 +192,17 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget _nav(String? selected) => ListView(
     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
     children: [
-      for (final s in _visible.where((s) => !_hiddenFromMenu.contains(s.id)))
+      for (final s in _visible.where((s) => !_hiddenFromMenu.contains(s.id))) ...[
+        // The administrator tools sit under their own heading, apart from the personal preferences above.
+        if (s.id == 'backup')
+          Padding(
+            key: const ValueKey('settings-admin-heading'),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Text(
+              'Administração',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 1),
           child: ListTile(
@@ -212,6 +222,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
             onTap: () => _select(s.id),
           ),
         ),
+      ],
     ],
   );
 

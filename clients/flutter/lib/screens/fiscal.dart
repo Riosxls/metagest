@@ -566,13 +566,23 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
     FieldSpec('cancelWindowHours', 'Prazo para cancelar (horas)', type: FieldType.integer, required: true, hint: '0 = sem limite'),
   ];
 
-  Future<Map<String, dynamic>> _fetch() async => await widget.session.api.get('/api/fiscal/settings') as Map<String, dynamic>;
+  Future<Map<String, dynamic>> _fetch() async {
+    final d = await widget.session.api.get('/api/fiscal/settings') as Map<String, dynamic>;
+    // The CFOP list is only informative here; a failure must not hide the settings.
+    try {
+      final c = await widget.session.api.get('/api/fiscal/cfops');
+      d['_cfops'] = c is List ? c : const [];
+    } catch (e) {
+      debugPrint('fiscal: cfops not loaded: $e');
+    }
+    return d;
+  }
 
   Future<void> _edit(Map<String, dynamic> d) async {
     final r = await submitForm(
       context,
       api: widget.session.api,
-      title: 'Parâmetros fiscais',
+      title: 'Emitente e emissão',
       fields: _fields,
       initial: d,
       submit: (b) => widget.session.api.put('/api/fiscal/settings', b),
@@ -656,6 +666,22 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
                 ('Prazo para cancelar', d['cancelWindowHours'] == 0 ? 'Sem limite' : '${d['cancelWindowHours']} h'),
               ]),
             ),
+            if (d['_cfops'] is List) ...[
+              gap,
+              Section(
+                title: 'CFOPs cadastrados',
+                child: (d['_cfops'] as List).isEmpty
+                    ? const Text('Nenhum CFOP cadastrado.')
+                    : Column(
+                        key: const ValueKey('fiscal-cfop-list'),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (final c in (d['_cfops'] as List).cast<Map>())
+                            Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Text('${c['code']} · ${c['description']}${c['active'] == false ? ' (inativo)' : ''}')),
+                        ],
+                      ),
+              ),
+            ],
           ],
         ),
       );

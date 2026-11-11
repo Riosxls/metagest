@@ -91,7 +91,7 @@ void main() {
       _preview(
         ready: false,
         problems: [
-          {'area': 'Emitente', 'message': 'Dados do emitente incompletos: CNPJ.', 'fix': 'Configurações > Fiscal > Dados do emitente', 'blocking': true},
+          {'area': 'Emitente', 'message': 'Dados do emitente incompletos: CNPJ.', 'fix': 'Fiscal > Emitente e emissão', 'blocking': true},
           {'area': 'SEFAZ', 'message': 'Sem certificado digital A1: a NF é só simulada.', 'fix': 'Configurações > Fiscal > Certificado digital', 'blocking': false},
         ],
       ),
@@ -101,7 +101,7 @@ void main() {
     expect(find.byKey(const ValueKey('invoice-blocked')), findsOneWidget);
     expect(find.text('Falta 1 item para emitir'), findsOneWidget);
     expect(find.textContaining('Emitente: Dados do emitente incompletos'), findsOneWidget);
-    expect(find.textContaining('Configurações > Fiscal > Dados do emitente'), findsOneWidget);
+    expect(find.textContaining('Fiscal > Emitente e emissão'), findsOneWidget);
     expect(find.textContaining('SEFAZ: Sem certificado'), findsOneWidget);
   });
 

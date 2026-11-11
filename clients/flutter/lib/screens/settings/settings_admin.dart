@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../session.dart';
 import '../data_reset.dart';
-import '../fiscal_import.dart';
 import '../legacy_cleanup.dart';
 import 'settings_backup.dart';
 import 'settings_data_source.dart';
@@ -142,7 +141,7 @@ class BackupSection extends StatelessWidget {
   }
 }
 
-/// Dados do sistema section of the settings dialog (admin only): data source, legacy cleanup and reset.
+/// Manutenção de dados section of the settings dialog (admin only): data source, legacy cleanup and reset.
 class AdminSection extends StatelessWidget {
   const AdminSection({super.key, required this.session, required this.open});
 
@@ -170,7 +169,7 @@ class AdminSection extends StatelessWidget {
         SettingsGroup(
           title: 'Sistema antigo',
           note:
-              'Ordens de fabricação do sistema antigo: preenche o processo das que estão vazias e cancela as vencidas que nunca andaram. Dados fiscais: traz o que a emissão da nota fiscal precisa e não veio nos cadastros.',
+              'Ordens de fabricação do sistema antigo: preenche o processo das que estão vazias e cancela as vencidas que nunca andaram. Os dados fiscais do sistema antigo ficam no módulo Fiscal (Importar do sistema antigo).',
           children: [
             Align(
               alignment: Alignment.centerLeft,
@@ -179,15 +178,6 @@ class AdminSection extends StatelessWidget {
                 onPressed: () => showLegacyCleanupDialog(context, session),
                 icon: const Icon(Icons.auto_fix_high_outlined),
                 label: const Text('Limpeza do legado…'),
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                key: const ValueKey('open-fiscal-import'),
-                onPressed: () => showFiscalImportDialog(context, session),
-                icon: const Icon(Icons.receipt_long_outlined),
-                label: const Text('Dados fiscais do sistema antigo…'),
               ),
             ),
           ],

@@ -159,7 +159,7 @@ void main() {
 
   testWidgets('Painel shows one card per module and keeps module details out', (tester) async {
     await pumpShell(tester, 'Production');
-    for (final m in ['Comercial', 'Engenharia', 'Estoque', 'Suprimentos', 'PCP']) {
+    for (final m in ['Comercial', 'Engenharia', 'Estoque', 'Suprimentos', 'PCP', 'Fiscal']) {
       expect(find.byKey(ValueKey('module-$m')), findsOneWidget);
     }
     expect(find.text('Pico de carga 4 semanas (%)'), findsNothing);
@@ -267,7 +267,7 @@ void main() {
     }
     expect(find.widgetWithText(ListTile, 'Painel'), findsOneWidget);
     // Administration screens are in the avatar menu only.
-    expect(find.widgetWithText(ListTile, 'Parâmetros'), findsNothing);
+    expect(find.widgetWithText(ListTile, 'Parâmetros dos módulos'), findsNothing);
     await tester.tap(find.byTooltip('Conta'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('admin-settings')), findsOneWidget);
@@ -330,7 +330,7 @@ void main() {
     await tester.tap(find.byTooltip('Conta'));
     await tester.pumpAndSettle();
     expect(find.text('Tema escuro'), findsNothing, reason: 'theme lives in Configurações now');
-    await tester.tap(find.text('Configurações'));
+    await tester.tap(find.text('Preferências'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Escuro'));
     await tester.pumpAndSettle();
@@ -360,7 +360,7 @@ void main() {
     await pumpShell(tester, 'Reader');
     await tester.tap(find.byTooltip('Conta'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Configurações'));
+    await tester.tap(find.text('Preferências'));
     await tester.pumpAndSettle();
     expect(find.text('Aparência'), findsWidgets);
     expect(find.byKey(const ValueKey('settings-nav-admin')), findsNothing, reason: 'the Administração section is for admins');

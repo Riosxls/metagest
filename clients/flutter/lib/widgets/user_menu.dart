@@ -146,7 +146,7 @@ class UserMenu extends StatelessWidget {
         ),
         const PopupMenuItem<String>(
           value: 'settings',
-          child: Row(children: [Icon(Icons.settings_outlined, size: 20), SizedBox(width: 12), Text('Configurações')]),
+          child: Row(children: [Icon(Icons.settings_outlined, size: 20), SizedBox(width: 12), Text('Preferências')]),
         ),
         if (adminScreens.isNotEmpty) ...[
           const PopupMenuDivider(),

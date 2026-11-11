@@ -26,6 +26,7 @@ import 'deliveries.dart';
 import 'duplicates.dart';
 import 'entity_list.dart';
 import 'fiscal.dart';
+import 'fiscal_import.dart' show FiscalImportScreen;
 import 'low_stock.dart';
 import 'modules.dart';
 import 'orders.dart';
@@ -79,12 +80,10 @@ const hiddenSection = '_module';
 
 /// Screens that share one sidebar entry. The first tab is the entry; every tab stays a screen of its own (links, alerts, pins and search still reach it).
 final tabGroups = <TabGroup>[
-  // Shipping and the money that follows it (NF, contas a receber) share one entry.
-  const TabGroup('Comercial', 'Expedição e financeiro', Icons.local_shipping_outlined, [
+  // Shipping and the quality papers that go with it share one entry; the NF and the money are in the Fiscal module.
+  const TabGroup('Comercial', 'Expedição', Icons.local_shipping_outlined, [
     (id: 'deliveries', label: 'Entregas'),
     (id: 'certificates', label: 'Certificados'),
-    (id: 'fiscal-documents', label: 'Notas fiscais'),
-    (id: 'receivables', label: 'Contas a receber'),
   ]),
   const TabGroup('Comercial', 'Relatórios', Icons.bar_chart_outlined, [
     (id: 'report-material-consumption', label: 'Consumo de material'),
@@ -92,9 +91,18 @@ final tabGroups = <TabGroup>[
   ]),
   TabGroup('Comercial', 'Preços e regras', Icons.price_change_outlined, [
     (id: priceList.path, label: 'Tabela de preços'),
-    (id: monthlyPrices.path, label: 'Preços mensais da NF'),
     (id: paymentTerms.path, label: 'Prazos'),
+  ]),
+  // Fiscal: the notes and the money that follows them, then the parameters the emission reads.
+  const TabGroup('Fiscal', 'Notas e cobrança', Icons.receipt_long_outlined, [
+    (id: 'fiscal-documents', label: 'Notas fiscais'),
+    (id: 'receivables', label: 'Contas a receber'),
+  ]),
+  TabGroup('Fiscal', 'Parâmetros fiscais', Icons.tune_outlined, [
+    (id: 'fiscal-settings', label: 'Emitente e emissão'),
     (id: taxRules.path, label: 'Regras de imposto'),
+    (id: monthlyPrices.path, label: 'Preços mensais da NF'),
+    (id: carriers.path, label: 'Transportadoras'),
   ]),
   TabGroup('Engenharia', 'Materiais', Icons.category_outlined, [
     (id: materials.path, label: 'Materiais'),
@@ -171,8 +179,6 @@ List<NavItem> _screens() => [
   NavItem('sales-orders', Icons.receipt_long_outlined, 'Pedidos de venda', 'Comercial', (s, f, go) => SalesOrdersScreen(session: s, initialFilter: f)),
   NavItem('deliveries', Icons.local_shipping_outlined, 'Entregas', 'Comercial', (s, f, go) => DeliveriesScreen(session: s, initialFilter: f)),
   NavItem('certificates', Icons.verified_outlined, 'Certificados de qualidade', 'Comercial', (s, f, go) => CertificatesScreen(session: s)),
-  NavItem('fiscal-documents', Icons.description_outlined, 'Notas fiscais', 'Comercial', (s, f, go) => FiscalDocumentsScreen(session: s)),
-  NavItem('receivables', Icons.account_balance_wallet_outlined, 'Contas a receber', 'Comercial', (s, f, go) => ReceivablesScreen(session: s, initialFilter: f)),
   NavItem('report-material-consumption', Icons.scale_outlined, 'Consumo de material vendido', 'Comercial', (s, f, go) => MaterialConsumptionScreen(session: s)),
   NavItem('report-billing', Icons.bar_chart_outlined, 'Faturamento consolidado', 'Comercial', (s, f, go) => BillingSummaryScreen(session: s)),
   for (final spec in salesMasters) NavItem(spec.path, spec.icon, spec.title, 'Comercial', (s, f, go) => EntityListScreen(session: s, spec: spec)),
@@ -202,8 +208,12 @@ List<NavItem> _screens() => [
   NavItem('outside-processing', Icons.outbox_outlined, 'Beneficiamento externo', 'PCP', (s, f, go) => OutsideProcessingScreen(session: s)),
   NavItem('planning', Icons.view_timeline_outlined, 'Programação e carga', 'PCP', (s, f, go) => PlanningScreen(session: s)),
   for (final spec in productionMasters) NavItem(spec.path, spec.icon, spec.title, 'PCP', (s, f, go) => EntityListScreen(session: s, spec: spec)),
-  NavItem('settings', Icons.tune, 'Parâmetros', 'Sistema', (s, f, go) => SettingsScreen(session: s)),
-  NavItem('fiscal-settings', Icons.receipt_outlined, 'Parâmetros fiscais', 'Sistema', (s, f, go) => FiscalSettingsScreen(session: s)),
+  NavItem('fiscal-documents', Icons.description_outlined, 'Notas fiscais', 'Fiscal', (s, f, go) => FiscalDocumentsScreen(session: s)),
+  NavItem('receivables', Icons.account_balance_wallet_outlined, 'Contas a receber', 'Fiscal', (s, f, go) => ReceivablesScreen(session: s, initialFilter: f)),
+  NavItem('fiscal-settings', Icons.receipt_outlined, 'Emitente e emissão', 'Fiscal', (s, f, go) => FiscalSettingsScreen(session: s)),
+  for (final spec in fiscalMasters) NavItem(spec.path, spec.icon, spec.title, 'Fiscal', (s, f, go) => EntityListScreen(session: s, spec: spec)),
+  NavItem('fiscal-import', Icons.move_down_outlined, 'Importar do sistema antigo', 'Fiscal', (s, f, go) => FiscalImportScreen(session: s), admin: true),
+  NavItem('settings', Icons.tune, 'Parâmetros dos módulos', 'Sistema', (s, f, go) => SettingsScreen(session: s)),
   NavItem('duplicates', Icons.content_copy_outlined, 'Cadastros duplicados', 'Sistema', (s, f, go) => DuplicatesScreen(session: s, initialKind: f)),
   NavItem('users', Icons.group_outlined, 'Usuários', 'Sistema', (s, f, go) => UsersScreen(session: s), admin: true),
   NavItem('permissions', Icons.lock_outline, 'Permissões', 'Sistema', (s, f, go) => PermissionsScreen(session: s), admin: true),
@@ -818,7 +828,7 @@ class _ShellState extends State<Shell> {
 
   /// Comercial has too many screens for one flat list; the rest of the modules are short enough to stay ungrouped.
   static const _comercialGroups = {
-    'Vendas': ['customers', 'sales-pipeline', 'sales-quotes', 'price-simulator', 'viability', 'sales-orders', 'deliveries', 'certificates', 'fiscal-documents', 'receivables'],
+    'Vendas': ['customers', 'sales-pipeline', 'sales-quotes', 'price-simulator', 'viability', 'sales-orders', 'deliveries', 'certificates'],
     'Relatórios': ['report-material-consumption', 'report-billing'],
   };
 

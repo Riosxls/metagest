@@ -98,9 +98,9 @@ void main() {
       for (final t in ['Usuários', 'Permissões', 'Auditoria']) {
         expect(find.widgetWithText(PopupMenuItem<String>, t), findsNothing, reason: '$role/$t');
       }
-      expect(find.widgetWithText(PopupMenuItem<String>, 'Parâmetros'), findsOneWidget);
+      expect(find.widgetWithText(PopupMenuItem<String>, 'Parâmetros dos módulos'), findsOneWidget);
       // Not repeated in the sidebar.
-      expect(find.widgetWithText(ListTile, 'Parâmetros'), findsNothing);
+      expect(find.widgetWithText(ListTile, 'Parâmetros dos módulos'), findsNothing);
       await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();
     }

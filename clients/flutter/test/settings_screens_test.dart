@@ -81,10 +81,18 @@ void main() {
         expect(find.byKey(ValueKey('settings-nav-$id')), findsOneWidget, reason: id);
       }
       expect(find.byKey(const ValueKey('settings-nav-admin')), findsNothing);
+      expect(find.byKey(const ValueKey('settings-admin-heading')), findsNothing, reason: 'non-admins have no administrator tools to separate');
       await tapV(tester, find.byKey(const ValueKey('settings-close')));
       await tester.pumpAndSettle();
       await open(tester, 'Admin', none);
       expect(find.byKey(const ValueKey('settings-nav-admin')), findsOneWidget);
+      expect(find.byKey(const ValueKey('settings-admin-heading')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const ValueKey('settings-nav-admin')), matching: find.text('Manutenção de dados')), findsOneWidget);
+      // The fiscal import moved to the Fiscal module; the old button is gone from here.
+      await goTo(tester, 'admin');
+      expect(find.byKey(const ValueKey('open-fiscal-import')), findsNothing);
+      expect(find.byKey(const ValueKey('open-legacy-cleanup')), findsOneWidget);
+      expect(find.byKey(const ValueKey('open-data-reset')), findsOneWidget);
     });
 
     testWidgets('a requested section opens first and a sub-view has a back arrow', (tester) async {

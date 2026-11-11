@@ -57,7 +57,7 @@ public sealed class AlertService(IServiceScopeFactory scopes, IMailSender mail, 
 
         var body = new StringBuilder("O MetaGest precisa de atenção:\n\n");
         foreach (var p in problems) body.Append("- ").Append(Texts.GetValueOrDefault(p, p)).Append('\n');
-        body.Append("\nVeja Configurações > Administração > Cópia de segurança no aplicativo e o arquivo backup-status\\agent.log no servidor. ");
+        body.Append("\nVeja Preferências > Administração > Backup no aplicativo e o arquivo backup-status\\agent.log no servidor. ");
         body.Append("Este aviso se repete a cada 6 horas enquanto o problema continuar.\n");
         try
         {

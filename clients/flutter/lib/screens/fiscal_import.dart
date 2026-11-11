@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../entities.dart' show fmtNum;
 import '../session.dart';
+import '../widgets/page_column.dart';
 import '../widgets/responsive.dart';
 
 /// How the screen asks for the JSON of the old fiscal data; tests replace it (the system file dialog does not run there).
@@ -22,9 +23,12 @@ Future<({String name, Uint8List bytes})?> pickFiscalDataFile() async {
 Future<void> showFiscalImportDialog(BuildContext context, Session session) => showDialog<void>(context: context, builder: (_) => _FiscalImport(session: session));
 
 class _FiscalImport extends StatefulWidget {
-  const _FiscalImport({required this.session});
+  const _FiscalImport({required this.session, this.page = false});
 
   final Session session;
+
+  /// A screen of the Fiscal module (true) instead of a dialog.
+  final bool page;
 
   @override
   State<_FiscalImport> createState() => _FiscalImportState();
@@ -106,12 +110,7 @@ class _FiscalImportState extends State<_FiscalImport> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final r = _result;
-    return AlertDialog(
-      title: const Text('Dados fiscais do sistema antigo'),
-      content: SizedBox(
-        width: dialogWidth(context, 640),
-        child: SingleChildScrollView(
-          child: Column(
+    final body = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -143,9 +142,11 @@ class _FiscalImportState extends State<_FiscalImport> {
               if (_message != null) Padding(padding: const EdgeInsets.only(top: 14), child: Text(_message!, key: const ValueKey('fiscal-import-message'), style: TextStyle(color: theme.colorScheme.primary))),
               if (_error != null) Padding(padding: const EdgeInsets.only(top: 14), child: Text(_error!, key: const ValueKey('fiscal-import-error'), style: TextStyle(color: theme.colorScheme.error))),
             ],
-          ),
-        ),
-      ),
+    );
+    if (widget.page) return PageColumn(child: SingleChildScrollView(padding: const EdgeInsets.all(16), child: body));
+    return AlertDialog(
+      title: const Text('Dados fiscais do sistema antigo'),
+      content: SizedBox(width: dialogWidth(context, 640), child: SingleChildScrollView(child: body)),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fechar'))],
     );
   }
@@ -171,4 +172,14 @@ class _SectionResult extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The same import as a screen of the Fiscal module (admin only).
+class FiscalImportScreen extends StatelessWidget {
+  const FiscalImportScreen({super.key, required this.session});
+
+  final Session session;
+
+  @override
+  Widget build(BuildContext context) => _FiscalImport(session: session, page: true);
 }

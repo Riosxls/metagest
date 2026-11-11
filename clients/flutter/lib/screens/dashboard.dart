@@ -41,6 +41,7 @@ const modules = [
   ModuleInfo('Estoque', Icons.inventory_outlined, 'Saldos, lotes, reservas e controle de aço'),
   ModuleInfo('Suprimentos', Icons.shopping_cart_outlined, 'Requisições, cotações, pedidos e recebimentos'),
   ModuleInfo('PCP', Icons.precision_manufacturing_outlined, 'Ordens de fabricação, apontamentos e carga'),
+  ModuleInfo('Fiscal', Icons.receipt_long_outlined, 'Notas fiscais, contas a receber, impostos e transportadoras'),
 ];
 
 ModuleInfo moduleBySection(String section) => modules.firstWhere((m) => m.section == section);
@@ -776,6 +777,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   );
 
   List<String>? _summary(String module, List<Object?>? d) {
+    // Fiscal has no numbers on the Painel card: its overview is the readiness checklist.
+    if (module == 'Fiscal') return const [];
     if (d == null) return null;
     final e = d[0] as DashboardData?,
         st = d[1] as StockDashboard?,

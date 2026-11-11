@@ -103,10 +103,10 @@ void main() {
   testWidgets('the app bar names the module, the group and the tab', (tester) async {
     await pumpShell(tester, 'Admin');
     await openScreen(tester, 'Comercial', 'deliveries');
-    expect(find.text('Comercial › Expedição e financeiro › Entregas'), findsOneWidget);
+    expect(find.text('Comercial › Expedição › Entregas'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('tab-certificates')));
     await tester.pumpAndSettle();
-    expect(find.text('Comercial › Expedição e financeiro › Certificados'), findsOneWidget);
+    expect(find.text('Comercial › Expedição › Certificados'), findsOneWidget);
     await openScreen(tester, 'Estoque', 'balances');
     // A tab named like its group is not said twice.
     expect(find.text('Estoque › Saldos'), findsOneWidget);
@@ -200,15 +200,15 @@ void main() {
 
   testWidgets('the tab strip scrolls the selected tab into view on a phone and moves with the arrow keys', (tester) async {
     await pumpShell(tester, 'Admin', size: const Size(400, 800));
-    await openScreen(tester, 'Comercial', '/api/sales/price-list');
+    await openScreen(tester, 'Fiscal', 'fiscal-settings');
     // Reached from search (a link or an alert would do the same): the strip must show where we are.
-    expect(tester.getRect(find.byKey(const ValueKey('tab-/api/fiscal/tax-rules'))).right, greaterThan(400));
+    expect(tester.getRect(find.byKey(const ValueKey('tab-/api/fiscal/carriers'))).right, greaterThan(400));
     await openPalette(tester);
-    await tester.enterText(find.byType(TextField).last, 'regras de imposto');
+    await tester.enterText(find.byType(TextField).last, 'transportadoras');
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Regras de imposto').last);
+    await tester.tap(find.text('Transportadoras').last);
     await tester.pumpAndSettle();
-    final right = tester.getRect(find.byKey(const ValueKey('tab-/api/fiscal/tax-rules'))).right;
+    final right = tester.getRect(find.byKey(const ValueKey('tab-/api/fiscal/carriers'))).right;
     expect(right, lessThanOrEqualTo(400));
     // Left from the last tab selects the one before it.
     // Tab until a chip of the strip has the focus.
@@ -221,17 +221,17 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
     // Right from the last tab goes nowhere; left from it selects the one before.
-    expect(tester.widget<StripTab>(find.byKey(const ValueKey('tab-/api/fiscal/tax-rules'))).selected, isTrue);
+    expect(tester.widget<StripTab>(find.byKey(const ValueKey('tab-/api/fiscal/carriers'))).selected, isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pumpAndSettle();
-    expect(tester.widget<StripTab>(find.byKey(const ValueKey('tab-/api/sales/payment-terms'))).selected, isTrue);
+    expect(tester.widget<StripTab>(find.byKey(const ValueKey('tab-/api/fiscal/monthly-prices'))).selected, isTrue);
   });
 
   testWidgets('a group is one card on the phone overview, naming its tabs', (tester) async {
     await pumpShell(tester, 'Admin', size: const Size(400, 800));
     await openModule(tester, 'Comercial');
-    expect(find.text('Expedição e financeiro'), findsWidgets);
-    expect(find.text('Entregas · Certificados · Notas fiscais · Contas a receber'), findsOneWidget);
+    expect(find.text('Expedição'), findsWidgets);
+    expect(find.text('Entregas · Certificados'), findsOneWidget);
   });
 
   testWidgets('pinned tabs and the collapsed sidebar: a tab pin names its group, and pins stay reachable as stars', (tester) async {
@@ -241,7 +241,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('pin-screen')));
     await tester.pumpAndSettle();
-    expect(find.text('Expedição e financeiro · Certificados'), findsOneWidget);
+    expect(find.text('Expedição · Certificados'), findsOneWidget);
     await tester.tap(find.byTooltip('Recolher menu'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('nav-pin-certificates-')), findsOneWidget);

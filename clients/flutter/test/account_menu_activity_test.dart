@@ -76,7 +76,7 @@ void main() {
       expect(find.text('ana@ebt.com.br'), findsOneWidget);
       expect(find.text('Administrador'), findsOneWidget);
       expect(find.text('Último acesso: 03/11/2026 08:15'), findsOneWidget);
-      expect(find.widgetWithText(PopupMenuItem<String>, 'Configurações'), findsOneWidget);
+      expect(find.widgetWithText(PopupMenuItem<String>, 'Preferências'), findsOneWidget);
       expect(find.widgetWithText(PopupMenuItem<String>, 'Sair'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -108,7 +108,7 @@ void main() {
       expect(smaller.onPressed, isNull, reason: 'already at the smallest size');
     });
 
-    testWidgets('Perfil, Configurações and Sair keep working', (tester) async {
+    testWidgets('Perfil, Preferências and Sair keep working', (tester) async {
       final s = await menu(tester);
       await tester.tap(find.widgetWithText(PopupMenuItem<String>, 'Perfil'));
       await tester.pumpAndSettle();
