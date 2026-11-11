@@ -12,10 +12,10 @@ import 'record_list.dart';
 
 /// Sends a PDF to the print dialog, telling the user when it fails. Answers whether it was printed: a cancelled dialog or an error answers false
 /// and the paper is not marked as handled.
-Future<bool> printPdf(BuildContext context, String name, Future<Uint8List> Function() build, {String? doneKey}) async {
+Future<bool> printPdf(BuildContext context, String name, Future<Uint8List> Function() build, {String? doneKey, PdfPageFormat format = PdfPageFormat.a4}) async {
   try {
     final bytes = await build();
-    final printed = await Printing.layoutPdf(name: name, onLayout: (_) async => bytes, format: PdfPageFormat.a4);
+    final printed = await Printing.layoutPdf(name: name, onLayout: (_) async => bytes, format: format);
     if (printed) await PrintLog.mark(doneKey);
     return printed;
   } catch (e) {
