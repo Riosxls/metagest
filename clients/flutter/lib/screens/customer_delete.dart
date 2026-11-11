@@ -54,3 +54,66 @@ Future<int> deleteCustomers(BuildContext context, ApiClient api, RecordSelection
   }
   return deleted;
 }
+
+/// Whether the selection's button should say "Ativar": true only when every selected customer is inactive.
+bool selectionIsInactive(List<Map<String, dynamic>> rows) => rows.isNotEmpty && rows.every((r) => r['active'] != true);
+
+/// Inactivates (or reactivates) the selected customers after a confirmation; customers already in the wanted state are left alone. An inactive
+/// customer drops out of the searches for new quotes and orders but keeps its history. Returns how many were changed.
+Future<int> setCustomersActive(BuildContext context, ApiClient api, RecordSelection selection, {required bool active}) async {
+  final rows = [
+    for (final r in selection.rows)
+      if ((r['active'] == true) != active) r,
+  ];
+  if (rows.isEmpty) return 0;
+  final messenger = ScaffoldMessenger.of(context);
+  final ok = await confirm(
+    context,
+    active
+        ? 'Reativar ${rows.length == 1 ? 'o cliente ${rows.single['name']}' : '${rows.length} clientes (${customerDeleteSummary(rows)})'}?'
+        : 'Inativar ${rows.length == 1 ? 'o cliente ${rows.single['name']}' : '${rows.length} clientes (${customerDeleteSummary(rows)})'}? Eles deixam de aparecer nas buscas de novos orçamentos e pedidos; o histórico fica.',
+    confirmLabel: active ? 'Reativar' : 'Inativar',
+    cancelLabel: 'Voltar',
+    danger: !active,
+  );
+  if (!ok) return 0;
+  var changed = 0;
+  final failed = <String>[];
+  for (final r in rows) {
+    try {
+      await api.put('/api/customers/${r['id']}', {
+        'name': r['name'],
+        'tradeName': r['tradeName'],
+        'legacyCode': r['legacyCode'],
+        'clientCode': r['clientCode'],
+        'consumerType': r['consumerType'],
+        'active': active,
+      });
+      changed++;
+      selection.set(r, false);
+    } catch (e) {
+      failed.add('${r['name']}: ${friendlyError(e)}');
+    }
+  }
+  if (failed.isEmpty) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          active
+              ? (changed == 1 ? 'Cliente reativado' : '$changed clientes reativados')
+              : (changed == 1 ? 'Cliente inativado' : '$changed clientes inativados'),
+        ),
+      ),
+    );
+  } else if (context.mounted) {
+    await showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('$changed alterado${changed == 1 ? '' : 's'}, ${failed.length} não'),
+        content: SingleChildScrollView(child: Text(failed.join('\n\n'))),
+        actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Fechar'))],
+      ),
+    );
+  }
+  return changed;
+}

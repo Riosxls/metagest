@@ -69,6 +69,13 @@ List<Widget> customerSelectionActions(
       label: const Text('Exportar PDF'),
     ),
     if (canDelete) ...[
+      OutlinedButton.icon(
+        key: const ValueKey('customers-toggle-active'),
+        onPressed: () =>
+            unawaited(setCustomersActive(context, api, selection, active: selectionIsInactive(selection.rows)).then((n) => n > 0 ? onDeleted?.call() : null)),
+        icon: Icon(selectionIsInactive(selection.rows) ? Icons.check_circle_outline : Icons.block),
+        label: Text(selectionIsInactive(selection.rows) ? 'Ativar' : 'Inativar'),
+      ),
       SizedBox(height: 24, child: VerticalDivider(width: 16, color: cs.outline)),
       FilledButton.icon(
         key: const ValueKey('customers-delete'),

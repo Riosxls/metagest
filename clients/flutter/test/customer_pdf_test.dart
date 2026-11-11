@@ -73,6 +73,7 @@ int _pages(List<int> bytes) => RegExp(r'/Type\s*/Page\b').allMatches(latin1.deco
 
 void main() {
   deleteTests();
+  activeTests();
   group('customer PDFs', () {
     test('one customer: a single portrait page', () async {
       final api = _api();
@@ -335,3 +336,73 @@ void deleteTests() {
 
 int lastResult = -1;
 Future<int>? pending;
+
+void activeTests() {
+  group('inactivate / reactivate selected customers', () {
+    Future<List<Map<String, dynamic>>> run(WidgetTester tester, RecordSelection sel, bool active) async {
+      final puts = <Map<String, dynamic>>[];
+      final client = MockClient((r) async {
+        if (r.method == 'PUT') {
+          puts.add({'path': r.url.path, ...jsonDecode(r.body) as Map<String, dynamic>});
+          return _json({});
+        }
+        return _json({}, 404);
+      });
+      final api = ApiClient(baseUrl: 'http://api.test', client: client, token: 't');
+      late BuildContext ctx;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (c) {
+              ctx = c;
+              return const Scaffold();
+            },
+          ),
+        ),
+      );
+      final future = setCustomersActive(ctx, api, sel, active: active);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(active ? 'Reativar' : 'Inativar'));
+      await tester.pumpAndSettle();
+      await future;
+      return puts;
+    }
+
+    testWidgets('inativar changes only the active ones and clears them from the selection', (tester) async {
+      final inactive = {..._customer(5), 'active': false};
+      final sel = RecordSelection()..addAll([_customer(1), _customer(2), inactive]);
+      final puts = await run(tester, sel, false);
+      expect(puts.map((p) => p['path']), ['/api/customers/1', '/api/customers/2']);
+      expect(puts.every((p) => p['active'] == false && p['name'] != null), isTrue);
+      expect(sel.rows.map((r) => r['id']), [5]);
+    });
+
+    testWidgets('ativar sends active true', (tester) async {
+      final sel = RecordSelection()
+        ..addAll([
+          {..._customer(5), 'active': false},
+        ]);
+      final puts = await run(tester, sel, true);
+      expect(puts.single['active'], true);
+      expect(sel.isEmpty, isTrue);
+    });
+
+    test('the button says Ativar only when every selected customer is inactive', () {
+      expect(
+        selectionIsInactive([
+          {'active': false},
+          {'active': false},
+        ]),
+        isTrue,
+      );
+      expect(
+        selectionIsInactive([
+          {'active': false},
+          {'active': true},
+        ]),
+        isFalse,
+      );
+      expect(selectionIsInactive([]), isFalse);
+    });
+  });
+}
