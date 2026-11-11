@@ -286,7 +286,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     // Contact-style list: avatar, name and trade name, then the data a salesperson reaches for (CNPJ, e-mail and who to ask for, phone, city), grouped under letters.
     pillSearch: true,
     selection: _selection,
-    selectionActions: (ctx, sel) => customerSelectionActions(ctx, widget.session.api, sel, filters: () => customerPrintFilters(search: _list.currentState?.searchText ?? '', active: _active)),
+    selectionActions: (ctx, sel) => customerSelectionActions(ctx, widget.session.api, sel, filters: () => customerPrintFilters(search: _list.currentState?.searchText ?? '', active: _active), canDelete: widget.session.canCustomers, onDeleted: () => unawaited(_list.currentState?.reload())),
     rowBuilder: (context, e, wide) => _customerRow(context, widget.session.api, e, wide),
     groupOf: (e) => contactLetter('${e['name']}'),
     listHeader: const ContactsHeader(titles: ['NOME', 'CNPJ/CPF', 'E-MAIL', 'TELEFONE', 'CIDADE'], flex: _contactFlex, actions: 3),

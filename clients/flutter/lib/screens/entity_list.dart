@@ -9,6 +9,8 @@ import '../widgets/contact_list.dart';
 import '../widgets/entity_form.dart';
 import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
+import '../widgets/record_selection.dart';
+import 'entity_selection.dart';
 import 'product_detail.dart';
 import 'stock_balances.dart';
 import 'where_used.dart';
@@ -27,6 +29,13 @@ class EntityListScreen extends StatefulWidget {
 
 class _EntityListScreenState extends State<EntityListScreen> {
   final _list = GlobalKey<RecordListState>();
+  final _selection = RecordSelection();
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
 
   EntitySpec get spec => widget.spec;
   bool get isProduct => spec.path == products.path;
@@ -96,6 +105,20 @@ class _EntityListScreenState extends State<EntityListScreen> {
     rowBuilder: isEmployee ? _employeeRow : null,
     groupOf: isEmployee ? (e) => contactLetter('${e['name']}') : null,
     listHeader: isEmployee ? const ContactsHeader(titles: ['NOME', 'MATRÍCULA', 'APELIDO'], flex: [38, 14, 24]) : null,
+    // Same selection as the customer list: long press (or the checklist button), tick rows, then print / export / inactivate / delete.
+    selection: _selection,
+    selectionActions: (ctx, sel) => entitySelectionActions(
+      ctx,
+      widget.session.api,
+      spec,
+      sel,
+      filters: () => [if ((_list.currentState?.searchText ?? '').isNotEmpty) 'Busca: ${_list.currentState!.searchText}'],
+      canWrite: canWrite,
+      onChanged: () {
+        unawaited(_list.currentState?.reload());
+        RecordTrail.closed.value++;
+      },
+    ),
     onTap: _open,
     rowChevron: true,
     rowActions: spec.whereUsed || isProduct ? _rowActions : null,

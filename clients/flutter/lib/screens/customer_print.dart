@@ -8,6 +8,7 @@ import '../api.dart';
 import '../reports/print_docs.dart' show buildCustomersPdf;
 import '../widgets/print_panel.dart' show printPdf;
 import '../widgets/record_selection.dart';
+import 'customer_delete.dart';
 
 /// Lines under the title of the customer list PDF: what narrowed the list (search text, situation).
 List<String> customerPrintFilters({String search = '', String? active}) => [
@@ -43,21 +44,49 @@ Future<void> exportCustomersPdf(BuildContext context, ApiClient api, List<Map<St
   }
 }
 
-/// Imprimir / Exportar PDF buttons of the customer list's selection bar.
-List<Widget> customerSelectionActions(BuildContext context, ApiClient api, RecordSelection selection, {required List<String> Function() filters}) => [
-  OutlinedButton.icon(
-    key: const ValueKey('customers-print'),
-    onPressed: () => unawaited(printCustomers(context, api, selection.rows, filters: filters())),
-    icon: const Icon(Icons.print_outlined),
-    label: const Text('Imprimir'),
-  ),
-  OutlinedButton.icon(
-    key: const ValueKey('customers-export'),
-    onPressed: () => unawaited(exportCustomersPdf(context, api, selection.rows, filters: filters())),
-    icon: const Icon(Icons.picture_as_pdf_outlined),
-    label: const Text('Exportar PDF'),
-  ),
-];
+/// Buttons of the customer list's selection bar: Imprimir and Exportar PDF (tonal), then Excluir (red, last, behind a divider) for those who may edit
+/// customers ([onDeleted] reloads the list).
+List<Widget> customerSelectionActions(
+  BuildContext context,
+  ApiClient api,
+  RecordSelection selection, {
+  required List<String> Function() filters,
+  bool canDelete = false,
+  VoidCallback? onDeleted,
+}) {
+  final cs = Theme.of(context).colorScheme;
+  return [
+    FilledButton.tonalIcon(
+      key: const ValueKey('customers-print'),
+      onPressed: () => unawaited(printCustomers(context, api, selection.rows, filters: filters())),
+      icon: const Icon(Icons.print_outlined),
+      label: const Text('Imprimir'),
+    ),
+    FilledButton.tonalIcon(
+      key: const ValueKey('customers-export'),
+      onPressed: () => unawaited(exportCustomersPdf(context, api, selection.rows, filters: filters())),
+      icon: const Icon(Icons.picture_as_pdf_outlined),
+      label: const Text('Exportar PDF'),
+    ),
+    if (canDelete) ...[
+      OutlinedButton.icon(
+        key: const ValueKey('customers-toggle-active'),
+        onPressed: () =>
+            unawaited(setCustomersActive(context, api, selection, active: selectionIsInactive(selection.rows)).then((n) => n > 0 ? onDeleted?.call() : null)),
+        icon: Icon(selectionIsInactive(selection.rows) ? Icons.check_circle_outline : Icons.block),
+        label: Text(selectionIsInactive(selection.rows) ? 'Ativar' : 'Inativar'),
+      ),
+      SizedBox(height: 24, child: VerticalDivider(width: 16, color: cs.outline)),
+      FilledButton.icon(
+        key: const ValueKey('customers-delete'),
+        style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError),
+        onPressed: () => unawaited(deleteCustomers(context, api, selection).then((n) => n > 0 ? onDeleted?.call() : null)),
+        icon: const Icon(Icons.delete_outline),
+        label: const Text('Excluir'),
+      ),
+    ],
+  ];
+}
 
 /// App bar menu of a customer page: print the sheet or save it as a PDF.
 class CustomerPdfMenu extends StatelessWidget {
@@ -73,8 +102,14 @@ class CustomerPdfMenu extends StatelessWidget {
     icon: const Icon(Icons.print_outlined),
     onSelected: (v) => unawaited(v == 'print' ? printCustomers(context, api, [customer]) : exportCustomersPdf(context, api, [customer])),
     itemBuilder: (_) => const [
-      PopupMenuItem(value: 'print', child: ListTile(leading: Icon(Icons.print_outlined), title: Text('Imprimir ficha'), dense: true)),
-      PopupMenuItem(value: 'pdf', child: ListTile(leading: Icon(Icons.picture_as_pdf_outlined), title: Text('Exportar PDF'), dense: true)),
+      PopupMenuItem(
+        value: 'print',
+        child: ListTile(leading: Icon(Icons.print_outlined), title: Text('Imprimir ficha'), dense: true),
+      ),
+      PopupMenuItem(
+        value: 'pdf',
+        child: ListTile(leading: Icon(Icons.picture_as_pdf_outlined), title: Text('Exportar PDF'), dense: true),
+      ),
     ],
   );
 }

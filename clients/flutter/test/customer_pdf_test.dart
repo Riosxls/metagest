@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ebt_engenharia/api.dart';
 import 'package:ebt_engenharia/entities.dart';
 import 'package:ebt_engenharia/reports/print_docs.dart';
+import 'package:ebt_engenharia/screens/customer_delete.dart';
 import 'package:ebt_engenharia/screens/customer_print.dart';
 import 'package:ebt_engenharia/widgets/record_list.dart';
 import 'package:ebt_engenharia/widgets/record_selection.dart';
@@ -71,6 +72,8 @@ ApiClient _api({int total = 130}) {
 int _pages(List<int> bytes) => RegExp(r'/Type\s*/Page\b').allMatches(latin1.decode(bytes, allowInvalid: true)).length;
 
 void main() {
+  deleteTests();
+  activeTests();
   group('customer PDFs', () {
     test('one customer: a single portrait page', () async {
       final api = _api();
@@ -84,7 +87,11 @@ void main() {
     test('several customers: a landscape list that spills over pages, in order', () async {
       final api = _api();
       final rows = [for (var i = 1; i <= 120; i++) _customer(i)];
-      final bytes = await buildCustomersPdf(api, rows, filters: customerPrintFilters(search: 'CLIENTE', active: 'true'));
+      final bytes = await buildCustomersPdf(
+        api,
+        rows,
+        filters: customerPrintFilters(search: 'CLIENTE', active: 'true'),
+      );
       final p = _firstPage(bytes);
       expect(p.w, greaterThan(p.h), reason: 'landscape');
       expect(_pages(bytes), greaterThan(1));
@@ -130,6 +137,9 @@ void main() {
   });
 
   group('selection on the list', () {
+    final opened = <int>[];
+    setUp(opened.clear);
+
     Future<void> pump(WidgetTester tester, RecordSelection sel, ApiClient api, {double width = 1400}) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = Size(width, 900);
@@ -146,6 +156,7 @@ void main() {
               path: '/api/customers',
               pageSize: 20,
               columns: [col('Cliente', 'name')],
+              onTap: (e) async => opened.add(e['id'] as int),
               selection: sel,
               selectionActions: (ctx, s) => [Text('ações ${s.count}', key: const ValueKey('actions'))],
             ),
@@ -155,10 +166,42 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('ticking rows counts them and shows the actions; select-all takes every page, not only the visible one', (tester) async {
+    testWidgets('a long press starts selection with that row ticked; taps then tick instead of opening; Cancelar leaves the mode', (tester) async {
       final sel = RecordSelection();
       await pump(tester, sel, _api());
-      expect(find.byKey(const ValueKey('selection-count')), findsOneWidget);
+      // Normal mode: no checkboxes, a tap opens the row.
+      expect(find.byType(Checkbox), findsNothing);
+      await tester.tap(find.text('CLIENTE 1 LTDA'));
+      await tester.pumpAndSettle();
+      expect(opened, [1]);
+
+      await tester.longPress(find.text('CLIENTE 2 LTDA'));
+      await tester.pumpAndSettle();
+      expect(sel.active, isTrue);
+      expect(sel.rows.map((r) => r['id']), [2]);
+      expect(find.byKey(const ValueKey('select-2')), findsOneWidget);
+
+      await tester.tap(find.text('CLIENTE 3 LTDA'));
+      await tester.pump();
+      expect(sel.rows.map((r) => r['id']), [2, 3]);
+      expect(opened, [1], reason: 'a tap while selecting does not open the row');
+      await tester.tap(find.text('CLIENTE 2 LTDA'));
+      await tester.pump();
+      expect(sel.rows.map((r) => r['id']), [3]);
+
+      await tester.tap(find.byKey(const ValueKey('selection-cancel')));
+      await tester.pumpAndSettle();
+      expect(sel.active, isFalse);
+      expect(sel.isEmpty, isTrue);
+      expect(find.byType(Checkbox), findsNothing);
+    });
+
+    testWidgets('the select button enters the mode; select-all takes every page, not only the visible one', (tester) async {
+      final sel = RecordSelection();
+      await pump(tester, sel, _api());
+      expect(find.byKey(const ValueKey('selection-count')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('select-mode')));
+      await tester.pumpAndSettle();
       expect(tester.widget<Text>(find.byKey(const ValueKey('selection-count'))).data, 'Selecionar todos (130)');
       expect(find.byKey(const ValueKey('actions')), findsNothing);
 
@@ -181,7 +224,7 @@ void main() {
     });
 
     testWidgets('select-all follows the search: only the customers that match', (tester) async {
-      final sel = RecordSelection();
+      final sel = RecordSelection()..enter();
       await pump(tester, sel, _api());
       await tester.enterText(find.byKey(const ValueKey('record-search')), 'CLIENTE 12');
       await tester.pump(const Duration(milliseconds: 400));
@@ -193,23 +236,173 @@ void main() {
       expect(sel.rows.every((r) => '${r['name']}'.contains('CLIENTE 12')), isTrue);
     });
 
-    testWidgets('a list without a selection has no checkboxes', (tester) async {
+    testWidgets('a list without a selection has no checkboxes and no select button', (tester) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = const Size(1400, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      await tester.pumpWidget(MaterialApp(home: Scaffold(body: RecordList(api: _api(), path: '/api/customers', columns: [col('Cliente', 'name')]))));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RecordList(api: _api(), path: '/api/customers', columns: [col('Cliente', 'name')]),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(Checkbox), findsNothing);
-      expect(find.byKey(const ValueKey('select-all')), findsNothing);
+      expect(find.byKey(const ValueKey('select-mode')), findsNothing);
+      await tester.longPress(find.text('CLIENTE 1 LTDA'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Checkbox), findsNothing);
     });
 
-    testWidgets('on a phone the rows carry the checkbox too', (tester) async {
+    testWidgets('on a phone a long press on a row starts selecting too', (tester) async {
       final sel = RecordSelection();
       await pump(tester, sel, _api(total: 5), width: 400);
-      await tester.tap(find.byKey(const ValueKey('select-3')));
-      await tester.pump();
+      await tester.longPress(find.textContaining('CLIENTE 3 LTDA'));
+      await tester.pumpAndSettle();
       expect(sel.rows.single['id'], 3);
+      expect(find.byKey(const ValueKey('select-3')), findsOneWidget);
+    });
+  });
+}
+
+void deleteTests() {
+  group('delete selected customers', () {
+    Future<List<String>> run(WidgetTester tester, RecordSelection sel, Set<int> refused, {bool confirmDelete = true, bool keepDialog = false}) async {
+      final calls = <String>[];
+      final client = MockClient((r) async {
+        if (r.method == 'DELETE') {
+          calls.add(r.url.path);
+          final id = int.parse(r.url.pathSegments.last);
+          return refused.contains(id) ? _json({'title': 'Customer is linked to products'}, 409) : http.Response('', 204);
+        }
+        return _json({}, 404);
+      });
+      final api = ApiClient(baseUrl: 'http://api.test', client: client, token: 't');
+      late BuildContext ctx;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (c) {
+              ctx = c;
+              return const Scaffold();
+            },
+          ),
+        ),
+      );
+      final future = deleteCustomers(ctx, api, sel);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(confirmDelete ? 'Excluir' : 'Voltar'));
+      await tester.pumpAndSettle();
+      if (!keepDialog && find.text('Fechar').evaluate().isNotEmpty) await tester.tap(find.text('Fechar'));
+      await tester.pumpAndSettle();
+      if (keepDialog) {
+        pending = future;
+      } else {
+        lastResult = await future;
+      }
+      return calls;
+    }
+
+    testWidgets('asks first, deletes every selected customer, and leaves none selected', (tester) async {
+      final sel = RecordSelection()..addAll([_customer(1), _customer(2)]);
+      final calls = await run(tester, sel, {});
+      expect(calls, ['/api/customers/1', '/api/customers/2']);
+      expect(lastResult, 2);
+      expect(sel.isEmpty, isTrue);
+    });
+
+    testWidgets('Voltar deletes nothing', (tester) async {
+      final sel = RecordSelection()..addAll([_customer(1)]);
+      final calls = await run(tester, sel, {}, confirmDelete: false);
+      expect(calls, isEmpty);
+      expect(lastResult, 0);
+      expect(sel.count, 1);
+    });
+
+    testWidgets('a customer still in use is refused, named in the result and stays selected', (tester) async {
+      final sel = RecordSelection()..addAll([_customer(1), _customer(2)]);
+      await run(tester, sel, {2}, keepDialog: true);
+      expect(find.textContaining('CLIENTE 2 LTDA'), findsOneWidget);
+      await tester.tap(find.text('Fechar'));
+      await tester.pumpAndSettle();
+      lastResult = await pending!;
+      expect(lastResult, 1);
+      expect(sel.rows.map((r) => r['id']), [2]);
+    });
+  });
+}
+
+int lastResult = -1;
+Future<int>? pending;
+
+void activeTests() {
+  group('inactivate / reactivate selected customers', () {
+    Future<List<Map<String, dynamic>>> run(WidgetTester tester, RecordSelection sel, bool active) async {
+      final puts = <Map<String, dynamic>>[];
+      final client = MockClient((r) async {
+        if (r.method == 'PUT') {
+          puts.add({'path': r.url.path, ...jsonDecode(r.body) as Map<String, dynamic>});
+          return _json({});
+        }
+        return _json({}, 404);
+      });
+      final api = ApiClient(baseUrl: 'http://api.test', client: client, token: 't');
+      late BuildContext ctx;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (c) {
+              ctx = c;
+              return const Scaffold();
+            },
+          ),
+        ),
+      );
+      final future = setCustomersActive(ctx, api, sel, active: active);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(active ? 'Reativar' : 'Inativar'));
+      await tester.pumpAndSettle();
+      await future;
+      return puts;
+    }
+
+    testWidgets('inativar changes only the active ones and clears them from the selection', (tester) async {
+      final inactive = {..._customer(5), 'active': false};
+      final sel = RecordSelection()..addAll([_customer(1), _customer(2), inactive]);
+      final puts = await run(tester, sel, false);
+      expect(puts.map((p) => p['path']), ['/api/customers/1', '/api/customers/2']);
+      expect(puts.every((p) => p['active'] == false && p['name'] != null), isTrue);
+      expect(sel.rows.map((r) => r['id']), [5]);
+    });
+
+    testWidgets('ativar sends active true', (tester) async {
+      final sel = RecordSelection()
+        ..addAll([
+          {..._customer(5), 'active': false},
+        ]);
+      final puts = await run(tester, sel, true);
+      expect(puts.single['active'], true);
+      expect(sel.isEmpty, isTrue);
+    });
+
+    test('the button says Ativar only when every selected customer is inactive', () {
+      expect(
+        selectionIsInactive([
+          {'active': false},
+          {'active': false},
+        ]),
+        isTrue,
+      );
+      expect(
+        selectionIsInactive([
+          {'active': false},
+          {'active': true},
+        ]),
+        isFalse,
+      );
+      expect(selectionIsInactive([]), isFalse);
     });
   });
 }

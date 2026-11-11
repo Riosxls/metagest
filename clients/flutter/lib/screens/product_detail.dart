@@ -11,6 +11,7 @@ import '../widgets/entity_form.dart';
 import '../widgets/load_error.dart';
 import '../widgets/record_nav.dart';
 import '../widgets/responsive.dart';
+import 'entity_selection.dart';
 import 'stock_balances.dart';
 import 'where_used.dart';
 
@@ -90,6 +91,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with SingleTi
       appBar: AppBar(
         title: Text(p == null ? 'Produto' : '${p['code']} · ${p['name']}', overflow: TextOverflow.ellipsis),
         actions: [
+          if (p != null) EntityPdfMenu(spec: products, record: p),
           if (p != null)
             RelatedMenu(
               links: [

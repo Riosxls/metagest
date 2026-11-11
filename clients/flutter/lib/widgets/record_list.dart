@@ -194,23 +194,35 @@ class RecordListState extends State<RecordList> {
           color: n > 0 ? theme.colorScheme.secondaryContainer : Colors.transparent,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 0,
+            // Left: select-all, count and Cancelar. Right: the screen's actions, so a destructive one sits apart at the far end.
+            child: Row(
               children: [
-                if (_selectingAll)
-                  const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
-                else
-                  Checkbox(
-                    key: const ValueKey('select-all'),
-                    tristate: true,
-                    value: all ? true : (n > 0 ? null : false),
-                    onChanged: total == 0 ? null : (_) => all ? sel.clear() : unawaited(selectAllMatching()),
+                Expanded(
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    children: [
+                      if (_selectingAll)
+                        const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
+                      else
+                        Checkbox(
+                          key: const ValueKey('select-all'),
+                          tristate: true,
+                          value: all ? true : (n > 0 ? null : false),
+                          onChanged: total == 0 ? null : (_) => all ? sel.clear() : unawaited(selectAllMatching()),
+                        ),
+                      Text(n == 0 ? 'Selecionar todos${total > 0 ? ' ($total)' : ''}' : (all ? 'Todos os $total selecionados' : '$n selecionado${n > 1 ? 's' : ''}'), key: const ValueKey('selection-count')),
+                      TextButton(key: const ValueKey('selection-cancel'), onPressed: sel.exit, child: const Text('Cancelar')),
+                    ],
                   ),
-                Text(n == 0 ? 'Selecionar todos${total > 0 ? ' ($total)' : ''}' : (all ? 'Todos os $total selecionados' : '$n selecionado${n > 1 ? 's' : ''}'), key: const ValueKey('selection-count')),
-                if (n > 0) TextButton(key: const ValueKey('selection-clear'), onPressed: sel.clear, child: const Text('Limpar seleção')),
-                if (n > 0) ...?widget.selectionActions?.call(context, sel),
+                ),
+                if (n > 0)
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Wrap(alignment: WrapAlignment.end, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 6, children: [...?widget.selectionActions?.call(context, sel)]),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -218,6 +230,18 @@ class RecordListState extends State<RecordList> {
       },
     );
   }
+
+  bool get _selecting => widget.selection?.active ?? false;
+
+  void _onSelection() {
+    if (mounted) setState(() {});
+  }
+
+  /// A tap opens the row, or ticks it while selecting.
+  VoidCallback? _tapFor(Map<String, dynamic> e) => widget.onTap == null && !_selecting ? null : () => unawaited(_tap(e));
+
+  /// A long press (click and hold) starts selecting with this row ticked, as in a phone's contact list.
+  VoidCallback? _longPressFor(Map<String, dynamic> e) => widget.selection == null || _selecting ? null : () => widget.selection!..enter()..set(e, true);
 
   Widget _check(Map<String, dynamic> e) {
     final sel = widget.selection!;
@@ -275,6 +299,7 @@ class RecordListState extends State<RecordList> {
     _horizontal.addListener(_syncHeader);
     RecordTrail.closed.addListener(_onPageClosed);
     _searchFocus.addListener(_searchFocusChanged);
+    widget.selection?.addListener(_onSelection);
     unawaited(_restoreView());
   }
 
@@ -366,6 +391,10 @@ class RecordListState extends State<RecordList> {
   @override
   void didUpdateWidget(RecordList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.selection != widget.selection) {
+      oldWidget.selection?.removeListener(_onSelection);
+      widget.selection?.addListener(_onSelection);
+    }
     if (oldWidget.path != widget.path || !mapEquals(oldWidget.query, widget.query)) {
       _skip = 0;
       reload();
@@ -388,6 +417,7 @@ class RecordListState extends State<RecordList> {
   @override
   void dispose() {
     RecordTrail.closed.removeListener(_onPageClosed);
+    widget.selection?.removeListener(_onSelection);
     _searchFocus.dispose();
     _listFocus.dispose();
     _closeTimer?.cancel();
@@ -465,6 +495,11 @@ class RecordListState extends State<RecordList> {
   }
 
   Future<void> _tap(Map<String, dynamic> e) async {
+    final sel = widget.selection;
+    if (sel != null && sel.active) {
+      sel.toggle(e);
+      return;
+    }
     if (widget.onTap == null) return;
     RecordSiblings.offer([for (final r in _sorted(items)) r['id']]);
     await widget.onTap!(e);
@@ -531,12 +566,13 @@ class RecordListState extends State<RecordList> {
                       ],
                     ),
                   ),
+                  if (widget.selection != null && !_selecting) IconButton(key: const ValueKey('select-mode'), tooltip: 'Selecionar', onPressed: widget.selection!.enter, icon: const Icon(Icons.checklist)),
                   IconButton(tooltip: 'Atualizar', onPressed: reload, icon: const Icon(Icons.refresh)),
                 ],
               ),
             ),
             if (_loading) const LinearProgressIndicator() else const SizedBox(height: 4),
-            if (widget.selection != null && page != null && page.items.isNotEmpty) _selectionBar(),
+            if (_selecting && page != null && page.items.isNotEmpty) _selectionBar(),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -700,7 +736,7 @@ class RecordListState extends State<RecordList> {
     // A table narrower than its window leaves a blank band on the right: the text columns share the spare room, so the table always fills the width.
     final avail = _availWidth;
     if (avail != null && out.isNotEmpty) {
-      final extras = (widget.rowActions != null ? _actionsCol + _spacing : 0) + (_chevron ? _chevronCol + _spacing : 0) + (widget.selection != null ? _checkCol + _spacing : 0);
+      final extras = (widget.rowActions != null ? _actionsCol + _spacing : 0) + (_chevron ? _chevronCol + _spacing : 0) + (_selecting ? _checkCol + _spacing : 0);
       final used = _margin * 2 + out.fold(0.0, (a, b) => a + b) + _spacing * (out.length - 1) + extras;
       final grow = [for (var i = 0; i < out.length; i++) if (!widget.columns[i].numeric) i];
       final base = grow.fold(0.0, (a, i) => a + out[i]);
@@ -738,8 +774,9 @@ class RecordListState extends State<RecordList> {
         Material(
           color: _rowTint(context, e, items) ?? Colors.transparent,
           child: InkWell(
-            onTap: widget.onTap == null ? null : () => _tap(e),
-            child: widget.selection == null ? widget.rowBuilder!(context, e, wide) : Row(children: [_check(e), Expanded(child: widget.rowBuilder!(context, e, wide))]),
+            onTap: _tapFor(e),
+        onLongPress: _longPressFor(e),
+            child: !_selecting ? widget.rowBuilder!(context, e, wide) : Row(children: [_check(e), Expanded(child: widget.rowBuilder!(context, e, wide))]),
           ),
         ),
       );
@@ -748,7 +785,7 @@ class RecordListState extends State<RecordList> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (wide && widget.listHeader != null)
-          widget.selection == null ? widget.listHeader! : Row(children: [const SizedBox(width: 48), Expanded(child: widget.listHeader!)]),
+          !_selecting ? widget.listHeader! : Row(children: [const SizedBox(width: 48), Expanded(child: widget.listHeader!)]),
         Expanded(
           child: Scrollbar(
             controller: _vertical,
@@ -837,7 +874,7 @@ class RecordListState extends State<RecordList> {
             child: Row(
               children: [
                 const SizedBox(width: _margin),
-                if (widget.selection != null) const SizedBox(width: _checkCol + _spacing),
+                if (_selecting) const SizedBox(width: _checkCol + _spacing),
                 for (var i = 0; i < widths.length; i++) ...[
                   if (i > 0) const SizedBox(width: _spacing),
                   cell(i),
@@ -866,7 +903,7 @@ class RecordListState extends State<RecordList> {
       sortColumnIndex: _sortColumn,
       sortAscending: _ascending,
       columns: [
-        if (widget.selection != null) const DataColumn(label: SizedBox(width: _checkCol)),
+        if (_selecting) const DataColumn(label: SizedBox(width: _checkCol)),
         for (var i = 0; i < widget.columns.length; i++) DataColumn(label: SizedBox(width: widths[i]), numeric: widget.columns[i].numeric),
         if (widget.rowActions != null) const DataColumn(label: SizedBox(width: _actionsCol)),
         if (_chevron) const DataColumn(label: SizedBox(width: _chevronCol)),
@@ -878,9 +915,10 @@ class RecordListState extends State<RecordList> {
               (_) => _rowTint(context, e, items),
             ),
             selected: identical(e, _highlighted(items)),
-            onSelectChanged: widget.onTap == null ? null : (_) => _tap(e),
+            onSelectChanged: _tapFor(e) == null ? null : (_) => _tap(e),
+            onLongPress: _longPressFor(e),
             cells: [
-              if (widget.selection != null) DataCell(SizedBox(width: _checkCol, child: _check(e))),
+              if (_selecting) DataCell(SizedBox(width: _checkCol, child: _check(e))),
               for (var i = 0; i < widget.columns.length; i++)
                 DataCell(
                   SizedBox(
@@ -892,6 +930,7 @@ class RecordListState extends State<RecordList> {
                           : Tooltip(
                               message: widget.columns[i].value(e),
                               waitDuration: const Duration(milliseconds: 600),
+                              triggerMode: widget.selection == null ? null : TooltipTriggerMode.manual,
                               child: Text(widget.columns[i].value(e), overflow: TextOverflow.ellipsis),
                             ),
                     ),
@@ -946,7 +985,7 @@ class RecordListState extends State<RecordList> {
     separatorBuilder: (_, _) => const Divider(height: 1),
     itemBuilder: (_, i) {
       final e = items[i];
-      final leading = widget.selection == null ? null : _check(e);
+      final leading = _selecting ? _check(e) : null;
       final cols = [
         for (final c in widget.columns)
           if (!c.hideOnNarrow) c,
@@ -961,7 +1000,8 @@ class RecordListState extends State<RecordList> {
           leading: leading,
           title: widget.phoneTile!(context, e),
           trailing: _trailing(e),
-          onTap: widget.onTap == null ? null : () => _tap(e),
+          onTap: _tapFor(e),
+        onLongPress: _longPressFor(e),
         );
       }
       return ListTile(
@@ -997,7 +1037,8 @@ class RecordListState extends State<RecordList> {
                 ),
               ),
         trailing: _trailing(e),
-        onTap: widget.onTap == null ? null : () => _tap(e),
+        onTap: _tapFor(e),
+        onLongPress: _longPressFor(e),
       );
     },
   );

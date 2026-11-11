@@ -10,6 +10,26 @@ class RecordSelection extends ChangeNotifier {
   /// The selected rows, in the order they were ticked.
   List<Map<String, dynamic>> get rows => List.unmodifiable(_rows.values);
 
+  bool _active = false;
+
+  /// Selection mode: rows show checkboxes and a tap ticks a row instead of opening it. Entered by a long press on a row (or the select button),
+  /// left with [exit], as in a phone's contact list.
+  bool get active => _active;
+
+  void enter() {
+    if (_active) return;
+    _active = true;
+    notifyListeners();
+  }
+
+  /// Leaves selection mode and forgets the chosen rows.
+  void exit() {
+    if (!_active && _rows.isEmpty) return;
+    _active = false;
+    _rows.clear();
+    notifyListeners();
+  }
+
   int get count => _rows.length;
   bool get isEmpty => _rows.isEmpty;
 
