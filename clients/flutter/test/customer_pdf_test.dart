@@ -130,6 +130,9 @@ void main() {
   });
 
   group('selection on the list', () {
+    final opened = <int>[];
+    setUp(opened.clear);
+
     Future<void> pump(WidgetTester tester, RecordSelection sel, ApiClient api, {double width = 1400}) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = Size(width, 900);
@@ -146,6 +149,7 @@ void main() {
               path: '/api/customers',
               pageSize: 20,
               columns: [col('Cliente', 'name')],
+              onTap: (e) async => opened.add(e['id'] as int),
               selection: sel,
               selectionActions: (ctx, s) => [Text('ações ${s.count}', key: const ValueKey('actions'))],
             ),
@@ -155,10 +159,42 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('ticking rows counts them and shows the actions; select-all takes every page, not only the visible one', (tester) async {
+    testWidgets('a long press starts selection with that row ticked; taps then tick instead of opening; Cancelar leaves the mode', (tester) async {
       final sel = RecordSelection();
       await pump(tester, sel, _api());
-      expect(find.byKey(const ValueKey('selection-count')), findsOneWidget);
+      // Normal mode: no checkboxes, a tap opens the row.
+      expect(find.byType(Checkbox), findsNothing);
+      await tester.tap(find.text('CLIENTE 1 LTDA'));
+      await tester.pumpAndSettle();
+      expect(opened, [1]);
+
+      await tester.longPress(find.text('CLIENTE 2 LTDA'));
+      await tester.pumpAndSettle();
+      expect(sel.active, isTrue);
+      expect(sel.rows.map((r) => r['id']), [2]);
+      expect(find.byKey(const ValueKey('select-2')), findsOneWidget);
+
+      await tester.tap(find.text('CLIENTE 3 LTDA'));
+      await tester.pump();
+      expect(sel.rows.map((r) => r['id']), [2, 3]);
+      expect(opened, [1], reason: 'a tap while selecting does not open the row');
+      await tester.tap(find.text('CLIENTE 2 LTDA'));
+      await tester.pump();
+      expect(sel.rows.map((r) => r['id']), [3]);
+
+      await tester.tap(find.byKey(const ValueKey('selection-cancel')));
+      await tester.pumpAndSettle();
+      expect(sel.active, isFalse);
+      expect(sel.isEmpty, isTrue);
+      expect(find.byType(Checkbox), findsNothing);
+    });
+
+    testWidgets('the select button enters the mode; select-all takes every page, not only the visible one', (tester) async {
+      final sel = RecordSelection();
+      await pump(tester, sel, _api());
+      expect(find.byKey(const ValueKey('selection-count')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('select-mode')));
+      await tester.pumpAndSettle();
       expect(tester.widget<Text>(find.byKey(const ValueKey('selection-count'))).data, 'Selecionar todos (130)');
       expect(find.byKey(const ValueKey('actions')), findsNothing);
 
@@ -181,7 +217,7 @@ void main() {
     });
 
     testWidgets('select-all follows the search: only the customers that match', (tester) async {
-      final sel = RecordSelection();
+      final sel = RecordSelection()..enter();
       await pump(tester, sel, _api());
       await tester.enterText(find.byKey(const ValueKey('record-search')), 'CLIENTE 12');
       await tester.pump(const Duration(milliseconds: 400));
@@ -193,7 +229,7 @@ void main() {
       expect(sel.rows.every((r) => '${r['name']}'.contains('CLIENTE 12')), isTrue);
     });
 
-    testWidgets('a list without a selection has no checkboxes', (tester) async {
+    testWidgets('a list without a selection has no checkboxes and no select button', (tester) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = const Size(1400, 900);
       tester.view.devicePixelRatio = 1;
@@ -201,15 +237,19 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: RecordList(api: _api(), path: '/api/customers', columns: [col('Cliente', 'name')]))));
       await tester.pumpAndSettle();
       expect(find.byType(Checkbox), findsNothing);
-      expect(find.byKey(const ValueKey('select-all')), findsNothing);
+      expect(find.byKey(const ValueKey('select-mode')), findsNothing);
+      await tester.longPress(find.text('CLIENTE 1 LTDA'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Checkbox), findsNothing);
     });
 
-    testWidgets('on a phone the rows carry the checkbox too', (tester) async {
+    testWidgets('on a phone a long press on a row starts selecting too', (tester) async {
       final sel = RecordSelection();
       await pump(tester, sel, _api(total: 5), width: 400);
-      await tester.tap(find.byKey(const ValueKey('select-3')));
-      await tester.pump();
+      await tester.longPress(find.textContaining('CLIENTE 3 LTDA'));
+      await tester.pumpAndSettle();
       expect(sel.rows.single['id'], 3);
+      expect(find.byKey(const ValueKey('select-3')), findsOneWidget);
     });
   });
 }
