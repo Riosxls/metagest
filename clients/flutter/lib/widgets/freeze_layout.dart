@@ -12,7 +12,7 @@ class FreezeLayout extends SingleChildRenderObjectWidget {
   RenderObject createRenderObject(BuildContext context) => _RenderFreezeLayout(frozen);
 
   @override
-  void updateRenderObject(BuildContext context, _RenderFreezeLayout renderObject) => renderObject.frozen = frozen;
+  void updateRenderObject(BuildContext context, RenderObject renderObject) => (renderObject as _RenderFreezeLayout).frozen = frozen;
 }
 
 class _RenderFreezeLayout extends RenderProxyBox {

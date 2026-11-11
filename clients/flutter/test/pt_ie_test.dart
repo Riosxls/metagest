@@ -1,5 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:ebt_engenharia/reports/pt_text.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('state registration gets the dots of its state', () {
