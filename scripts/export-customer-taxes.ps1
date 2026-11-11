@@ -14,7 +14,7 @@
   Windows PowerShell 5.1. Saved as UTF-8 with BOM.
 #>
 param(
-    [string]$Folder = 'C:\Users\italo\Desktop\EBT\Pedidos de Vendas\PEDIDOS DE VENDAS  BST 25 & 26',
+    [string]$Folder = 'D:\Projects\ebt project\EBT\Pedidos de Vendas\PEDIDOS DE VENDAS  BST 25 & 26',
     [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) 'customer-taxes.json'),
     [string]$Api = 'http://localhost:8080',
     [switch]$Send,

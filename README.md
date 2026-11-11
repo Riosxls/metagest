@@ -4,7 +4,7 @@
 
 Prerequisites: [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and [Flutter](https://docs.flutter.dev/get-started/install/windows/desktop) with Visual Studio 2022 "Desktop development with C++" for the Windows app.
 
-1. `git clone https://github.com/Riosxls/sidergest` (or `git pull`)
+1. `git clone https://github.com/Riosxls/metagest` (or `git pull`)
 2. Double-click `start.bat` (or run it in a terminal). It starts PostgreSQL + API in Docker, applies migrations, creates the admin user and opens the Windows app.
 3. Log in with `admin` and the `EBT_ADMIN_PASSWORD` from the `.env` file `start.bat` generates on first run (random secrets; Swagger on for local use). Stop everything with `stop.bat`.
 

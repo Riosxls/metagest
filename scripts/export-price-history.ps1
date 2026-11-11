@@ -19,8 +19,8 @@
   Windows PowerShell 5.1. Saved as UTF-8 with BOM.
 #>
 param(
-    [string]$Workbook = 'C:\Users\italo\Desktop\EBT\Pedidos de Vendas\PEDIDO DE VENDAS Anos 24 & 26 - EBT e BST.xlsx',
-    [string]$PedidosFolder = 'C:\Users\italo\Desktop\EBT\Pedidos de Vendas\PEDIDOS DE VENDAS  BST 25 & 26',
+    [string]$Workbook = 'D:\Projects\ebt project\EBT\Pedidos de Vendas\PEDIDO DE VENDAS Anos 24 & 26 - EBT e BST.xlsx',
+    [string]$PedidosFolder = 'D:\Projects\ebt project\EBT\Pedidos de Vendas\PEDIDOS DE VENDAS  BST 25 & 26',
     [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) 'price-history.csv')
 )
 

@@ -6,7 +6,7 @@ Primary context file for future sessions. Read fully before changing code.
 
 ## Project overview
 
-EBT (Brazilian steel-tube manufacturer) is replacing its legacy **Emissor NF** system (HDS / xHarbour / DBF files; old executable `C:\Users\italo\Desktop\EBT\SI\NF\NF.exe`) with **MetaGest**:
+EBT (Brazilian steel-tube manufacturer) is replacing its legacy **Emissor NF** system (HDS / xHarbour / DBF files; old executable `D:\Projects\ebt project\EBT\SI\NF\NF.exe`) with **MetaGest**:
 
 - Backend: ASP.NET Core 10 minimal API + EF Core + PostgreSQL 16 (`src/`).
 - Clients: Flutter for Windows, Android and Web (`clients/flutter`).
@@ -15,9 +15,9 @@ EBT (Brazilian steel-tube manufacturer) is replacing its legacy **Emissor NF** s
 
 ## Workflow rules
 
-- All code changes happen locally on Italo's machine (`C:\Users\italo\Desktop\sidergest`), via Remote Control sessions.
+- All code changes happen locally on Italo's machine (`D:\Projects\ebt project\metagest`), via Remote Control sessions.
 - **Never push to GitHub unless Italo asks.** Commit locally only. Do not open PRs unless asked. When he does ask, push to `main` as a fast-forward (`git fetch`, check `origin/main` is an ancestor, then push).
-- Work in `C:\Users\italo\Desktop\sidergest` on branch `main`; this is the folder Italo runs Flutter from. Claude worktrees under `.claude/worktrees/` are disposable copies: a build or edit there does not reach the folder he runs. Never leave work only in a worktree.
+- Work in `D:\Projects\ebt project\metagest` on branch `main`; this is the folder Italo runs Flutter from. Claude worktrees under `.claude/worktrees/` are disposable copies: a build or edit there does not reach the folder he runs. Never leave work only in a worktree.
 - GitHub CI is disabled on purpose (Italo does not want to spend Actions minutes). Run `dotnet test` and `flutter test` locally instead.
 - Project root `AGENTS.md` (in `C:\Users\italo`) asks for graphify: use `graphify query/path/explain` before raw grep when `graphify-out/graph.json` exists; run `graphify update .` after modifying code. `graphify-out/` is tracked only for `graph.json`, `graph.html`, `GRAPH_REPORT.md`, `manifest.json` and the label files; commit them after `graphify update .` when the code changed. `graphify-out/cache/` and the dated snapshot folders (`graphify-out/2026-...`) are ignored.
 - Untracked scratch files (`clients/flutter/devtools_options.yaml`, `flutter_01.png`, `ebt-backup-*.dump` database backups in the repo root) are not part of the project; do not commit them (the dumps contain real data; `*.dump` is gitignored).
@@ -178,7 +178,7 @@ scripts/             start.ps1, stop.ps1
 
 ## Quality certificates
 
-- Source files: 826 files in `C:\Users\italo\Desktop\EBT\Certificados` (2025+).
+- Source files: 826 files in `D:\Projects\ebt project\EBT\Certificados` (2025+).
 - Numbering: **EBT starts at 2146**, **BST starts at 5176**.
 - Two templates (EBT, BST) rendered by `certificate_doc.dart`; test in `clients/flutter/test/certificate_doc_test.dart`.
 - **Identity fields on the certificate** come from the customer+product template, not from the order line: `CertificateTemplate.ProductCode` ("N° do Produto", Excel style `T`+diameter×100+thickness×1000+length, 4 digits each; rule in `CertificateService.ExcelProductCode`, some customers' old sheets drop a zero so the template keeps the sheet's own text), `Description` ("Tubo 12,00 X 1,60 X 6000"), `RawMaterialLot` and the notes with the "certificado de origem do material" line (the same lot repeats in 86% and the origin note in 92% of consecutive certificates of a customer+product on 2025-26 sheets; the draft stays editable). Customer code/description come from `ProductCustomer`; the legacy DBF import filled it with cross-reference text (`TUB12,00X1,60X6000MM20MF020082`), and `LegacySpecImporter` replaces values that are blank or start with "TUB" by the Excel ones and corrects non-cancelled certificates of the same customer+product (identity text only). `legacy-specs.json` carries `productCode`, `description`, `rawMaterialLot`, `originNote` read from the latest Excel certificate of each combination.

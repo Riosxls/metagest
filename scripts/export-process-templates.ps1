@@ -21,7 +21,7 @@
   Windows PowerShell 5.1. Saved as UTF-8 with BOM.
 #>
 param(
-    [string]$PedidosFolder = 'C:\Users\italo\Desktop\EBT\Pedidos de Vendas\PEDIDOS DE VENDAS  BST 25 & 26',
+    [string]$PedidosFolder = 'D:\Projects\ebt project\EBT\Pedidos de Vendas\PEDIDOS DE VENDAS  BST 25 & 26',
     [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) 'process-templates.csv'),
     [string]$SkipLog = ''
 )

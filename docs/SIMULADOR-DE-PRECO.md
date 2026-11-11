@@ -144,7 +144,7 @@ Antes de construir, os dados da empresa foram estudados. Estes foram os achados 
 
 O banco de dados do MetaGest hoje só tem registros de teste (10 linhas de orçamento, todas a cerca de R$ 23,70 por kg). Por isso o
 histórico real foi buscado nas planilhas da empresa, todas dentro da pasta `EBT` (no computador do Italo:
-`C:\Users\italo\Desktop\EBT`). Os arquivos foram **apenas lidos**: nenhuma planilha foi alterada.
+`D:\Projects\ebt project\EBT`). Os arquivos foram **apenas lidos**: nenhuma planilha foi alterada.
 
 ### 7.1 Resumo
 

@@ -19,7 +19,7 @@
   powershell -File scripts\export-certificate-specs.ps1
 #>
 param(
-    [string]$Root = 'C:\Users\italo\Desktop\EBT\Certificados',
+    [string]$Root = 'D:\Projects\ebt project\EBT\Certificados',
     [string]$Json = (Join-Path $PSScriptRoot '..\src\Ebt.Core\Certificates\legacy-specs.json')
 )
 

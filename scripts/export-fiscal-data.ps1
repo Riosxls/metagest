@@ -20,11 +20,11 @@
   Windows PowerShell 5.1. ASCII only.
 .EXAMPLE
   powershell -File scripts\export-fiscal-data.ps1
-  powershell -File scripts\export-fiscal-data.ps1 -Db C:\Users\italo\Desktop\EBT\DHBSTDB -NfContr C:\Users\italo\Desktop\BST\DHBst\SI\NF\NFCONTR.DBF -Source BST -Out fiscal-data-bst.json
+  powershell -File scripts\export-fiscal-data.ps1 -Db D:\Projects\ebt project\EBT\DHBSTDB -NfContr D:\Projects\ebt project\BST\DHBst\SI\NF\NFCONTR.DBF -Source BST -Out fiscal-data-bst.json
 #>
 param(
-    [string]$Db = 'C:\Users\italo\Desktop\EBT\DHEBTDB',
-    [string]$NfContr = 'C:\Users\italo\Desktop\EBT\SI\NF\NFCONTR.DBF',
+    [string]$Db = 'D:\Projects\ebt project\EBT\DHEBTDB',
+    [string]$NfContr = 'D:\Projects\ebt project\EBT\SI\NF\NFCONTR.DBF',
     [string]$Source = 'EBT',
     [int]$Months = 6,
     [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) 'fiscal-data.json')
