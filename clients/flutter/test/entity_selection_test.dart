@@ -103,9 +103,9 @@ void main() {
       expect(sel.rows.map((r) => r['id']), [2]);
     });
 
-    testWidgets('bloquear sends the whole row with blocked true, only for unblocked ones', (tester) async {
+    testWidgets('inativar sends the whole row with blocked true, only for unblocked ones', (tester) async {
       final sel = RecordSelection()..addAll([_product(1), _product(2, blocked: true)]);
-      final calls = await run(tester, (c, a) => setFlag(c, a, products, sel, flag: 'blocked', off: true), 'Bloquear');
+      final calls = await run(tester, (c, a) => setFlag(c, a, products, sel, flag: 'blocked', off: true), 'Inativar');
       expect(calls.length, 1);
       expect(calls.single['method'], 'PUT');
       expect(calls.single['blocked'], true);

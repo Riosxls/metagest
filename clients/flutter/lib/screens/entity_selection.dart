@@ -116,7 +116,7 @@ Future<int> setFlag(BuildContext context, ApiClient api, EntitySpec spec, Record
   ];
   if (rows.isEmpty) return 0;
   final messenger = ScaffoldMessenger.of(context);
-  final verb = flag == 'blocked' ? (off ? 'Bloquear' : 'Desbloquear') : (off ? 'Inativar' : 'Reativar');
+  final verb = off ? 'Inativar' : 'Reativar';
   final ok = await confirm(
     context,
     '$verb ${rows.length == 1 ? recordName(rows.single) : '${rows.length} registros (${_summary(rows)})'}?',
@@ -179,7 +179,7 @@ List<Widget> entitySelectionActions(
           key: const ValueKey('entity-toggle'),
           onPressed: () => after(setFlag(context, api, spec, selection, flag: flag, off: !off)),
           icon: Icon(off ? Icons.check_circle_outline : Icons.block),
-          label: Text(flag == 'blocked' ? (off ? 'Desbloquear' : 'Bloquear') : (off ? 'Ativar' : 'Inativar')),
+          label: Text(off ? 'Ativar' : 'Inativar'),
         ),
       SizedBox(height: 24, child: VerticalDivider(width: 16, color: cs.outline)),
       FilledButton.icon(
