@@ -642,8 +642,8 @@ public static class SalesEndpoints
                 orders = orders.Where(o => o.CustomerId == c);
             }
             // Period: quotes and orders created from `from` to `to` (both days included). Company (billTo) only exists on orders, so quotes are not narrowed by it.
-            if (from is { } f0) { var start = new DateTimeOffset(f0.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero); quotes = quotes.Where(q => q.CreatedAt >= start); orders = orders.Where(o => o.CreatedAt >= start); }
-            if (to is { } t0) { var end = new DateTimeOffset(t0.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero); quotes = quotes.Where(q => q.CreatedAt < end); orders = orders.Where(o => o.CreatedAt < end); }
+            if (from is { } f0) { var start = Ebt.Core.Services.Clock.FromLocal(f0.ToDateTime(TimeOnly.MinValue)).ToUniversalTime(); quotes = quotes.Where(q => q.CreatedAt >= start); orders = orders.Where(o => o.CreatedAt >= start); }
+            if (to is { } t0) { var end = Ebt.Core.Services.Clock.FromLocal(t0.AddDays(1).ToDateTime(TimeOnly.MinValue)).ToUniversalTime(); quotes = quotes.Where(q => q.CreatedAt < end); orders = orders.Where(o => o.CreatedAt < end); }
             if (billTo is { } bt) orders = orders.Where(o => o.BillTo == bt);
             var quoteRows = await QuoteSummaries(db, quotes.OrderBy(q => q.ValidUntil ?? DateOnly.MaxValue).ThenByDescending(q => q.CreatedAt), (await svc.SettingsAsync(ct)).FollowUpDays, ct);
             var orderRows = await OrderSummaries(db, svc, orders.OrderBy(o => o.CreatedAt), ct);
