@@ -34,6 +34,19 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   final _qty = <int, TextEditingController>{};
   final _invoiceNumber = TextEditingController();
 
+  /// Data of the load that goes on the NF and can be edited before confirming (sent with the dispatch; empty = the server's default).
+  static const _extra = {
+    'carrier': 'Transportadora',
+    'vehiclePlate': 'Placa do veículo',
+    'grossWeightKg': 'Peso bruto (kg)',
+    'freight': r'Frete na NF (R$)',
+    'cfop': 'CFOP (vazio = o do endereço de entrega ou 5101)',
+    'lotNumber': 'Nº do lote',
+    'notes': 'Observações da entrega',
+  };
+  static const _numericExtra = {'grossWeightKg', 'freight'};
+  final _extraCtl = {for (final k in _extra.keys) k: TextEditingController()};
+
   ApiClient get api => widget.session.api;
 
   @override
@@ -42,6 +55,9 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
       c.dispose();
     }
     _invoiceNumber.dispose();
+    for (final c in _extraCtl.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -110,6 +126,8 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
         'date': isoDate(DateTime.now()),
         'lines': lines,
         if (!on) 'invoiceNumber': typed,
+        for (final e in _extraCtl.entries)
+          if (e.value.text.trim().isNotEmpty) e.key: _numericExtra.contains(e.key) ? parseDecimal(e.value.text.trim()) : e.value.text.trim(),
       }) as Map<String, dynamic>;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Carga expedida${d['invoiceNumber'] == null ? '' : ' com a NF ${d['invoiceNumber']}'}. Próximo passo: certificado.')));
@@ -159,6 +177,25 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
                 ),
               ),
             ),
+          Text('Dados da carga que vão na NF (edite se precisar)', style: Theme.of(context).textTheme.titleSmall),
+          gap,
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final e in _extra.entries)
+                SizedBox(
+                  width: 320,
+                  child: TextField(
+                    key: ValueKey('invoice-extra-${e.key}'),
+                    controller: _extraCtl[e.key],
+                    keyboardType: _numericExtra.contains(e.key) ? const TextInputType.numberWithOptions(decimal: true) : null,
+                    decoration: InputDecoration(labelText: e.value, border: const OutlineInputBorder()),
+                  ),
+                ),
+            ],
+          ),
+          gap,
           if (nf['fiscalEnabled'] != true)
             TextField(
               key: const ValueKey('invoice-number'),
