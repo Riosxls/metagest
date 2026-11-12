@@ -51,7 +51,7 @@ public record SalesOrderSummaryOut(int Id, int Number, string Reference, int Cus
 /// <param name="InvoiceStatus">None (no NF yet), Pending (sent to SEFAZ, outcome unknown), Authorized (an authorized NF or a typed NF number), FiscalOff (emission disabled).</param>
 /// <param name="NeedsInvoice">Fiscal emission is on, the goods left and no NF exists or is pending: someone with the fiscal-emit right still has to emit it.</param>
 public record DeliverySummaryOut(int Id, int Number, string Reference, int OrderId, string OrderReference, int CustomerId, string CustomerName, DateOnly PlannedDate, DeliveryStatus Status, int Packages, decimal? GrossWeightKg,
-    string? InvoiceNumber, string? Carrier, DateTimeOffset? ShippedAt, DateTimeOffset? DeliveredAt, bool NeedsInvoice = false, string InvoiceStatus = "None");
+    string? InvoiceNumber, string? Carrier, DateTimeOffset? ShippedAt, DateTimeOffset? DeliveredAt, bool NeedsInvoice = false, string InvoiceStatus = "None", bool CertificatePending = false);
 public record SalesOrderOut(int Id, int Number, string Reference, int CustomerId, string CustomerName, int AddressId, string AddressText, string? CustomerPo, int? PaymentTermId, string? PaymentTermName, string? CustomPaymentTerm, FreightTerms Freight,
     SalesOrderStatus Status, string? StatusReason, string? Notes, int? QuoteId, string? QuoteReference, string? CreatedBy, DateTimeOffset CreatedAt, string? ReleasedBy, DateTimeOffset? ReleasedAt,
     decimal Products, decimal Ipi, decimal Total, decimal Progress, bool Ready, bool Late, CreditCheck Credit, IReadOnlyList<SalesOrderLineOut> Lines, IReadOnlyList<DeliverySummaryOut> Deliveries, IReadOnlyList<SalesEventOut> History, bool CertificateWaived = false,
@@ -60,7 +60,7 @@ public record DeliveryLineOut(int Id, int OrderLineId, int Sequence, int Product
 public record DeliveryOut(int Id, int Number, string Reference, int OrderId, string OrderReference, int CustomerId, string CustomerName, int AddressId, string AddressText, DateOnly PlannedDate, DeliveryStatus Status,
     string? Carrier, string? VehiclePlate, string? InvoiceNumber, int Packages, decimal? GrossWeightKg, int? StockDocumentId, string? Notes, string? CreatedBy, DateTimeOffset CreatedAt, string? ShippedBy, DateTimeOffset? ShippedAt,
     DateTimeOffset? DeliveredAt, string? ReceivedBy, IReadOnlyList<DeliveryLineOut> Lines, IReadOnlyList<SalesEventOut> History,
-    string? LotNumber = null, decimal? InvoicedValue = null, decimal ValueExIpi = 0, decimal BalanceKg = 0, decimal BalanceValue = 0, bool NeedsInvoice = false, string InvoiceStatus = "None", int? OrderQuoteId = null);
+    string? LotNumber = null, decimal? InvoicedValue = null, decimal ValueExIpi = 0, decimal BalanceKg = 0, decimal BalanceValue = 0, bool NeedsInvoice = false, string InvoiceStatus = "None", int? OrderQuoteId = null, bool CertificatePending = false, bool CertificateFirst = false);
 
 public record PipelineCard(SalesRecordKind Kind, int Id, string Reference, int CustomerId, string CustomerName, decimal Value, string Status, DateOnly? Date, decimal? Progress, IReadOnlyList<string> Badges);
 public record PipelineStage(string Key, int Count, decimal Value, IReadOnlyList<PipelineCard> Cards);
@@ -580,9 +580,11 @@ public static class SalesEndpoints
     {
         var g = app.MapGroup("/api/sales/deliveries").WithTags("Sales").RequireAuthorization(Policies.Read).AddEndpointFilter(new RowVersionFilter<Delivery>());
 
-        g.MapGet("/", async (EbtDbContext db, DeliveryStatus? status, int? orderId, int? customerId, DateOnly? from, DateOnly? to, string? q, bool? pendingInvoice, int? skip, int? take, CancellationToken ct) =>
+        g.MapGet("/", async (EbtDbContext db, DeliveryStatus? status, int? orderId, int? customerId, DateOnly? from, DateOnly? to, string? q, bool? pendingInvoice, bool? pendingCertificate, int? skip, int? take, CancellationToken ct) =>
         {
             var x = db.Deliveries.AsNoTracking();
+            // pendingCertificate=true: shipped deliveries whose quality certificate is still to be issued (the NF came first, as usual).
+            if (pendingCertificate == true) x = AwaitingCertificate(db, x);
             // pendingInvoice=true: only deliveries whose NF is still owed (nothing at all while fiscal emission is off).
             if (pendingInvoice == true) { var on = await FiscalFlags(db, ct); x = on.Any ? AwaitingInvoice(db, x, on) : x.Where(_ => false); }
             if (status is { } st) x = x.Where(d => d.Status == st);
@@ -817,7 +819,9 @@ public static class SalesEndpoints
             l.Quantity, l.OrderLine.Unit, l.Packages)).ToList();
         return new DeliveryOut(d.Id, d.Number, d.Reference, d.OrderId, d.Order!.Reference, d.Order.CustomerId, d.Order.Customer!.Name, d.AddressId, AddressText(d.Address), d.PlannedDate, d.Status, d.Carrier, d.VehiclePlate,
             d.InvoiceNumber, d.Packages, d.GrossWeightKg, d.StockDocumentId, d.Notes, d.CreatedBy, d.CreatedAt, d.ShippedBy, d.ShippedAt, d.DeliveredAt, d.ReceivedBy, lines, await History(db, SalesRecordKind.Delivery, id, ct),
-            d.LotNumber, d.InvoicedValue, valueExIpi, balanceKg, balanceValue, invoice.Needs, invoice.Status, d.Order.QuoteId);
+            d.LotNumber, d.InvoicedValue, valueExIpi, balanceKg, balanceValue, invoice.Needs, invoice.Status, d.Order.QuoteId,
+            await AwaitingCertificate(db, db.Deliveries.AsNoTracking().Where(x => x.Id == id)).AnyAsync(ct),
+            await db.Customers.AsNoTracking().Where(c => c.Id == d.Order.CustomerId).Select(c => c.RequireCertificateBeforeShip).FirstOrDefaultAsync(ct));
     }
 
     /// <summary>Which issuing companies emit NF-e: an order follows the company of its "Faturar para".</summary>
@@ -826,6 +830,15 @@ public static class SalesEndpoints
         public bool Any => Ebt || Bst;
         public bool For(BillTo billTo) => billTo == BillTo.Bts ? Bst : Ebt;
     }
+
+    /// <summary>
+    /// Shipped or delivered deliveries with an item that has no issued quality certificate yet (one for that order line, or for its product when it names no line, and not
+    /// tied to another delivery). Waived orders never wait. This is the normal state right after the NF: the certificate carries the NF number and is issued after it.
+    /// </summary>
+    private static IQueryable<Delivery> AwaitingCertificate(EbtDbContext db, IQueryable<Delivery> q) =>
+        q.Where(d => (d.Status == DeliveryStatus.Shipped || d.Status == DeliveryStatus.Delivered) && !d.Order!.CertificateWaived
+            && d.Lines.Any(dl => !db.QualityCertificates.Any(c => c.OrderId == d.OrderId && c.Status == CertificateStatus.Issued && (c.DeliveryId == null || c.DeliveryId == d.Id)
+                && (c.OrderLineId == dl.OrderLineId || (c.OrderLineId == null && c.ProductId == dl.OrderLine!.ProductId)))));
 
     private static async Task<FiscalOn> FiscalFlags(EbtDbContext db, CancellationToken ct)
     {
@@ -854,10 +867,11 @@ public static class SalesEndpoints
             Authorized = db.FiscalDocuments.Any(f => f.DeliveryId == d.Id && f.Kind == FiscalKind.Sale && f.Status == FiscalStatus.Authorized),
             Pending = db.FiscalDocuments.Any(f => f.DeliveryId == d.Id && f.Kind == FiscalKind.Sale && f.Status == FiscalStatus.Pending)
         }).ToListAsync(ct);
+        var certificatePending = (await AwaitingCertificate(db, db.Deliveries.AsNoTracking().Where(x => rows.Select(r => r.Id).Contains(x.Id))).Select(x => x.Id).ToListAsync(ct)).ToHashSet();
         return rows.Select(r =>
         {
             var (state, needs) = InvoiceState(fiscalFlags.For(r.BillTo), r.Status, r.InvoiceNumber, r.Authorized, r.Pending);
-            return new DeliverySummaryOut(r.Id, r.Number, r.Reference, r.OrderId, r.OrderReference, r.CustomerId, r.Customer, r.PlannedDate, r.Status, r.Packages, r.GrossWeightKg, r.InvoiceNumber, r.Carrier, r.ShippedAt, r.DeliveredAt, needs, state);
+            return new DeliverySummaryOut(r.Id, r.Number, r.Reference, r.OrderId, r.OrderReference, r.CustomerId, r.Customer, r.PlannedDate, r.Status, r.Packages, r.GrossWeightKg, r.InvoiceNumber, r.Carrier, r.ShippedAt, r.DeliveredAt, needs, state, certificatePending.Contains(r.Id));
         }).ToList();
     }
 

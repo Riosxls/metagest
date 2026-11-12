@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import '../api.dart';
 import '../entities.dart';
 
@@ -137,6 +138,7 @@ class CommercialDashboard {
     required this.stages,
     required this.feasibilityInReview,
     this.pendingInvoice = 0,
+    this.pendingCertificate = 0,
     this.shippedAwaiting = 0,
     this.overdueReceivables = 0,
   });
@@ -147,6 +149,9 @@ class CommercialDashboard {
 
   /// Deliveries shipped whose NF is still owed ("NF pendente").
   final int pendingInvoice;
+
+  /// Deliveries shipped whose quality certificate is still to be issued (the NF came first).
+  final int pendingCertificate;
 
   /// Deliveries shipped and not yet confirmed as received.
   final int shippedAwaiting;
@@ -247,6 +252,7 @@ Future<ProductionDashboard> fetchProduction(ApiClient api, {required int legacyD
     final m = j as Map?;
     return LateOrders((m?['total'] as num?)?.toInt() ?? 0, _rows(m?['items']));
   }
+
   return ProductionDashboard(
     openTotal: (o['openTotal'] as num?)?.toInt() ?? 0,
     byStatus: _intMap(o['byStatus']),
@@ -281,6 +287,12 @@ Future<CommercialDashboard> fetchCommercial(ApiClient api) async {
       return page.items.every((e) => e['needsInvoice'] == true) ? page.total : page.items.where((e) => e['needsInvoice'] == true).length;
     }),
     count(() async => (await api.list('/api/sales/deliveries', take: 1, query: {'status': 'Shipped'})).total),
+    count(() async {
+      final page = await api.list('/api/sales/deliveries', take: 1, query: {'pendingCertificate': true});
+      // Without the flag the answer cannot be trusted (an old server ignores the filter and sends every delivery).
+      if (page.items.isEmpty || !page.items.first.containsKey('certificatePending')) return 0;
+      return page.total;
+    }),
     count(() async => (await api.list('/api/receivables', take: 1, query: {'overdue': true})).total),
   ]);
   return CommercialDashboard(
@@ -289,6 +301,7 @@ Future<CommercialDashboard> fetchCommercial(ApiClient api) async {
     feasibilityInReview: (r[1] as PageResult).total,
     pendingInvoice: extra[0],
     shippedAwaiting: extra[1],
-    overdueReceivables: extra[2],
+    pendingCertificate: extra[2],
+    overdueReceivables: extra[3],
   );
 }

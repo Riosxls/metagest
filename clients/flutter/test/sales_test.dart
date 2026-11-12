@@ -31,6 +31,9 @@ class SalesFake {
   bool needsApproval = false;
   String orderStatus = 'Created';
   bool waived = false;
+
+  /// The customer asks for the certificate before the load leaves (the server then holds the shipment and the screen asks first).
+  bool certificateFirst = false;
   bool startedOf = false;
   bool ready = false;
   String deliveryStatus = 'Planned';
@@ -43,7 +46,16 @@ class SalesFake {
   int daysLeft = 11;
 
   List<Map<String, dynamic>> history(String action) => [
-    if (rejectionNote != null) {'id': 3, 'action': 'approval-rejected', 'fromStatus': 'PendingApproval', 'toStatus': 'Draft', 'note': rejectionNote, 'user': 'gerente', 'at': '2026-10-27T12:00:00Z'},
+    if (rejectionNote != null)
+      {
+        'id': 3,
+        'action': 'approval-rejected',
+        'fromStatus': 'PendingApproval',
+        'toStatus': 'Draft',
+        'note': rejectionNote,
+        'user': 'gerente',
+        'at': '2026-10-27T12:00:00Z',
+      },
     {'id': 2, 'action': action, 'fromStatus': 'Draft', 'toStatus': 'Sent', 'note': null, 'user': 'ana', 'at': '2026-10-26T12:00:00Z'},
     {'id': 1, 'action': 'created', 'fromStatus': null, 'toStatus': 'Draft', 'note': null, 'user': 'ana', 'at': '2026-10-25T12:00:00Z'},
   ];
@@ -173,6 +185,7 @@ class SalesFake {
 
   Map<String, dynamic> delivery() => {
     'id': 15,
+    'certificateFirst': certificateFirst,
     'number': 15,
     'reference': 'ENT 15',
     'orderId': 9,
@@ -328,7 +341,11 @@ class SalesFake {
     if (p == '/api/sales/orders/9/cancel' || p == '/api/sales/orders/9/close-balance' || p == '/api/sales/orders/9/reschedule') {
       return json(order());
     }
-    if (p == '/api/sales/certificates/for-delivery/15') return json([{'id': 70}]);
+    if (p == '/api/sales/certificates/for-delivery/15') {
+      return json([
+        {'id': 70},
+      ]);
+    }
     if (p == '/api/sales/orders/9/deliveries') return json(delivery(), 201);
     if (p == '/api/sales/deliveries/15' && m == 'GET') return json(delivery());
     if (p == '/api/sales/deliveries/15/ship') {
@@ -373,7 +390,9 @@ Future<Session> pumpScreen(WidgetTester tester, SalesFake fake, Widget Function(
 
 void main() {
   test('sales role permissions and statuses map onto the flow path', () {
-    final s = Session(api: ApiClient(baseUrl: 'http://x'))..role = 'Sales'..permissions = rolePermissions['Sales']!;
+    final s = Session(api: ApiClient(baseUrl: 'http://x'))
+      ..role = 'Sales'
+      ..permissions = rolePermissions['Sales']!;
     expect(s.canSell, isTrue);
     expect(s.canApproveSales, isFalse);
     expect(s.canShip, isTrue);
@@ -580,7 +599,9 @@ void main() {
     await pumpScreen(
       tester,
       fake,
-      (s) => Builder(builder: (c) => TextButton(onPressed: () => openQuote(c, s, 5), child: const Text('abrir-orcamento'))),
+      (s) => Builder(
+        builder: (c) => TextButton(onPressed: () => openQuote(c, s, 5), child: const Text('abrir-orcamento')),
+      ),
     );
     await tester.tap(find.text('abrir-orcamento'));
     await tester.pumpAndSettle();
@@ -669,6 +690,26 @@ void main() {
     expect(find.byKey(const ValueKey('delivery-confirm')), findsOneWidget);
   });
 
+  testWidgets('shipping asks the weighed quantity of each item and sends it; with the usual rule there is no certificate question', (tester) async {
+    final fake = SalesFake(); // certificateFirst is false: the NF comes first, the certificate after
+    await pumpScreen(tester, fake, (s) => DeliveryScreen(session: s, id: 15));
+    await tester.tap(find.byKey(const ValueKey('delivery-ship')));
+    await tester.pumpAndSettle();
+    expect(find.text('Expedir sem certificado?'), findsNothing);
+    final qty = find.byKey(const ValueKey('field-qty_1'));
+    expect(qty, findsOneWidget);
+    expect(find.textContaining('Quantidade pesada, item 10'), findsOneWidget);
+    await tester.enterText(qty, '38,5');
+    await tester.tap(find.text('Salvar'));
+    await tester.pumpAndSettle();
+    final body = fake.body(fake.last('POST', '/api/sales/deliveries/15/ship'));
+    expect(body['lines'], [
+      {'deliveryLineId': 1, 'quantity': 38.5},
+    ]);
+    expect(body.keys.any((k) => k.startsWith('qty_')), isFalse);
+    expect(body.containsKey('withoutCertificate'), isFalse);
+  });
+
   testWidgets('delivery creates the missing certificates in one click', (tester) async {
     final fake = SalesFake();
     await pumpScreen(tester, fake, (s) => DeliveryScreen(session: s, id: 15));
@@ -680,7 +721,9 @@ void main() {
   });
 
   testWidgets('shipping without a certificate or waiver asks first and says so to the API', (tester) async {
-    final fake = SalesFake()..role = 'Stock';
+    final fake = SalesFake()
+      ..role = 'Stock'
+      ..certificateFirst = true;
     await pumpScreen(tester, fake, (s) => DeliveryScreen(session: s, id: 15));
     expect(find.textContaining('Atenção: '), findsOneWidget);
     expect(find.textContaining('certificado'), findsWidgets);
@@ -725,7 +768,6 @@ void main() {
       expect(find.text('Imprimir o pedido de compra do cliente?'), findsNothing); // asked only once
       expect(find.text('Salvar'), findsOneWidget);
     });
-
 
     testWidgets('releasing an order first offers the pedido interno de venda', (tester) async {
       final fake = SalesFake();
@@ -1046,7 +1088,6 @@ void main() {
       expect(fg('quote-change'), isNot(error));
       expect(find.byTooltip('Altera itens ou preço. Esta versão fica como Substituída (só consulta) e uma nova revisão abre em rascunho.'), findsOneWidget);
     });
-
 
     testWidgets('a draft can still be cancelled from the menu', (tester) async {
       await open(tester, 'Draft');

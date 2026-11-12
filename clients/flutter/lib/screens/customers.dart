@@ -118,6 +118,13 @@ const _companyFields = [
   FieldSpec('ipiPercent', 'IPI usual (%)', type: FieldType.decimal, hint: 'Entra nos itens do orçamento quando a tabela de preços não traz IPI'),
   FieldSpec('icmsPercent', 'ICMS usual (%)', type: FieldType.decimal, hint: 'Varia com o estado de destino; a tabela de preços tem prioridade'),
   FieldSpec('taxNote', 'Impostos nos pedidos anteriores', hint: 'Alíquotas vistas nos pedidos antigos, por estado'),
+  FieldSpec(
+    'requireCertificate',
+    'Exigir o certificado antes de expedir',
+    type: FieldType.boolean,
+    defaultValue: false,
+    hint: 'Desligado (o normal): a carga sai e a NF é emitida primeiro; o certificado, com o número da NF, vem depois. Ligado: o sistema não deixa expedir sem o certificado',
+  ),
 ];
 
 /// 3.25 -> "3,25%"; null or empty -> "—" (as [fmt] does).
@@ -596,7 +603,12 @@ class _CustomerCompany extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          InfoGrid([('Prazo padrão', fmt(a?['paymentTermName'])), ('IPI usual', _pct(a?['ipiPercent'])), ('ICMS usual', _pct(a?['icmsPercent']))]),
+          InfoGrid([
+            ('Prazo padrão', fmt(a?['paymentTermName'])),
+            ('IPI usual', _pct(a?['ipiPercent'])),
+            ('ICMS usual', _pct(a?['icmsPercent'])),
+            ('Certificado de qualidade', a?['requireCertificate'] == true ? 'Exigido antes de expedir' : 'Depois da NF'),
+          ]),
           if (taxNote.isNotEmpty)
             Theme(
               data: Theme.of(context).copyWith(dividerColor: Colors.transparent),

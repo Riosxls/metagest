@@ -81,7 +81,7 @@ public sealed class CertificateService(EbtDbContext db)
             var c = new QualityCertificate
             {
                 Company = company, Number = number, Year = date.Year, Reference = ReferenceOf(number, date.Year), OrderId = order.Id, OrderLineId = line.Id, DeliveryId = delivery?.Id, ProductId = line.ProductId,
-                CustomerPo = Clean(i.CustomerPo) ?? order.CustomerPo, IssueDate = date, InvoiceNumber = Clean(i.InvoiceNumber), Quantity = quantity, Unit = (Clean(i.Unit) ?? line.Unit).ToUpperInvariant(),
+                CustomerPo = Clean(i.CustomerPo) ?? order.CustomerPo, IssueDate = date, InvoiceNumber = Clean(i.InvoiceNumber) ?? Clean(delivery?.InvoiceNumber), Quantity = quantity, Unit = (Clean(i.Unit) ?? line.Unit).ToUpperInvariant(),
                 ProductCode = template?.ProductCode ?? ExcelProductCode(product) ?? product?.Code, Description = Clean(i.Description) ?? template?.Description ?? ExcelDescription(product) ?? line.Description,
                 CustomerPartNumber = Clean(i.CustomerPartNumber) ?? Clean(link?.CustomerPartNumber) ?? line.CustomerPartNumber,
                 CustomerPartDescription = Clean(i.CustomerPartDescription) ?? link?.CustomerDescription, RawMaterialLot = Clean(i.RawMaterialLot) ?? template?.RawMaterialLot, Hardness = Clean(i.Hardness) ?? template?.Hardness, Finish = Clean(i.Finish) ?? template?.Finish ?? DefaultFinish, Title = Clean(i.Title) ?? template?.Title,
@@ -157,6 +157,9 @@ public sealed class CertificateService(EbtDbContext db)
     {
         var c = await LoadAsync(id, ct);
         if (c.Status != CertificateStatus.Draft) throw SalesException.Conflict($"Certificate is {c.Status}");
+        // The NF is usually issued first: a draft made before it, or left blank, takes the number of its delivery's NF when it is issued.
+        if (string.IsNullOrWhiteSpace(c.InvoiceNumber) && c.DeliveryId is { } nfDelivery)
+            c.InvoiceNumber = await db.Deliveries.AsNoTracking().Where(d => d.Id == nfDelivery).Select(d => d.InvoiceNumber).FirstOrDefaultAsync(ct);
         if (c.Measures.Count == 0 || c.Measures.Any(m => string.IsNullOrWhiteSpace(m.Found))) throw SalesException.Invalid("measures", "Fill in the value found on every row before issuing (remove the rows that do not apply)");
         c.Status = CertificateStatus.Issued;
         c.IssuedBy = user;

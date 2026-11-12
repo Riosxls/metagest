@@ -16,6 +16,7 @@ import 'sales_more_support.dart';
 
 Map<String, dynamic> _delivery({String status = 'Planned', List<Map<String, dynamic>> history = const [], String? invoiceNumber, Object? needsInvoice, bool twoLines = true}) => {
   'id': 15,
+  'certificateFirst': true,
   'number': 15,
   'reference': 'ENT 15',
   'orderId': 9,

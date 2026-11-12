@@ -38,6 +38,9 @@ class DeliveriesScreen extends StatefulWidget {
   /// The filter name of "Entregas sem NF".
   static const pendingInvoiceFilter = 'pending-invoice';
 
+  /// The filter name of "Entregas com certificado pendente" (shipped, the NF came first, the certificate is still to be issued).
+  static const pendingCertificateFilter = 'pending-certificate';
+
   @override
   State<DeliveriesScreen> createState() => _DeliveriesScreenState();
 }
@@ -46,7 +49,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
   final _list = GlobalKey<RecordListState>();
   late String? _status = switch (widget.initialFilter) {
     null => _defaultStatusValue,
-    DeliveriesScreen.pendingInvoiceFilter => null,
+    DeliveriesScreen.pendingInvoiceFilter || DeliveriesScreen.pendingCertificateFilter => null,
     final f when deliveryStatuses.containsKey(f) => f,
     _ => _defaultStatusValue,
   };
@@ -54,8 +57,12 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
 
   /// The Planned default is only a starting view: it is dropped while the user types a search (an NF or a shipped delivery would never show) and
   /// once they pick a situation themselves.
-  late bool _defaultStatus = widget.initialFilter != DeliveriesScreen.pendingInvoiceFilter && !deliveryStatuses.containsKey(widget.initialFilter);
+  late bool _defaultStatus =
+      widget.initialFilter != DeliveriesScreen.pendingInvoiceFilter &&
+      widget.initialFilter != DeliveriesScreen.pendingCertificateFilter &&
+      !deliveryStatuses.containsKey(widget.initialFilter);
   late bool _pendingInvoice = widget.initialFilter == DeliveriesScreen.pendingInvoiceFilter;
+  late bool _pendingCertificate = widget.initialFilter == DeliveriesScreen.pendingCertificateFilter;
   String _search = '';
 
   String? get _effectiveStatus => _defaultStatus && _search.isNotEmpty ? null : _status;
@@ -64,16 +71,17 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
   Widget build(BuildContext context) => RecordList(
     key: _list,
     // The default "Programadas" view is not a user filter: only a changed Situação (or the NF chip) counts as one.
-    filtersActive: (_effectiveStatus != null && !_defaultStatus) || _pendingInvoice,
+    filtersActive: (_effectiveStatus != null && !_defaultStatus) || _pendingInvoice || _pendingCertificate,
     onClearFilters: () => setState(() {
       _status = _defaultStatusValue;
       _defaultStatus = true;
       _pendingInvoice = false;
+      _pendingCertificate = false;
     }),
     onSearchChanged: (q) => setState(() => _search = q),
     api: widget.session.api,
     path: '/api/sales/deliveries',
-    query: {'status': _effectiveStatus, 'pendingInvoice': _pendingInvoice ? true : null},
+    query: {'status': _effectiveStatus, 'pendingInvoice': _pendingInvoice ? true : null, 'pendingCertificate': _pendingCertificate ? true : null},
     // Also filtered here when the server sends the flag, so the chip works before the server filter exists.
     enrich: (items) async {
       if (_pendingInvoice) items.removeWhere((e) => e.containsKey('needsInvoice') && e['needsInvoice'] != true);
@@ -88,6 +96,19 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
         onChanged: (v) => setState(() {
           _status = v;
           _defaultStatus = false;
+        }),
+      ),
+      FilterChip(
+        key: const ValueKey('deliveries-pending-certificate'),
+        label: const Text('Certificado pendente'),
+        selected: _pendingCertificate,
+        onSelected: (v) => setState(() {
+          _pendingCertificate = v;
+          // A certificate is owed only once the goods left: the Planned default would hide every such delivery.
+          if (v && _defaultStatus) {
+            _status = null;
+            _defaultStatus = false;
+          }
         }),
       ),
       FilterChip(
@@ -119,6 +140,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
             StatusBadge(deliveryStatuses[e['status']] ?? '${e['status']}', tone: deliveryTone(e['status'])),
             // Colour alone must not carry the late state.
             if (e['status'] == 'Planned' && isLate(e['plannedDate'])) const StatusBadge('Atrasada', tone: Tone.danger),
+            if (e['certificatePending'] == true) const StatusBadge('Certificado pendente', tone: Tone.warning),
           ],
         ),
       ),
@@ -127,7 +149,9 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
       ColumnSpec(
         'NF',
         (e) => e['invoiceNumber'] != null ? '${e['invoiceNumber']}' : (e['needsInvoice'] == true ? 'NF pendente' : ''),
-        cell: (_, e) => e['invoiceNumber'] == null && e['needsInvoice'] == true ? const StatusBadge('NF pendente', tone: Tone.warning) : Text(e['invoiceNumber'] == null ? '' : '${e['invoiceNumber']}'),
+        cell: (_, e) => e['invoiceNumber'] == null && e['needsInvoice'] == true
+            ? const StatusBadge('NF pendente', tone: Tone.warning)
+            : Text(e['invoiceNumber'] == null ? '' : '${e['invoiceNumber']}'),
       ),
     ],
     rowColor: (ctx, e) => e['status'] == 'Planned' && isLate(e['plannedDate']) ? toneColors(ctx, Tone.danger).$1 : null,
@@ -152,6 +176,7 @@ class DeliveryScreen extends StatefulWidget {
 class _DeliveryScreenState extends State<DeliveryScreen> {
   Map<String, dynamic>? _d;
   Map<String, dynamic>? _nf;
+
   /// The order, for the waiver and the certificate picker (optional: a failed read leaves it null).
   Map<String, dynamic>? _order;
 
@@ -188,7 +213,9 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       }
 
       final (nfs, orderCerts, order) = await (
-        optional(() async => (await api.get('/api/fiscal/documents', {'deliveryId': widget.id, 'status': 'Authorized'}) as Map<String, dynamic>)['items'] as List),
+        optional(
+          () async => (await api.get('/api/fiscal/documents', {'deliveryId': widget.id, 'status': 'Authorized'}) as Map<String, dynamic>)['items'] as List,
+        ),
         optional(() async => (await api.list('/api/sales/certificates', query: {'orderId': d['orderId']}, take: 200)).items),
         optional(() async => await api.get('/api/sales/orders/${d['orderId']}') as Map<String, dynamic>),
       ).wait;
@@ -245,7 +272,8 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   Future<void> _ship() async {
     final d = _d!;
     var withoutCertificate = false;
-    if (_certified == false) {
+    // The usual order is NF first, certificate after (the certificate carries the NF number): only a customer that asks for the certificate before the load leaves holds the shipment.
+    if (_certified == false && d['certificateFirst'] == true) {
       final go = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
@@ -273,22 +301,48 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       withoutCertificate = true;
     }
     if (!await _certificateGate() || !mounted) return;
+    final shipLines = (d['lines'] as List).cast<Map<String, dynamic>>();
     final r = await submitForm(
       context,
       api: api,
       title: 'Expedir ${d['reference']}',
       fields: [
         FieldSpec('date', 'Data de saída', type: FieldType.date, required: true, defaultValue: isoDate(DateTime.now()), hint: _shipSummary(d)),
+        // The OF comes back from the plant with the weighed product, often a little more or less than asked: the quantity typed here is the one that leaves, is taken from the stock and goes on the NF.
+        for (final l in shipLines)
+          FieldSpec(
+            'qty_${l['id']}',
+            'Quantidade pesada, item ${l['sequence']} (${l['unit']})',
+            type: FieldType.decimal,
+            required: true,
+            defaultValue: l['quantity'],
+            hint: 'Programado: ${fmt(l['quantity'])} ${l['unit']}. Digite o peso final da OF; a NF usa este valor',
+          ),
         // Someone who may not emit the NF cannot name its number (the server ignores it when fiscal emission is on): the Comercial issues it afterwards.
-        if (s.canEmitInvoice) const FieldSpec('invoiceNumber', 'Nº da NF', hint: 'Vazio = emitir a NF-e automaticamente (emissor ligado); preencha só se a NF foi emitida fora'),
+        if (s.canEmitInvoice)
+          const FieldSpec('invoiceNumber', 'Nº da NF', hint: 'Vazio = emitir a NF-e automaticamente (emissor ligado); preencha só se a NF foi emitida fora'),
         const FieldSpec('cfop', 'CFOP', advanced: true, hint: 'Vazio = CFOP do endereço de entrega ou 5101'),
         const FieldSpec('freight', 'Frete na NF (R\$)', type: FieldType.decimal, advanced: true),
         const FieldSpec('lotNumber', 'Nº do lote', advanced: true),
         const FieldSpec('invoicedValue', 'Valor faturado (R\$)', type: FieldType.decimal, advanced: true, hint: 'Total da NF, com impostos'),
         FieldSpec('grossWeightKg', 'Peso bruto (kg)', type: FieldType.decimal, advanced: true, defaultValue: d['grossWeightKg']),
-        if (s.canApproveSales) const FieldSpec('overrideCredit', 'Autorizar acima do limite de crédito', type: FieldType.boolean, defaultValue: false, hint: 'Só vale se o cliente passou do limite; fica no histórico'),
+        if (s.canApproveSales)
+          const FieldSpec(
+            'overrideCredit',
+            'Autorizar acima do limite de crédito',
+            type: FieldType.boolean,
+            defaultValue: false,
+            hint: 'Só vale se o cliente passou do limite; fica no histórico',
+          ),
       ],
-      submit: (b) => api.post('$base/ship', {...b, if (withoutCertificate) 'withoutCertificate': true}),
+      submit: (b) => api.post('$base/ship', {
+        for (final e in b.entries)
+          if (!e.key.startsWith('qty_')) e.key: e.value,
+        'lines': [
+          for (final l in shipLines) {'deliveryLineId': l['id'], 'quantity': b['qty_${l['id']}'] ?? l['quantity']},
+        ],
+        if (withoutCertificate) 'withoutCertificate': true,
+      }),
     );
     if (r != null && r['reference'] != null && mounted) {
       setState(() => _d = r);
@@ -375,7 +429,10 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       order,
       deliveryId: d['id'] as int,
       lineIds: {for (final l in lines) l['orderLineId'] as int},
-      coveredLineIds: {for (final l in lines) if (_certified != null && !uncovered.contains(l['orderLineId'])) l['orderLineId'] as int},
+      coveredLineIds: {
+        for (final l in lines)
+          if (_certified != null && !uncovered.contains(l['orderLineId'])) l['orderLineId'] as int,
+      },
     );
     if (created && mounted) unawaited(_load());
   }
@@ -436,7 +493,10 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
         title: shipped ? 'Cancelar a expedição de ${d['reference']}?' : 'Cancelar ${d['reference']}?',
         confirmLabel: 'Cancelar entrega',
         details: [
-          if (shipped) 'A baixa de estoque é estornada, o produto volta ao saldo e o pedido reabre o saldo da entrega.' else 'Nada saiu do estoque ainda: só a programação é cancelada.',
+          if (shipped)
+            'A baixa de estoque é estornada, o produto volta ao saldo e o pedido reabre o saldo da entrega.'
+          else
+            'Nada saiu do estoque ainda: só a programação é cancelada.',
           if (certs.isNotEmpty) 'Os certificados ligados a esta entrega continuam emitidos: ${certs.join(', ')}. Cancele-os à parte se não valem mais.',
         ],
         reasonLabel: shipped ? 'Motivo (fica no histórico do pedido)' : 'Motivo',
@@ -447,8 +507,12 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     if (res is Map<String, dynamic> && mounted) setState(() => _d = res);
   }
 
-  Widget _emitInvoiceButton() =>
-      FilledButton.icon(key: const ValueKey('delivery-emit-invoice'), onPressed: _emitInvoice, icon: const Icon(Icons.receipt_long_outlined), label: const Text('Emitir NF'));
+  Widget _emitInvoiceButton() => FilledButton.icon(
+    key: const ValueKey('delivery-emit-invoice'),
+    onPressed: _emitInvoice,
+    icon: const Icon(Icons.receipt_long_outlined),
+    label: const Text('Emitir NF'),
+  );
 
   Widget _nextStep(Map<String, dynamic> d) => switch (d['status']) {
     'Planned' => NextStepCard(
@@ -467,7 +531,12 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
           'Saiu em ${fmtDate(d['shippedAt'])}${d['invoiceNumber'] == null ? '' : ' com a NF ${d['invoiceNumber']}'}. Confirme quando o cliente receber.${_invoicePending ? ' A NF ainda não foi emitida (NF pendente).' : ''}',
       tone: _invoicePending ? Tone.warning : Tone.progress,
       actions: [
-        TextButton.icon(key: const ValueKey('delivery-print-nf-card'), onPressed: _printNf, icon: const Icon(Icons.print_outlined), label: const Text('Imprimir NF')),
+        TextButton.icon(
+          key: const ValueKey('delivery-print-nf-card'),
+          onPressed: _printNf,
+          icon: const Icon(Icons.print_outlined),
+          label: const Text('Imprimir NF'),
+        ),
         if (_invoicePending && s.canEmitInvoice) _emitInvoiceButton(),
         if (s.canShip)
           FilledButton.icon(
@@ -480,10 +549,16 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     ),
     'Delivered' => NextStepCard(
       title: 'Entregue',
-      message: 'Recebida em ${fmtDay(d['deliveredAt'])}${d['receivedBy'] == null ? '' : ' por ${d['receivedBy']}'}.${_invoicePending ? ' A NF ainda não foi emitida (NF pendente).' : ''}',
+      message:
+          'Recebida em ${fmtDay(d['deliveredAt'])}${d['receivedBy'] == null ? '' : ' por ${d['receivedBy']}'}.${_invoicePending ? ' A NF ainda não foi emitida (NF pendente).' : ''}',
       tone: _invoicePending ? Tone.warning : Tone.success,
       actions: [
-        TextButton.icon(key: const ValueKey('delivery-print-nf-card'), onPressed: _printNf, icon: const Icon(Icons.print_outlined), label: const Text('Imprimir NF')),
+        TextButton.icon(
+          key: const ValueKey('delivery-print-nf-card'),
+          onPressed: _printNf,
+          icon: const Icon(Icons.print_outlined),
+          label: const Text('Imprimir NF'),
+        ),
         // The server accepts Shipped and Delivered: an NF owed after the receipt is still emitted from here.
         if (_invoicePending && s.canEmitInvoice) _emitInvoiceButton(),
       ],
@@ -509,46 +584,51 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       onRefresh: _refresh,
       onPrint: hasNf ? () => unawaited(_printNf()) : null,
       child: Scaffold(
-      appBar: AppBar(
-        title: Text(d == null ? 'Entrega' : '${d['reference']} · ${d['customerName']}', overflow: TextOverflow.ellipsis),
-        actions: [
-          if (d != null) RefreshButton(onPressed: _refresh),
-          if (d != null)
-            RelatedMenu(
-              links: [
-                RelatedLink(Icons.business_outlined, 'Cliente: ${d['customerName']}', () => openCustomer(context, s, d['customerId'] as int)),
-                RelatedLink(Icons.receipt_long_outlined, 'Pedido de venda ${d['orderReference'] ?? ''}', () => openSalesOrder(context, s, d['orderId'] as int)),
-                if (_nf != null) RelatedLink(Icons.description_outlined, 'Nota fiscal ${d['invoiceNumber'] ?? ''}', () => openFiscalDocument(context, s, _nf!['id'] as int)),
-              ],
-            ),
-          if (d != null && ['Shipped', 'Delivered'].contains(d['status']))
-            IconButton(key: const ValueKey('delivery-print-nf'), tooltip: 'Imprimir NF', icon: const Icon(Icons.print_outlined), onPressed: _printNf),
-          if (canCancel)
-            PopupMenuButton<VoidCallback>(
-              key: const ValueKey('delivery-menu'),
-              onSelected: (f) => f(),
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: _cancel,
-                  // An authorized NF blocks the cancel: say so here instead of failing after the click.
-                  enabled: _nf == null,
-                  child: ListTile(
-                    leading: const Icon(Icons.block),
-                    iconColor: _nf == null ? danger : null,
-                    textColor: _nf == null ? danger : null,
-                    title: const Text('Cancelar entrega'),
-                    subtitle: _nf == null ? null : Text('A NF ${_nf!['number']} está autorizada. Cancele a NF em Fiscal primeiro: isso desfaz a entrega.'),
+        appBar: AppBar(
+          title: Text(d == null ? 'Entrega' : '${d['reference']} · ${d['customerName']}', overflow: TextOverflow.ellipsis),
+          actions: [
+            if (d != null) RefreshButton(onPressed: _refresh),
+            if (d != null)
+              RelatedMenu(
+                links: [
+                  RelatedLink(Icons.business_outlined, 'Cliente: ${d['customerName']}', () => openCustomer(context, s, d['customerId'] as int)),
+                  RelatedLink(
+                    Icons.receipt_long_outlined,
+                    'Pedido de venda ${d['orderReference'] ?? ''}',
+                    () => openSalesOrder(context, s, d['orderId'] as int),
                   ),
-                ),
-              ],
-            ),
-        ],
-      ),
-      body: _error != null && d == null
-          ? LoadError(message: _error!, onRetry: _load)
-          : d == null
-          ? const RecordSkeleton()
-          : RefreshIndicator(onRefresh: () => _load(report: true), child: _body(d)),
+                  if (_nf != null)
+                    RelatedLink(Icons.description_outlined, 'Nota fiscal ${d['invoiceNumber'] ?? ''}', () => openFiscalDocument(context, s, _nf!['id'] as int)),
+                ],
+              ),
+            if (d != null && ['Shipped', 'Delivered'].contains(d['status']))
+              IconButton(key: const ValueKey('delivery-print-nf'), tooltip: 'Imprimir NF', icon: const Icon(Icons.print_outlined), onPressed: _printNf),
+            if (canCancel)
+              PopupMenuButton<VoidCallback>(
+                key: const ValueKey('delivery-menu'),
+                onSelected: (f) => f(),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: _cancel,
+                    // An authorized NF blocks the cancel: say so here instead of failing after the click.
+                    enabled: _nf == null,
+                    child: ListTile(
+                      leading: const Icon(Icons.block),
+                      iconColor: _nf == null ? danger : null,
+                      textColor: _nf == null ? danger : null,
+                      title: const Text('Cancelar entrega'),
+                      subtitle: _nf == null ? null : Text('A NF ${_nf!['number']} está autorizada. Cancele a NF em Fiscal primeiro: isso desfaz a entrega.'),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+        body: _error != null && d == null
+            ? LoadError(message: _error!, onRetry: _load)
+            : d == null
+            ? const RecordSkeleton()
+            : RefreshIndicator(onRefresh: () => _load(report: true), child: _body(d)),
       ),
     );
   }
@@ -581,10 +661,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
         _itemsSection(d),
         gap,
         _certsSection(d),
-        if (_nf != null) ...[
-          gap,
-          _nfSection(),
-        ],
+        if (_nf != null) ...[gap, _nfSection()],
         gap,
         _detailsSection(d),
       ],
@@ -710,43 +787,43 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
 
   Widget _certsTable() {
     return SimpleTable(
-        columns: [
-          col('Certificado', 'reference'),
-          dateCol('Data', 'issueDate'),
-          labelCol('Situação', 'status', certificateStatuses),
-          col('Produto', 'description'),
-          ColumnSpec('Qtd.', (e) => '${fmt(e['quantity'])} ${e['unit']}', numeric: true),
-        ],
-        rows: _certs,
-        actions: (c) => [
-          IconButton(
-            tooltip: 'Abrir',
-            icon: const Icon(Icons.open_in_new, size: 20),
-            onPressed: () => openCertificate(context, s, c['id'] as int).then((_) => _load()),
-          ),
-        ],
+      columns: [
+        col('Certificado', 'reference'),
+        dateCol('Data', 'issueDate'),
+        labelCol('Situação', 'status', certificateStatuses),
+        col('Produto', 'description'),
+        ColumnSpec('Qtd.', (e) => '${fmt(e['quantity'])} ${e['unit']}', numeric: true),
+      ],
+      rows: _certs,
+      actions: (c) => [
+        IconButton(
+          tooltip: 'Abrir',
+          icon: const Icon(Icons.open_in_new, size: 20),
+          onPressed: () => openCertificate(context, s, c['id'] as int).then((_) => _load()),
+        ),
+      ],
     );
   }
 
   Widget _nfSection() {
     return Section(
-        title: 'Nota fiscal eletrônica',
-        actions: [
-          TextButton.icon(
-            key: const ValueKey('delivery-open-nf'),
-            onPressed: () => openFiscalDocument(context, s, _nf!['id'] as int).then((_) => _load()),
-            icon: const Icon(Icons.description_outlined),
-            label: const Text('Abrir NF'),
-          ),
-        ],
-        child: InfoGrid([
-          ('Número', '${_nf!['number']} · série ${_nf!['series']}'),
-          ('CFOP', fmt(_nf!['cfopCode'])),
-          ('Valor', fmtMoney(_nf!['invoiceTotal'])),
-          ('Chave', fmt(_nf!['accessKey'])),
-          ('Autorização', _nf!['simulated'] == true ? 'SIMULADA (sem valor fiscal)' : 'SEFAZ'),
-        ]),
-      );
+      title: 'Nota fiscal eletrônica',
+      actions: [
+        TextButton.icon(
+          key: const ValueKey('delivery-open-nf'),
+          onPressed: () => openFiscalDocument(context, s, _nf!['id'] as int).then((_) => _load()),
+          icon: const Icon(Icons.description_outlined),
+          label: const Text('Abrir NF'),
+        ),
+      ],
+      child: InfoGrid([
+        ('Número', '${_nf!['number']} · série ${_nf!['series']}'),
+        ('CFOP', fmt(_nf!['cfopCode'])),
+        ('Valor', fmtMoney(_nf!['invoiceTotal'])),
+        ('Chave', fmt(_nf!['accessKey'])),
+        ('Autorização', _nf!['simulated'] == true ? 'SIMULADA (sem valor fiscal)' : 'SEFAZ'),
+      ]),
+    );
   }
 
   Widget _detailsSection(Map<String, dynamic> d) {

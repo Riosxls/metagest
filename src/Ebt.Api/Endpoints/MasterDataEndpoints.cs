@@ -6,7 +6,7 @@ using static Ebt.Api.Infrastructure.Crud;
 
 namespace Ebt.Api.Endpoints;
 
-public record CustomerCompany(string? Document, string? StateRegistration, bool IcmsContributor, string? Street, string? Number, string? Complement, string? District, string? City, string? Uf, string? ZipCode, string? Contact, string? Email, string? Phone, int? PaymentTermId = null, string? PaymentTermName = null, decimal? CreditLimit = null, decimal? IpiPercent = null, decimal? IcmsPercent = null, string? TaxNote = null);
+public record CustomerCompany(string? Document, string? StateRegistration, bool IcmsContributor, string? Street, string? Number, string? Complement, string? District, string? City, string? Uf, string? ZipCode, string? Contact, string? Email, string? Phone, int? PaymentTermId = null, string? PaymentTermName = null, decimal? CreditLimit = null, decimal? IpiPercent = null, decimal? IcmsPercent = null, string? TaxNote = null, bool? RequireCertificate = null);
 /// <param name="ClientCode">Code printed on the papers; null keeps what is stored, an empty text clears it.</param>
 public record CustomerIn(string Name, string? TradeName, string? LegacyCode, ConsumerType ConsumerType, bool Active = true, CustomerAddressIn? Address = null, CustomerCompany? Company = null, string? ClientCode = null);
 public record CustomerOut(int Id, string Name, string? TradeName, string? LegacyCode, ConsumerType ConsumerType, bool Active, int AddressCount, CustomerAddressOut? DefaultAddress = null, CustomerCompany? Company = null, string? ClientCode = null);
@@ -45,7 +45,7 @@ public static class MasterDataEndpoints
                 c.Addresses.OrderBy(a => a.LegacyCode).ThenBy(a => a.Id)
                     .Select(a => new CustomerAddressOut(a.Id, a.CustomerId, a.Document, a.Uf, a.LegacyCode, a.StateRegistration, a.IcmsContributor, a.Street, a.Number, a.Complement, a.District, a.City, a.CityIbgeCode, a.ZipCode, a.DefaultCfop, a.Buyer, a.Email, a.Phone))
                     .FirstOrDefault(),
-                new CustomerCompany(c.Document, c.StateRegistration, c.IcmsContributor, c.Street, c.Number, c.Complement, c.District, c.City, c.Uf, c.ZipCode, c.Contact, c.Email, c.Phone, c.DefaultPaymentTermId, c.DefaultPaymentTerm != null ? c.DefaultPaymentTerm.Name : null, c.CreditLimit, c.IpiPercent, c.IcmsPercent, c.TaxNote), c.ClientCode),
+                new CustomerCompany(c.Document, c.StateRegistration, c.IcmsContributor, c.Street, c.Number, c.Complement, c.District, c.City, c.Uf, c.ZipCode, c.Contact, c.Email, c.Phone, c.DefaultPaymentTermId, c.DefaultPaymentTerm != null ? c.DefaultPaymentTerm.Name : null, c.CreditLimit, c.IpiPercent, c.IcmsPercent, c.TaxNote, c.RequireCertificateBeforeShip), c.ClientCode),
             Create = i =>
             {
                 var c = new Customer { Name = i.Name.Trim(), TradeName = Clean(i.TradeName), LegacyCode = Clean(i.LegacyCode), ClientCode = Clean(i.ClientCode), ConsumerType = i.ConsumerType, Active = i.Active };
@@ -228,6 +228,8 @@ public static class MasterDataEndpoints
         c.IpiPercent = i.IpiPercent;
         c.IcmsPercent = i.IcmsPercent;
         c.TaxNote = Clean(i.TaxNote);
+        // Left alone when the client does not send it (an older app must not switch the rule off).
+        if (i.RequireCertificate is { } requireCertificate) c.RequireCertificateBeforeShip = requireCertificate;
     }
 
     private static void MapCustomerAddresses(WebApplication app)

@@ -22,6 +22,10 @@ public class SalesTests(ApiFixture api)
 
     private static ProductIn Tube(string code) => new(code, "Tubo " + code, ProductKind.Part, TubeShape.Circular, 25.4m, null, null, 1.5m, 1000m, null, null, "73063010", "PC", 50, false, null, null);
 
+    /// <summary>The customer asks for the quality certificate before the load leaves: shipping items without one is refused (by default the NF comes first and the certificate after).</summary>
+    private static async Task CertificateFirstAsync(HttpClient admin, CustomerOut c) =>
+        (await admin.Put($"/api/customers/{c.Id}", new CustomerIn(c.Name, null, null, ConsumerType.Normal, true, null, new CustomerCompany(null, null, false, null, null, null, null, null, null, null, null, null, null, RequireCertificate: true)))).EnsureSuccessStatusCode();
+
     private static async Task<Setup> Arrange(HttpClient admin, decimal stock = 30m, decimal? creditLimit = 1_000_000m)
     {
         var customer = await (await admin.Post("/api/customers", new CustomerIn("Cliente " + Code("C"), null, null, ConsumerType.Normal))).Read<CustomerOut>();
@@ -48,6 +52,7 @@ public class SalesTests(ApiFixture api)
     {
         var admin = await api.AdminAsync();
         var s = await Arrange(admin);
+        await CertificateFirstAsync(admin, s.Customer);
         var sales = await api.UserAsync(UserRole.Sales);
         var manager = await api.UserAsync(UserRole.SalesManager);
         var reader = await api.UserAsync(UserRole.Reader);
@@ -253,6 +258,7 @@ public class SalesTests(ApiFixture api)
     {
         var admin = await api.AdminAsync();
         var s = await Arrange(admin, stock: 41m);
+        await CertificateFirstAsync(admin, s.Customer);
         var order = await ReleasedOrder(admin, s, 40m);
         var delivery = await (await admin.Post($"/api/sales/orders/{order.Id}/deliveries", new DeliveryInput(Today))).Read<DeliveryOut>();
         var blocked = await admin.Post($"/api/sales/deliveries/{delivery.Id}/ship", new ShipInput(Today));
@@ -1365,6 +1371,7 @@ public class SalesTests(ApiFixture api)
     {
         var admin = await api.AdminAsync();
         var s = await Arrange(admin, stock: 100m);
+        await CertificateFirstAsync(admin, s.Customer);
         (await admin.Post("/api/stock/documents", new StockPost(MovementType.AdjustmentIn, Today, [new StockLine(null, s.Other.Id, s.Shipping.Id, 50m, UnitCost: 5m)], "INV"))).EnsureSuccessStatusCode();
         var order = await (await admin.Post("/api/sales/orders", new SalesOrderIn(s.Customer.Id, s.Address.Id, [new SalesLineInput(s.Tube.Id, 10m), new SalesLineInput(s.Other.Id, 5m)], "PO-9", s.Term.Id))).Read<SalesOrderOut>();
         order = await (await admin.Post($"/api/sales/orders/{order.Id}/release", new SalesReleaseIn())).Read<SalesOrderOut>();
@@ -1496,6 +1503,7 @@ public class SalesTests(ApiFixture api)
     {
         var admin = await api.AdminAsync();
         var s = await Arrange(admin, stock: 100m);
+        await CertificateFirstAsync(admin, s.Customer);
         var sales = await api.UserAsync(UserRole.Sales);
         var stock = await api.UserAsync(UserRole.Stock);
         var manager = await api.UserAsync(UserRole.SalesManager);
@@ -1790,5 +1798,87 @@ public class SalesTests(ApiFixture api)
         await AssertStatus(HttpStatusCode.BadRequest, admin.Post($"/api/sales/orders/{open.Id}/reschedule", new RescheduleInput("atraso", Lines: [new RescheduleLine(open.Lines[0].Id, Today.AddDays(-5))])));
         // The same (even if already past) date is "unchanged": no complaint about it, just nothing to do.
         await AssertStatus(HttpStatusCode.Conflict, admin.Post($"/api/sales/orders/{open.Id}/reschedule", new RescheduleInput("sem mudança", Lines: [new RescheduleLine(open.Lines[0].Id, open.Lines[0].DueDate)])));
+    }
+
+    private static async Task<decimal> ShippingBalanceAsync(HttpClient admin, Setup s) =>
+        (await (await admin.GetAsync($"/api/stock/balances?productId={s.Tube.Id}&locationId={s.Shipping.Id}")).Read<Page<StockBalanceOut>>()).Items.Sum(b => b.Quantity);
+
+    [Fact]
+    public async Task The_weighed_quantity_typed_at_shipping_replaces_the_planned_one_everywhere_and_the_balance_stays_open()
+    {
+        var admin = await api.AdminAsync();
+        var s = await Arrange(admin, stock: 100m);
+        var order = await ReleasedOrder(admin, s, 40m);
+        var delivery = await (await admin.Post($"/api/sales/orders/{order.Id}/deliveries", new DeliveryInput(Today))).Read<DeliveryOut>();
+        var line = Assert.Single(delivery.Lines);
+        Assert.Equal(40m, line.Quantity);
+        var before = await ShippingBalanceAsync(admin, s);
+
+        // The goods came back from the plant lighter: 38.5 ship.
+        var shipped = await (await admin.Post($"/api/sales/deliveries/{delivery.Id}/ship", new ShipInput(Today, Lines: [new ShipLineInput(line.Id, 38.5m)]))).Read<DeliveryOut>();
+
+        Assert.Equal(DeliveryStatus.Shipped, shipped.Status);
+        Assert.Equal(38.5m, Assert.Single(shipped.Lines).Quantity);
+        Assert.Equal(before - 38.5m, await ShippingBalanceAsync(admin, s));
+        Assert.Contains(shipped.History, h => h.Action == "final-quantity" && h.Note!.Contains("40") && h.Note.Contains("38,5") | h.Note.Contains("38.5"));
+        var reloaded = await (await admin.GetAsync($"/api/sales/orders/{order.Id}")).Read<SalesOrderOut>();
+        Assert.Equal(SalesOrderStatus.PartiallyShipped, reloaded.Status); // 1.5 left to deliver (or to close with "Encerrar saldo")
+    }
+
+    [Fact]
+    public async Task The_weighed_quantity_may_go_over_only_within_the_overrun_tolerance_and_must_name_a_line_of_the_delivery()
+    {
+        var admin = await api.AdminAsync();
+        var s = await Arrange(admin, stock: 100m);
+        var order = await ReleasedOrder(admin, s, 40m);
+        var delivery = await (await admin.Post($"/api/sales/orders/{order.Id}/deliveries", new DeliveryInput(Today))).Read<DeliveryOut>();
+        var line = Assert.Single(delivery.Lines);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.Post($"/api/sales/deliveries/{delivery.Id}/ship", new ShipInput(Today, Lines: [new ShipLineInput(line.Id, 0m)]))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.Post($"/api/sales/deliveries/{delivery.Id}/ship", new ShipInput(Today, Lines: [new ShipLineInput(line.Id + 9999, 10m)]))).StatusCode);
+        // 3 % tolerance by default: 40 + 1.2 is the limit.
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.Post($"/api/sales/deliveries/{delivery.Id}/ship", new ShipInput(Today, Lines: [new ShipLineInput(line.Id, 41.3m)]))).StatusCode);
+        Assert.Equal(DeliveryStatus.Planned, (await (await admin.GetAsync($"/api/sales/deliveries/{delivery.Id}")).Read<DeliveryOut>()).Status);
+
+        var ok = await (await admin.Post($"/api/sales/deliveries/{delivery.Id}/ship", new ShipInput(Today, Lines: [new ShipLineInput(line.Id, 41m)]))).Read<DeliveryOut>();
+        Assert.Equal(41m, Assert.Single(ok.Lines).Quantity);
+    }
+
+    [Fact]
+    public async Task Without_the_customers_rule_a_delivery_ships_before_its_certificate_and_waits_for_it_marked_pending()
+    {
+        var admin = await api.AdminAsync();
+        var s = await Arrange(admin, stock: 100m);
+        var order = await ReleasedOrder(admin, s, 40m);
+        var delivery = await (await admin.Post($"/api/sales/orders/{order.Id}/deliveries", new DeliveryInput(Today))).Read<DeliveryOut>();
+
+        // The NF is typed by hand here (fiscal emission is off); no certificate exists and the shipment is still allowed.
+        var shipped = await (await admin.Post($"/api/sales/deliveries/{delivery.Id}/ship", new ShipInput(Today, "2581"))).Read<DeliveryOut>();
+        Assert.Equal(DeliveryStatus.Shipped, shipped.Status);
+        Assert.True(shipped.CertificatePending);
+        Assert.Contains(shipped.History, h => h.Action == "shipped" && h.Note!.Contains("certificado pendente"));
+        var pending = await (await admin.GetAsync($"/api/sales/deliveries?pendingCertificate=true&customerId={s.Customer.Id}")).Read<Page<DeliverySummaryOut>>();
+        Assert.Equal(delivery.Id, Assert.Single(pending.Items).Id);
+        Assert.True(pending.Items[0].CertificatePending);
+
+        // The certificate comes after the NF and already carries its number.
+        var made = await (await admin.Post($"/api/sales/certificates/for-delivery/{delivery.Id}", new object())).Read<List<CertificateOut>>();
+        Assert.Equal("2581", Assert.Single(made).InvoiceNumber);
+    }
+
+    [Fact]
+    public async Task A_draft_certificate_made_before_the_nf_takes_its_number_when_the_delivery_gets_it()
+    {
+        var admin = await api.AdminAsync();
+        var s = await Arrange(admin, stock: 100m);
+        var order = await ReleasedOrder(admin, s, 40m);
+        var delivery = await (await admin.Post($"/api/sales/orders/{order.Id}/deliveries", new DeliveryInput(Today))).Read<DeliveryOut>();
+        var draft = Assert.Single(await (await admin.Post($"/api/sales/certificates/for-delivery/{delivery.Id}", new object())).Read<List<CertificateOut>>());
+        Assert.Null(draft.InvoiceNumber);
+
+        // The draft was made first; the NF (typed here, fiscal emission is off) is stamped on the delivery at shipping and the draft follows it.
+        await admin.Post($"/api/sales/deliveries/{delivery.Id}/ship", new ShipInput(Today, "3001"));
+
+        Assert.Equal("3001", (await (await admin.GetAsync($"/api/sales/certificates/{draft.Id}")).Read<CertificateOut>()).InvoiceNumber);
     }
 }

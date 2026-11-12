@@ -68,11 +68,15 @@ public sealed partial class SalesService
             var (d, o) = await LockDeliveryAndOrderAsync(id, ct);
             if (d.Status != DeliveryStatus.Planned) throw SalesException.Conflict($"Delivery is {d.Status}");
             if (o.Status is not (SalesOrderStatus.Released or SalesOrderStatus.PartiallyShipped)) throw SalesException.Conflict($"Order is {o.Status}");
+            // The load was weighed after the OF came back: the quantity that ships (and that the NF states) is the weighed one.
+            if (i.Lines is { Count: > 0 }) await ApplyFinalQuantitiesAsync(d, o, i.Lines, user, ct);
             await EnsureCreditAsync(o, "expedição", overrideCredit, user, ct);
             var certified = o.CertificateWaived || await CertificatesCoverAsync(o, d, ct);
-            if (!certified && !i.WithoutCertificate)
+            // The quality certificate carries the NF number, so the usual order is NF first, certificate after: only a customer that asks for it before the load leaves holds the shipment.
+            var certificateFirst = await db.Customers.AsNoTracking().Where(c => c.Id == o.CustomerId).Select(c => c.RequireCertificateBeforeShip).FirstOrDefaultAsync(ct);
+            if (!certified && certificateFirst && !i.WithoutCertificate)
                 throw SalesException.Conflict($"{d.Reference} has items without an issued quality certificate. Issue one for each item, waive it on the order, or ship without it");
-            if (!certified && !canWaiveCertificate)
+            if (!certified && certificateFirst && !canWaiveCertificate)
                 throw SalesException.Forbidden($"{d.Reference} has items without an issued quality certificate, and shipping without it needs the certificates-issue permission or a sales manager. Issue the certificates first");
             // Only someone who may emit the NF (or any shipper while emission is off) can name an NF number by hand; for others the field would skip the fiscal emission.
             var fiscalOn = await fiscal.EnabledAsync(FiscalCompany.Of(o.BillTo), ct);
@@ -97,6 +101,7 @@ public sealed partial class SalesService
             d.ShippedAt = DateTimeOffset.UtcNow;
             d.ShippedBy = user;
             d.InvoiceNumber = typedInvoice ?? d.InvoiceNumber;
+            await FillCertificateInvoiceAsync(d, ct);
             d.Carrier = Clean(i.Carrier) ?? d.Carrier;
             d.VehiclePlate = Clean(i.VehiclePlate)?.ToUpper();
             d.GrossWeightKg = i.GrossWeightKg ?? d.GrossWeightKg;
@@ -108,7 +113,7 @@ public sealed partial class SalesService
             // attempt picks it up again (FiscalService.IssueSaleAsync "orphan" path) instead of issuing a second NF.
             var invoicePending = d.InvoiceNumber is null && !canEmitInvoice && fiscalOn;
             var willIssue = d.InvoiceNumber is null && !invoicePending && fiscalOn;
-            var shippedNote = string.Join(" · ", new[] { d.InvoiceNumber is null ? null : $"NF {d.InvoiceNumber}", invoicePending ? "NF pendente" : null, certified ? null : "sem certificado" }.OfType<string>());
+            var shippedNote = string.Join(" · ", new[] { d.InvoiceNumber is null ? null : $"NF {d.InvoiceNumber}", invoicePending ? "NF pendente" : null, certified ? null : certificateFirst ? "sem certificado" : "certificado pendente" }.OfType<string>());
             Log(SalesRecordKind.Delivery, d.Id, "shipped", DeliveryStatus.Planned, d.Status, shippedNote.Length > 0 ? shippedNote : null, user);
             await db.SaveChangesAsync(ct);
             await RefreshOrderStatusAsync(o, $"{d.Reference} expedida", user, ct);
@@ -116,13 +121,58 @@ public sealed partial class SalesService
             {
                 var invoice = await fiscal.IssueSaleAsync(d, o, new SaleInvoiceOptions(i.Cfop, i.Freight ?? 0m, Clean(i.Carrier), Clean(i.VehiclePlate)?.ToUpper(), i.GrossWeightKg), user, ct);
                 d.InvoiceNumber = invoice.Number.ToString();
+                await FillCertificateInvoiceAsync(d, ct);
                 doc.Notes = $"{doc.Notes} · NF {invoice.Number}";
                 var shipped = await db.SalesEvents.Where(e => e.Kind == SalesRecordKind.Delivery && e.RecordId == d.Id && e.Action == "shipped").OrderByDescending(e => e.Id).FirstAsync(ct);
-                shipped.Note = string.Join(" · ", new[] { $"NF {d.InvoiceNumber}", certified ? null : "sem certificado" }.OfType<string>());
+                shipped.Note = string.Join(" · ", new[] { $"NF {d.InvoiceNumber}", certified ? null : certificateFirst ? "sem certificado" : "certificado pendente" }.OfType<string>());
                 await db.SaveChangesAsync(ct);
             }
             return d;
         }, ct);
+    }
+
+    /// <summary>
+    /// Replaces the planned quantities of the delivery by the weighed ones. A line may be short (the balance stays open on the order) or above what was asked, up to
+    /// the overrun tolerance of the production settings; packages and the gross weight follow the new quantity.
+    /// </summary>
+    private async Task ApplyFinalQuantitiesAsync(Delivery d, SalesOrder o, IReadOnlyList<ShipLineInput> final, string? user, CancellationToken ct)
+    {
+        var progress = (await ProgressAsync([o.Id], ct))[o.Id];
+        var tolerance = (await production.SettingsAsync(ct)).OverrunTolerancePercent;
+        var products = await db.Products.AsNoTracking().Where(p => o.Lines.Select(l => l.ProductId).Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+        var changes = new List<string>();
+        foreach (var (f, n) in final.Select((f, n) => (f, n)))
+        {
+            var dl = d.Lines.FirstOrDefault(l => l.Id == f.DeliveryLineId) ?? throw SalesException.Invalid($"lines[{n}].deliveryLineId", "Not a line of this delivery");
+            if (f.Quantity <= 0) throw SalesException.Invalid($"lines[{n}].quantity", "Must be greater than zero");
+            var line = o.Lines.First(l => l.Id == dl.OrderLineId);
+            var p = progress.Lines.First(x => x.LineId == line.Id);
+            var max = p.Remaining - (p.Planned - dl.Quantity) + Math.Round(line.Quantity * tolerance / 100m, 3);
+            if (f.Quantity > max) throw SalesException.Invalid($"lines[{n}].quantity", $"Above what is left to deliver ({max:0.####} with the {tolerance:0.##}% tolerance)");
+            if (f.Quantity == dl.Quantity) continue;
+            changes.Add($"{line.Description}: {dl.Quantity:0.###} → {f.Quantity:0.###}");
+            dl.Quantity = f.Quantity;
+            var product = products[line.ProductId];
+            dl.Packages = product.PiecesPerPackage is > 0 ? (int)Math.Ceiling(f.Quantity / product.PiecesPerPackage.Value) : 0;
+        }
+        if (changes.Count == 0) return;
+        d.Packages = d.Lines.Sum(l => l.Packages);
+        decimal? weight = 0m;
+        foreach (var dl in d.Lines)
+        {
+            var line = o.Lines.First(l => l.Id == dl.OrderLineId);
+            weight = KgPerUnit(line, products[line.ProductId]) is { } kg && weight is { } acc ? acc + kg * dl.Quantity : null;
+        }
+        d.GrossWeightKg = weight is { } total ? Math.Round(total, 3) : d.GrossWeightKg;
+        Log(SalesRecordKind.Delivery, d.Id, "final-quantity", d.Status, d.Status, $"Peso final: {string.Join("; ", changes)}", user);
+    }
+
+    /// <summary>Puts the NF number on the draft certificates of the delivery that were made before the NF existed.</summary>
+    private async Task FillCertificateInvoiceAsync(Delivery d, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(d.InvoiceNumber)) return;
+        foreach (var c in await db.QualityCertificates.Where(c => c.DeliveryId == d.Id && c.Status == CertificateStatus.Draft && (c.InvoiceNumber == null || c.InvoiceNumber == "")).ToListAsync(ct))
+            c.InvoiceNumber = d.InvoiceNumber;
     }
 
     /// <summary>True when every line of the delivery has an issued certificate: one for that order line, or for its product when the certificate names no line. A certificate linked to another delivery does not count.</summary>
@@ -168,6 +218,7 @@ public sealed partial class SalesService
             if (!await fiscal.EnabledAsync(FiscalCompany.Of(o.BillTo), ct)) throw SalesException.Conflict("NF emission is disabled");
             var invoice = await fiscal.IssueSaleAsync(d, o, new SaleInvoiceOptions(i.Cfop, i.Freight ?? 0m, Clean(i.Carrier) ?? d.Carrier, Clean(i.VehiclePlate)?.ToUpper() ?? d.VehiclePlate, i.GrossWeightKg ?? d.GrossWeightKg), user, ct);
             d.InvoiceNumber = invoice.Number.ToString();
+            await FillCertificateInvoiceAsync(d, ct);
             if (d.StockDocumentId is { } sd && await db.StockDocuments.FirstOrDefaultAsync(x => x.Id == sd, ct) is { } doc) doc.Notes = $"{doc.Notes} · NF {invoice.Number}";
             Log(SalesRecordKind.Delivery, d.Id, "invoice-emitted", d.Status, d.Status, $"NF {invoice.Number}", user);
             await db.SaveChangesAsync(ct);

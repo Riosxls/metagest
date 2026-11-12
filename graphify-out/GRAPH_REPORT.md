@@ -1,17 +1,17 @@
 # Graph Report - silly-pasteur-39f7c9  (2026-11-12)
 
 ## Corpus Check
-- 423 files · ~527,541 words
+- 423 files · ~531,406 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 26 file(s) not represented in the graph (top: .xsd 10, (none) 9, .ttf 2)
 
 ## Summary
-- 11396 nodes · 23712 edges · 360 communities (285 shown, 75 thin omitted)
-- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 2178 edges (avg confidence: 0.84)
+- 11423 nodes · 23854 edges · 355 communities (277 shown, 78 thin omitted)
+- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 2205 edges (avg confidence: 0.84)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `df355b9c`
+- Built from commit: `04153c14`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -21,10 +21,10 @@
 - shell.dart
 - sales_quotes.dart
 - .Imports_legacy_pcp_data_and_is_idempotent
-- main.dart
+- requisitions.dart
 - dashboard.dart
 - production_orders.dart
-- PurchasingEndpoints.cs
+- PurchasingEndpoints
 - record_list.dart
 - Communities (272 total, 56 thin omitted)
 - stock_documents.dart
@@ -38,31 +38,31 @@
 - quotations.dart
 - package:flutter_test/flutter_test.dart
 - sales_orders.dart
-- DataResetService
+- ../entities.dart
 - print_docs.dart
 - production_floor.dart
-- data_reset.dart
+- quote_email_dialog.dart
 - .AdminAsync
 - danfe_doc.dart
 - ProductionImport
-- SalesOrderOut
+- SalesModels.cs
 - pipeline.dart
 - ProductionOrder
 - production_orders_more_test.dart
 - session.dart
 - actions.dart
 - contact_list.dart
-- ux_test.dart
+- settings_screens_test.dart
 - _
 - sales_more_support.dart
 - .MapQuotes
 - receivables.dart
-- .ConfigureSales
+- ProductionOrderOperation
 - Quote
 - SalesService
-- SalesOrder
+- ProductionModels.cs
 - stock_closing.dart
-- .OnModelCreating
+- SupplierAddress
 - stock_purchasing_test.dart
 - Ebt.Core.csproj
 - ProductionEndpoints.cs
@@ -88,37 +88,37 @@
 - .MapViability
 - dashboard_data.dart
 - modules.dart
-- package:shared_preferences/shared_preferences.dart
+- package:flutter/material.dart
 - BackupSettings
 - AccountSystemTests
 - settings_dialog.dart
 - .SuggestCoreAsync
-- StockDocument
+- StockMovement
 - RoutingOperation
 - API Launch Settings
-- StatefulWidget
+- product_detail.dart
 - ProductionService
-- QualityCertificate
+- CertificateTemplate
 - backup_alert.dart
 - .Reservation_errors_and_reversal_rules
 - Customer
 - CustomerAddress
-- stock_lots.dart
+- account_menu_activity_test.dart
 - StockLine
 - CrudSpec
 - labels.dart
 - steel_more_test.dart
-- ApiFixture
+- .Anonymous
 - SteelLot
 - FiscalService
-- .Requisition_quotation_order_receipt_flow
+- PurchasingEndpoints.cs
 - Ebt.Core.Entities
 - sales_pipeline.dart
 - FiscalDocument
 - screens/duplicates.dart
-- FiscalEndpoints
+- .Errors
 - BackupSettingsTests
-- requisitions.dart
+- DeliveryOut
 - record_nav.dart
 - reports.dart
 - print_panel.dart
@@ -130,29 +130,29 @@
 - return
 - UserRole
 - Dart Project
-- ProductOut
-- SefazSpClient
+- ProcessSuggestionTests
+- SefazOptions
 - dart:async
 - Start Script
 - MovementType
-- settings_admin.dart
+- .MapReceivables
 - dashboard_test.dart
 - fiscal.dart
 - .Setup
-- settings_widgets.dart
+- StockDocument
 - ImportOptions
 - Product
 - price_trend_chart.dart
 - settings_sections.dart
 - simulator_groups_test.dart
-- CertificateService
+- QualityCertificate
 - ProcessSuggester
-- Sales.cs
+- SalesOrder
 - production_floor_test.dart
 - Flutter README
-- audit.dart
-- RequisitionOut
-- SefazEnvironment
+- drafts.dart
+- PurchasingEdgeTests
+- SefazSpClient
 - StatelessWidget
 - PurchaseOrderLine
 - FiscalDocumentLine
@@ -161,10 +161,10 @@
 - CustomerOut
 - report_doc.dart
 - IExceptionHandler
-- .Arrange
+- MoneyGuardTests
 - Auth.cs
 - deliveries.dart
-- static const
+- print_gate.dart
 - Stock Exceptions
 - MyActivityTests
 - Ebt.Core.Inventory
@@ -174,7 +174,7 @@
 - SQL Identifier Regex
 - .MapReports
 - Secure Storage Plugin
-- String?
+- order_invoice.dart
 - quick_actions.dart
 - CapturingStream
 - IdleLockTests
@@ -182,8 +182,8 @@
 - Role Permissions Matrix
 - Plugin Registry
 - BomService
-- RowVersionFilter
-- ProductionModels.cs
+- Employee
+- .ScheduleTreeAsync
 - purchasing_flow_test.dart
 - Exception
 - List
@@ -196,15 +196,15 @@
 - user_settings.dart
 - sales_common.dart
 - quote_po_dialog.dart
-- SteelEndpoints.cs
+- .Steel_lot_slitter_and_usage_balance
 - SearchEndpoints.cs
-- .Delivery_records_lot_invoiced_value_and_balances
-- TaxRule
+- StockImportOptions
+- Cfop
 - login.dart
 - widgets/duplicates.dart
 - MetaGest operations
 - idle_guard.dart
-- NfPreview
+- .PreviewSaleAsync
 - RefreshToken
 - MetaGest — Engenharia, Estoque, Suprimentos, PCP
 - .Describe
@@ -216,9 +216,9 @@
 - system_text
 - discard_guard.dart
 - Mail.cs
-- .Sale_nf_uses_monthly_price_over_the_order_price_is_recorded_only_after_authorization_and_can_be_cancelled
+- Page
 - Quote Editor Screen
-- Cfop
+- customer_pdf_test.dart
 - OpenAPI Models
 - Quote Detail Screen
 - Ebt.Api/Program.cs
@@ -227,19 +227,19 @@
 - Quotes List Screen
 - .EvaluateAsync
 - HTTP Client
-- package:flutter/material.dart
-- .NewDb
-- PurchaseOrder
+- nav.dart
+- PriceSuggestionTests
+- Quotation
 - Backup Settings
 - tab_frame.dart
 - customers_test.dart
 - Delivery
 - DateTime
 - QuoteExpiryService
-- CLAUDE.md — MetaGest
-- VoidCallback
+- .Import_replaces_the_legacy_customer_reference_and_fills_code_lot_and_origin_note
+- .SnapshotStructureAsync
 - SystemEndpoints
-- alerts.dart
+- responsive.dart
 - PurchaseRequisition
 - fiscal_readiness.dart
 - settings_backup_test.dart
@@ -269,16 +269,16 @@
 - dart:convert
 - Revision
 - PriceHistoryImporter
-- Page
-- StockMovement
+- .ReleasedSaleAsync
+- MVC mapping
 - IdempotencyKey
-- purchase_orders_test.dart
-- CustomerAddressIn
-- .InvokeAsync
+- SalesSettings
+- EngineeringTests
+- IdempotencyMiddleware
 - record_links.dart
 - NfeSchema
 - backup-agent.ps1
-- IdempotencyMiddleware
+- FeasibilityOut
 - Backend conventions
 - FiscalDataImporter
 - Pre-push Hook
@@ -286,15 +286,15 @@
 - unload_guard_web.dart
 - pt_text.dart
 - freeze_layout.dart
-- _Chevron
+- DbfImportTests
 - unload_guard_stub.dart
 - esc_back.dart
 - DateSlashFormatter
-- load_error.dart
+- ProductionOrderStatus
 - unload_guard.dart
 - ebt_api_infrastructure
 - ebt_core_data
-- Customer
+- OrderMaterial
 - ebt_core_entities
 - ebt_core_fiscal
 - ebt_core_inventory
@@ -310,71 +310,66 @@
 - PriceSimulation
 - PurchasingFixture
 - Map
-- String get
+- .MapPriceSuggestion
 - StockLot
 - .ImportCoreAsync
 - .NewOrderAsync
-- suppliers_test.dart
+- FeasibilityStatus
 - SmartSearch
-- AppUser
+- PurchasingSettings
 - .Customers_are_found_by_any_words_of_the_name_without_accents_and_by_document_or_city
-- .ShippedWithNfAsync
-- DuplicateDismissal
-- StockSettings
-- .Today
-- TokenService
+- .Duplicatas_take_partial_payments_reversals_and_follow_the_nf_status
+- MetaGest architecture
+- .Invalid_settings_are_refused
+- .NextRun
+- .The_list_carries_the_contact_data_of_the_default_address
 - .Production_dashboard_splits_late_orders_into_recent_and_legacy
 - PriceHistory
 - .NetWeightKg
 - AlertService
-- ProductionOrderMaterial
+- _BackupForm
 - LegacyRow
 - DuplicateService
-- _DeleteDialog
-- _RestoreDialog
-- RestoreSection
+- ContactRow
+- StatusColors
+- _Tappable
 - .NewCustomerAsync
-- StockLocationKind
-- FiscalReconcileService
+- .AddViability
+- CLAUDE.md — MetaGest
 - NoteTally
-- .Classify
-- JwtOptions
+- .ConfigureViability
 - stdio
 - System
 - LiveOrdersHidden
-- .InTransaction
+- .ShipAsync
 - URL Launcher Windows
-- AuditEntry
 - Windows
 - export-certificate-specs.ps1
 - workdays.dart
-- NfeKey
 - export-price-history.ps1
 - .Search_returns_grouped_hits_capped_by_take
-- .ListAsync
-- ICurrentUser
+- .MapInventory
 - _TrendPainter
 - .Add
-- DataResetGuardTests
+- ApiFixture
 - _NoteDialog
 - PriceSimulatorPanel
 - PriceSimulatorScreen
 - _SavedSimulations
 - _SimulatorDialog
 - Text
-- SalesException
 
 ## God Nodes (most connected - your core abstractions)
-1. `EbtDbContext` - 331 edges
+1. `EbtDbContext` - 332 edges
 2. `Communities (272 total, 56 thin omitted)` - 217 edges
 3. `Ebt.Core.Entities` - 144 edges
 4. `_` - 127 edges
-5. `SalesService` - 99 edges
+5. `SalesService` - 101 edges
 6. `FiscalDocument` - 88 edges
 7. `Ebt.Core.Data` - 85 edges
 8. `ProductionService` - 82 edges
-9. `SalesTests` - 76 edges
-10. `Page` - 74 edges
+9. `SalesTests` - 82 edges
+10. `Page` - 77 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Estoque` --references--> `StockService`  [INFERRED]
@@ -391,7 +386,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (360 total, 75 thin omitted)
+## Communities (355 total, 78 thin omitted)
 
 ### Community 0 - "entities.dart"
 Cohesion: 0.02
@@ -399,35 +394,35 @@ Nodes (105): advanced, b, bomItemFields, carriers, choices, codeName, col, colum
 
 ### Community 1 - "EbtDbContext"
 Cohesion: 0.02
-Nodes (111): DbContext, IDesignTimeDbContextFactory, DbContextOptions, DesignTimeFactory, BackupSettings, DbSet, ModelBuilder, EbtDbContext (+103 more)
+Nodes (113): DbContext, IDesignTimeDbContextFactory, PropertyBuilder, DbContextOptions, DesignTimeFactory, BackupSettings, DbSet, ModelBuilder (+105 more)
 
 ### Community 2 - "shell.dart"
 Cohesion: 0.02
-Nodes (129): AppLifecycleListener?, BuildContext get, active, _activeKey, admin, _alertEvery, _alertTimer, _back (+121 more)
+Nodes (128): AppLifecycleListener?, BuildContext get, active, _activeKey, admin, _alertEvery, _alertTimer, _back (+120 more)
 
 ### Community 3 - "sales_quotes.dart"
 Cohesion: 0.01
 Nodes (216): _accept, _acceptedStep, _act, _addresses, _addressField, _addressId, _adopt, api (+208 more)
 
 ### Community 4 - ".Imports_legacy_pcp_data_and_is_idempotent"
-Cohesion: 0.07
-Nodes (25): IDisposable, Component, DateOnly, StockImportOptions, CodePage, Directory, DryRun, OpeningDate (+17 more)
+Cohesion: 0.18
+Nodes (8): Component, IEnumerable, IReadOnlyList, DbfField, DbfWriter, Fact, Task, ProductionImportTests
 
-### Community 5 - "main.dart"
-Cohesion: 0.06
-Nodes (33): _Appearance, _appearance, appTheme, base, build, _buildTheme, _closeScreensOnSignOut, createState (+25 more)
+### Community 5 - "requisitions.dart"
+Cohesion: 0.03
+Nodes (66): _Appearance, _appearance, appTheme, base, build, _buildTheme, _closeScreensOnSignOut, createState (+58 more)
 
 ### Community 6 - "dashboard.dart"
-Cohesion: 0.03
-Nodes (80): _active, _alertGroups, alertModuleKey, alertModules, alerts, _all, allOverdue, api (+72 more)
+Cohesion: 0.02
+Nodes (81): _active, _alertGroups, alertModuleKey, alertModules, alerts, _all, allOverdue, api (+73 more)
 
 ### Community 7 - "production_orders.dart"
 Cohesion: 0.02
 Nodes (104): _actions, api, _applySuggestion, base, build, _bump, _cancel, _card (+96 more)
 
-### Community 8 - "PurchasingEndpoints.cs"
-Cohesion: 0.10
-Nodes (31): CancellationToken, DateOnly, DateTimeOffset, IQueryable, IResult, Task, WebApplication, AwardIn (+23 more)
+### Community 8 - "PurchasingEndpoints"
+Cohesion: 0.17
+Nodes (14): CancellationToken, IQueryable, IResult, Task, WebApplication, PurchasingEndpoints, DateOnly, DateTimeOffset (+6 more)
 
 ### Community 9 - "record_list.dart"
 Cohesion: 0.01
@@ -446,16 +441,16 @@ Cohesion: 0.02
 Nodes (104): api, _applyFill, askCustomPrazo, autoOpen, _body, _boxKeys, build, _busy (+96 more)
 
 ### Community 13 - "StockService"
-Cohesion: 0.10
-Nodes (27): M, P, WebApplication, StockDocument, CancellationToken, DateOnly, IReadOnlyCollection, List (+19 more)
+Cohesion: 0.11
+Nodes (26): M, P, StockDocument, CancellationToken, DateOnly, IReadOnlyCollection, List, Task (+18 more)
 
 ### Community 14 - "PurchasingService"
-Cohesion: 0.10
-Nodes (27): PurchaseOrder, Quotation, CreatedAt, CreatedBy, Id, Items, Notes, Number (+19 more)
+Cohesion: 0.16
+Nodes (11): PurchaseOrder, CancellationToken, GeneratedRegex, IEnumerable, List, Regex, Task, PurchasingException (+3 more)
 
 ### Community 15 - "orders.dart"
-Cohesion: 0.04
-Nodes (51): active, api, base, build, _busy, context, createState, d (+43 more)
+Cohesion: 0.03
+Nodes (63): ApiClient get, api, build, createState, _draft, _draftAll, _eligible, _list (+55 more)
 
 ### Community 16 - "command_palette.dart"
 Cohesion: 0.04
@@ -474,52 +469,52 @@ Cohesion: 0.04
 Nodes (50): _addSupplier, api, _award, base, bidFields, _bids, build, _busy (+42 more)
 
 ### Community 20 - "package:flutter_test/flutter_test.dart"
-Cohesion: 0.03
-Nodes (72): StagePath, certificate, main, issuer, key, main, nf, main (+64 more)
+Cohesion: 0.02
+Nodes (102): ApiClient, certificate, main, issuer, key, main, nf, main (+94 more)
 
 ### Community 21 - "sales_orders.dart"
 Cohesion: 0.02
 Nodes (110): api, _attachPo, base, _billTo, _body, build, _cancel, _cardPrint (+102 more)
 
-### Community 22 - "DataResetService"
-Cohesion: 0.14
-Nodes (22): DbConnection, Fk, IReadOnlyList, WebApplication, DataResetOut, CancellationToken, Dictionary, HashSet (+14 more)
+### Community 22 - "../entities.dart"
+Cohesion: 0.03
+Nodes (61): f, _Fonts, lastSaveOffThread, _loaded, _loadFonts, _loading, pdfTheme, save (+53 more)
 
 ### Community 23 - "print_docs.dart"
 Cohesion: 0.01
 Nodes (155): address, at, _b, banner, billTo, blankRows, blocks, _blue (+147 more)
 
 ### Community 24 - "production_floor.dart"
-Cohesion: 0.04
-Nodes (47): build, _cellDetails, _color, context, createState, cs, _fetch, _from (+39 more)
+Cohesion: 0.02
+Nodes (86): _action, _actions, AuditDetailDialog, auditEntityName, AuditScreen, _AuditScreenState, build, createState (+78 more)
 
-### Community 25 - "data_reset.dart"
-Cohesion: 0.03
-Nodes (67): _body, build, _busy, _confirm, createState, dataResetConfirmWord, _DataResetDialog, _DataResetDialogState (+59 more)
+### Community 25 - "quote_email_dialog.dart"
+Cohesion: 0.10
+Nodes (21): _address, body, build, _busy, _cc, _check, createState, _dialog (+13 more)
 
 ### Community 26 - ".AdminAsync"
-Cohesion: 0.13
-Nodes (21): IServiceScope, DataResetIn, LostReasonOut, QuoteOut, QuoteRequestIn, QuoteSummaryOut, ConvertInput, Fact (+13 more)
+Cohesion: 0.09
+Nodes (46): DateOnly, List, CertificateLinkIn, CertificateOut, CertificateReasonIn, CertificateSummaryOut, CertificateWaiverIn, TemplateIn (+38 more)
 
 ### Community 27 - "danfe_doc.dart"
 Cohesion: 0.05
 Nodes (37): banner, buildDanfePdf, c, cancelled, _cell, _cep, d, digits (+29 more)
 
 ### Community 28 - "ProductionImport"
-Cohesion: 0.17
-Nodes (14): ProductionOrderKind, Internal, Standard, CancellationToken, DateOnly, DateTimeOffset, Encoding, List (+6 more)
+Cohesion: 0.16
+Nodes (15): ProductionOrderKind, Internal, Standard, CancellationToken, DateOnly, DateTimeOffset, Dictionary, Encoding (+7 more)
 
-### Community 29 - "SalesOrderOut"
-Cohesion: 0.07
-Nodes (69): DateTimeOffset, IReadOnlyList, List, CertificateLinkIn, CertificateMeasureOut, CertificateOut, CertificateReasonIn, CertificateTemplateOut (+61 more)
+### Community 29 - "SalesModels.cs"
+Cohesion: 0.11
+Nodes (21): FreightTerms, Cif, CustomerPickup, Fob, OrderOrigin, Email, Fax, System (+13 more)
 
 ### Community 30 - "pipeline.dart"
 Cohesion: 0.03
 Nodes (76): ActivateIntent, accent, actions, amount, amountLabel, at, badge, bg (+68 more)
 
 ### Community 31 - "ProductionOrder"
-Cohesion: 0.04
-Nodes (47): List, ProductionOrder, AdjustedEnd, AdjustedStart, Bales, ClosedAt, ClosedBy, CostClosedAt (+39 more)
+Cohesion: 0.05
+Nodes (39): List, ProductionOrder, AdjustedEnd, AdjustedStart, Bales, ClosedAt, ClosedBy, CostClosedAt (+31 more)
 
 ### Community 32 - "production_orders_more_test.dart"
 Cohesion: 0.05
@@ -535,11 +530,11 @@ Nodes (56): _add, addAnotherLabel, addEnabled, addLabel, api, build, _c, carryKe
 
 ### Community 35 - "contact_list.dart"
 Cohesion: 0.04
-Nodes (46): actions, active, all, base, build, c, cells, ContactAction (+38 more)
+Nodes (44): actions, active, all, base, build, c, cells, ContactAction (+36 more)
 
-### Community 36 - "ux_test.dart"
-Cohesion: 0.11
-Nodes (17): ApiClient, api, login, main, password, skip, url, user (+9 more)
+### Community 36 - "settings_screens_test.dart"
+Cohesion: 0.05
+Nodes (41): ch, hi, lo, _lum, main, ratio, _json, _login (+33 more)
 
 ### Community 37 - "_"
 Cohesion: 0.02
@@ -550,48 +545,48 @@ Cohesion: 0.06
 Nodes (33): answer, body, called, certs, client, credit, defaultOrder, defaultQuote (+25 more)
 
 ### Community 39 - ".MapQuotes"
-Cohesion: 0.10
-Nodes (22): FiscalOn, Needs, CancellationToken, ClaimsPrincipal, Dictionary, Func, Id, IEnumerable (+14 more)
+Cohesion: 0.07
+Nodes (37): EndpointFilterDelegate, EndpointFilterInvocationContext, FiscalOn, Icms, IEndpointFilter, Ipi, Needs, CancellationToken (+29 more)
 
 ### Community 40 - "receivables.dart"
-Cohesion: 0.07
-Nodes (29): _aging, api, build, _changed, createState, customerId, _defaultStatus, _error (+21 more)
+Cohesion: 0.06
+Nodes (37): AppPrefs, appVersion, printPrompts, rowsPerPage, rowsPerPageChoices, _aging, api, build (+29 more)
 
-### Community 41 - ".ConfigureSales"
-Cohesion: 0.08
-Nodes (24): PriceHistory, PropertyBuilder, FiscalSettings, ModelBuilder, ModelBuilder, SalesSettings, ModelBuilder, FiscalCarrier (+16 more)
+### Community 41 - "ProductionOrderOperation"
+Cohesion: 0.05
+Nodes (44): PCP + Apontamento, DateOnly, Holiday, Date, Id, Name, OutsideShipment, CreatedBy (+36 more)
 
 ### Community 42 - "Quote"
-Cohesion: 0.05
-Nodes (40): Quote, Address, AddressId, ApprovedAt, ApprovedBy, Conditions, ContactEmail, ContactName (+32 more)
+Cohesion: 0.04
+Nodes (48): LostReason, Competitor, CustomerGaveUp, LeadTime, NoLongerNeeded, Other, Price, Specification (+40 more)
 
 ### Community 43 - "SalesService"
 Cohesion: 0.11
-Nodes (28): Icms, Ipi, ResolvedLine, Quote, QuoteTotals, SalesService, CancellationToken, DateOnly (+20 more)
+Nodes (25): ResolvedLine, Quote, SalesService, CancellationToken, DateOnly, Func, IReadOnlyList, List (+17 more)
 
-### Community 44 - "SalesOrder"
-Cohesion: 0.07
-Nodes (30): SalesOrder, Address, AddressId, CertificateWaived, Company, CreatedAt, CreatedBy, Customer (+22 more)
+### Community 44 - "ProductionModels.cs"
+Cohesion: 0.12
+Nodes (26): Description, DateOnly, IReadOnlyList, TimeOnly, AvailabilityResult, BulkRequirementsResult, ItemConsumption, LoadRow (+18 more)
 
 ### Community 45 - "stock_closing.dart"
-Cohesion: 0.05
-Nodes (41): build, _busy, _card, _close, _closings, ClosingScreen, _ClosingScreenState, createState (+33 more)
+Cohesion: 0.03
+Nodes (80): bool get, ChangeNotifier, AdminSection, at, BackupSection, BackupStatus, build, configured (+72 more)
 
-### Community 46 - ".OnModelCreating"
-Cohesion: 0.04
-Nodes (48): ModelBuilder, ConsumerType, FinalConsumer, Normal, MaterialClass, Code, Id, Name (+40 more)
+### Community 46 - "SupplierAddress"
+Cohesion: 0.12
+Nodes (16): SupplierAddress, City, CityIbgeCode, District, Document, Email, Id, LegacyCode (+8 more)
 
 ### Community 47 - "stock_purchasing_test.dart"
-Cohesion: 0.03
-Nodes (62): activeTests, _api, client, _customer, deleteTests, _firstPage, _json, lastResult (+54 more)
+Cohesion: 0.06
+Nodes (31): bidStatus, body, client, comparison, doc, Fake, has, inspectionFails (+23 more)
 
 ### Community 48 - "Ebt.Core.csproj"
 Cohesion: 0.08
 Nodes (24): coverlet.collector (6.0.2), DbfDataReader (0.9.0), EFCore.NamingConventions (10.0.1), MailKit (4.18.2), Microsoft.AspNetCore.Authentication.JwtBearer (10.0.14), Microsoft.AspNetCore.Mvc.Testing (10.0.14), Microsoft.Extensions.Identity.Core (10.0.14), Microsoft.NET.Test.Sdk (17.11.1) (+16 more)
 
 ### Community 49 - "ProductionEndpoints.cs"
-Cohesion: 0.08
-Nodes (58): Knowledge Gaps, Suggested Questions, CertificatePolicies, StockBalanceOut, StockDocumentSummary, MachineOut, SupplierIn, SupplierOut (+50 more)
+Cohesion: 0.10
+Nodes (50): StockBalanceOut, StockDocumentSummary, SupplierIn, SupplierOut, BomItemIn, DateOnly, DateTimeOffset, IReadOnlyDictionary (+42 more)
 
 ### Community 50 - "nf_doc.dart"
 Cohesion: 0.02
@@ -602,8 +597,8 @@ Cohesion: 0.03
 Nodes (70): _baseUrl, _call, cap, capacity, clear, clearVersions, _decodeJson, delete (+62 more)
 
 ### Community 52 - ".MapProducts"
-Cohesion: 0.15
-Nodes (14): CancellationToken, Dictionary, Expression, IReadOnlyDictionary, IReadOnlyList, IResult, List, Task (+6 more)
+Cohesion: 0.14
+Nodes (17): CancellationToken, DateTimeOffset, Dictionary, Expression, IReadOnlyDictionary, IReadOnlyList, List, Task (+9 more)
 
 ### Community 53 - "price_simulator.dart"
 Cohesion: 0.02
@@ -614,32 +609,32 @@ Cohesion: 0.20
 Nodes (11): QuotationItem, CancellationToken, DateTimeOffset, Encoding, HashSet, List, Name, Preferred (+3 more)
 
 ### Community 55 - "ProductionReport"
-Cohesion: 0.02
-Nodes (125): PCP + Apontamento, ModelBuilder, ProductionSettings, OutsideShipment, DateOnly, DateTimeOffset, TimeOnly, Employee (+117 more)
+Cohesion: 0.03
+Nodes (83): ModelBuilder, ProductionSettings, OutsideShipment, DateTimeOffset, TimeOnly, OccurrenceKind, Downtime, Scrap (+75 more)
 
 ### Community 56 - "sales_test.dart"
-Cohesion: 0.04
-Nodes (46): _card, f, _fake, main, _open, _pipeline, pumpMore, pumpWidget (+38 more)
+Cohesion: 0.06
+Nodes (35): body, certificateFirst, client, credit, daysLeft, delivery, deliveryStatus, history (+27 more)
 
 ### Community 57 - "settings_backup.dart"
 Cohesion: 0.03
-Nodes (75): _active, _agentLate, agentMissing, agentSeenAt, agentSilent, backupAgentStaleAfter, backupCancelledMessage, backupCancellingStage (+67 more)
+Nodes (77): _active, _agentLate, agentMissing, agentSeenAt, agentSilent, _AgentWarning, backupAgentStaleAfter, backupCancelledMessage (+69 more)
 
 ### Community 58 - "ImportReport"
-Cohesion: 0.15
-Nodes (16): Averages, Balances, Settings, ImportReport, Warnings, TableReport, Inserted, Skipped (+8 more)
+Cohesion: 0.14
+Nodes (17): Averages, Balances, Settings, ImportReport, Warnings, TableReport, Inserted, Skipped (+9 more)
 
 ### Community 59 - "settings_restore.dart"
 Cohesion: 0.02
-Nodes (83): _apiDown, _askDelete, backupBusy, BackupCatalog, build, _busy, _cancelling, _cancelRequest (+75 more)
+Nodes (89): _apiDown, _askDelete, backupBusy, BackupCatalog, build, _busy, _cancelling, _cancelRequest (+81 more)
 
 ### Community 60 - "certificates_more_test.dart"
 Cohesion: 0.05
-Nodes (39): _certificate, client, _json, log, main, pumpAndSettle, pumpWidget, session (+31 more)
+Nodes (40): _openList, _receive, _new, build, body, cert, certs, certStatus (+32 more)
 
 ### Community 61 - "SalesOrderLine"
-Cohesion: 0.06
-Nodes (36): DeliveryCondition, Bk, Gbk, Nbk, SalesOrderLine, Condition, CustomerPartNumber, Description (+28 more)
+Cohesion: 0.05
+Nodes (37): DeliveryCondition, Bk, Gbk, Nbk, SalesOrderLine, Condition, CustomerPartNumber, Description (+29 more)
 
 ### Community 62 - "Importer"
 Cohesion: 0.24
@@ -650,16 +645,16 @@ Cohesion: 0.02
 Nodes (100): _addNote, _addRow, api, _banner, _bannerOpen, base, _body, build (+92 more)
 
 ### Community 64 - "Material"
-Cohesion: 0.08
-Nodes (25): Material, Active, Class, ClassId, Code, Description, ExternalProcessing, GeneratesPurchaseOrder (+17 more)
+Cohesion: 0.04
+Nodes (52): BomItem, ComponentProduct, ComponentProductId, Factor, Id, Material, MaterialId, Quantity (+44 more)
 
 ### Community 65 - "ReceivableRow"
-Cohesion: 0.08
-Nodes (34): DateOnly, WebApplication, ReceivableOut, ReceivablesEndpoints, CancellationToken, DateOnly, IQueryable, IReadOnlyList (+26 more)
+Cohesion: 0.09
+Nodes (23): DateOnly, ReceivableOut, ReceivablesEndpoints, ReceivableRow, Amount, Balance, Count, CustomerId (+15 more)
 
 ### Community 66 - "MasterDataEndpoints.cs"
-Cohesion: 0.16
-Nodes (15): CancellationToken, Dictionary, Func, Task, WebApplication, CodeNameIn, CodeNameOut, CustomerCompany (+7 more)
+Cohesion: 0.12
+Nodes (17): CancellationToken, Dictionary, Func, Task, WebApplication, CodeNameIn, CodeNameOut, MasterDataEndpoints (+9 more)
 
 ### Community 67 - "settings_restore_test.dart"
 Cohesion: 0.05
@@ -670,20 +665,20 @@ Cohesion: 0.10
 Nodes (21): ConcurrentQueue, Suprimentos, Exception, HttpContext, IServiceCollection, ValueTask, PurchasingExceptionHandler, CancellationToken (+13 more)
 
 ### Community 69 - ".MapViability"
-Cohesion: 0.10
-Nodes (25): CancellationToken, ClaimsPrincipal, DateTimeOffset, IReadOnlyList, IServiceCollection, Task, WebApplication, FeasibilityIn (+17 more)
+Cohesion: 0.23
+Nodes (9): ClaimsPrincipal, WebApplication, ViabilityEndpoints, ViabilityPolicies, FeasibilityStudy, SignoffArea, Commercial, Production (+1 more)
 
 ### Community 70 - "dashboard_data.dart"
 Cohesion: 0.03
-Nodes (71): approved, blocked, blockedTotal, byKind, byShape, byStatus, closings, CommercialDashboard (+63 more)
+Nodes (72): approved, blocked, blockedTotal, byKind, byShape, byStatus, closings, CommercialDashboard (+64 more)
 
 ### Community 71 - "modules.dart"
 Cohesion: 0.05
 Nodes (40): ModuleInfo, _active, build, _commercial, _content, createState, _data, didChangeDependencies (+32 more)
 
-### Community 72 - "package:shared_preferences/shared_preferences.dart"
-Cohesion: 0.02
-Nodes (119): client, _fail, _Handler, _json, main, _openSettings, _pump, pumpAndSettle (+111 more)
+### Community 72 - "package:flutter/material.dart"
+Cohesion: 0.03
+Nodes (89): build, RecordSkeleton, _certificate, client, _json, log, main, pumpAndSettle (+81 more)
 
 ### Community 73 - "BackupSettings"
 Cohesion: 0.08
@@ -695,35 +690,35 @@ Nodes (15): BackupStatusFile, BackupStatus, ProfileRequest, RefreshRequest, Sess
 
 ### Community 75 - "settings_dialog.dart"
 Cohesion: 0.04
-Nodes (45): ../backup_alert.dart, _adminOnly, _backupAlert, build, builder, _close, _content, createState (+37 more)
+Nodes (47): ../backup_alert.dart, _adminOnly, _backupAlert, build, builder, _close, _content, createState (+39 more)
 
 ### Community 76 - ".SuggestCoreAsync"
-Cohesion: 0.10
-Nodes (29): microsoft_extensions_caching_memory, ClaimsPrincipal, DateTimeOffset, WebApplication, PriceSimulationOut, PriceSuggestionEndpoints, CancellationToken, DateOnly (+21 more)
+Cohesion: 0.12
+Nodes (26): microsoft_extensions_caching_memory, CancellationToken, DateOnly, Func, HashSet, IEnumerable, IMemoryCache, IReadOnlyList (+18 more)
 
-### Community 77 - "StockDocument"
-Cohesion: 0.05
-Nodes (45): DateOnly, DateTimeOffset, List, ReservationStatus, Consumed, Open, Released, StockClosing (+37 more)
+### Community 77 - "StockMovement"
+Cohesion: 0.03
+Nodes (64): ModelBuilder, StockSettings, DateOnly, DateTimeOffset, ReservationStatus, Consumed, Open, Released (+56 more)
 
 ### Community 78 - "RoutingOperation"
-Cohesion: 0.06
-Nodes (31): BomItem, ComponentProduct, ComponentProductId, Factor, Id, Material, MaterialId, Quantity (+23 more)
+Cohesion: 0.07
+Nodes (29): RoutingOperation, Description, Id, Machine, MachineId, Notes, Operators, PiecesPerHour (+21 more)
 
 ### Community 79 - "API Launch Settings"
 Cohesion: 0.10
 Nodes (21): ASPNETCORE_ENVIRONMENT, applicationUrl, commandName, dotnetRunMessages, environmentVariables, launchBrowser, applicationUrl, commandName (+13 more)
 
-### Community 80 - "StatefulWidget"
-Cohesion: 0.04
-Nodes (51): _CustomerAddresses, _add, api, base, build, canWrite, createState, density (+43 more)
+### Community 80 - "product_detail.dart"
+Cohesion: 0.05
+Nodes (43): _add, api, base, build, canWrite, createState, density, dispose (+35 more)
 
 ### Community 81 - "ProductionService"
-Cohesion: 0.10
-Nodes (34): Shortages, CancellationToken, Task, ProductionOrder, AvailabilityLine, AvailabilityResult, ItemConsumption, MaterialLineState (+26 more)
+Cohesion: 0.14
+Nodes (23): Shortages, ProductionOrder, AvailabilityLine, OperationDetailsInput, ProductionException, Field, Status, CancellationToken (+15 more)
 
-### Community 82 - "QualityCertificate"
-Cohesion: 0.03
-Nodes (81): DateOnly, CertificateSummaryOut, ModelBuilder, DateOnly, DateTimeOffset, List, CertificateMeasure, Certificate (+73 more)
+### Community 82 - "CertificateTemplate"
+Cohesion: 0.05
+Nodes (45): ModelBuilder, DateTimeOffset, List, CertificateMeasure, Certificate, CertificateId, Found, Id (+37 more)
 
 ### Community 83 - "backup_alert.dart"
 Cohesion: 0.10
@@ -735,15 +730,15 @@ Nodes (7): DateOnly, Fact, HttpClient, HttpResponseMessage, HttpStatusCode, Task
 
 ### Community 85 - "Customer"
 Cohesion: 0.07
-Nodes (29): Customer, Active, Addresses, City, ClientCode, Complement, ConsumerType, Contact (+21 more)
+Nodes (29): Customer, Active, Addresses, City, ClientCode, Complement, Contact, CreditLimit (+21 more)
 
 ### Community 86 - "CustomerAddress"
-Cohesion: 0.10
-Nodes (20): CustomerAddress, Buyer, City, CityIbgeCode, Complement, Customer, CustomerId, DefaultCfop (+12 more)
+Cohesion: 0.06
+Nodes (31): Customer, CustomerAddress, Buyer, City, CityIbgeCode, Complement, Customer, CustomerId (+23 more)
 
-### Community 87 - "stock_lots.dart"
-Cohesion: 0.09
-Nodes (22): build, busy, _canRelease, createState, error, initialStatus, _list, LotsView (+14 more)
+### Community 87 - "account_menu_activity_test.dart"
+Cohesion: 0.08
+Nodes (23): client, _fail, _Handler, _json, main, _openSettings, _pump, pumpAndSettle (+15 more)
 
 ### Community 88 - "StockLine"
 Cohesion: 0.23
@@ -761,25 +756,25 @@ Nodes (34): auditActions, auditEntities, auditEntityLabels, backupFrequencyLabel
 Cohesion: 0.04
 Nodes (45): body, client, deleteStatus, ensureVisible, f, _Fake, has, _job (+37 more)
 
-### Community 92 - "ApiFixture"
-Cohesion: 0.12
-Nodes (21): WorkCenterIn, ChangePasswordRequest, CreateUserRequest, LoginRequest, LoginResponse, UpdateUserRequest, UserDto, HttpClient (+13 more)
+### Community 92 - ".Anonymous"
+Cohesion: 0.18
+Nodes (13): WorkCenterIn, CreateUserRequest, LoginRequest, LoginResponse, UpdateUserRequest, UserDto, HttpClient, IReadOnlyDictionary (+5 more)
 
 ### Community 93 - "SteelLot"
 Cohesion: 0.05
-Nodes (44): DateOnly, DateTimeOffset, List, SlitterJob, FinishedKg, Id, Lot, LotId (+36 more)
+Nodes (45): ModelBuilder, DateOnly, DateTimeOffset, List, SlitterJob, FinishedKg, Id, Lot (+37 more)
 
 ### Community 94 - "FiscalService"
-Cohesion: 0.10
-Nodes (24): Fiscal / NF, Line, FiscalCompany, NfeParty, ReconcileResult, CancellationToken, DateTimeOffset, DbContextOptions (+16 more)
+Cohesion: 0.11
+Nodes (19): Line, NfeParty, CancellationToken, DateTimeOffset, DbContextOptions, FiscalSettings, Func, IReadOnlyList (+11 more)
 
-### Community 95 - ".Requisition_quotation_order_receipt_flow"
-Cohesion: 0.20
-Nodes (20): IReadOnlyList, InstallmentOut, OrderIn, OrderLineIn, OrderOut, QuotationIn, ReceiptIn, ReceiptLineIn (+12 more)
+### Community 95 - "PurchasingEndpoints.cs"
+Cohesion: 0.12
+Nodes (43): DateOnly, DateTimeOffset, IReadOnlyList, AwardIn, BidOut, ComparisonBidOut, ComparisonItemOut, DueDateIn (+35 more)
 
 ### Community 96 - "Ebt.Core.Entities"
 Cohesion: 0.09
-Nodes (16): Ebt.Core.Certificates, Ebt.Core.Purchasing, Ebt.Core.Entities, Ebt.Core.Data, Ebt.Core.Receivables, ebt_api_infrastructure_crud, microsoft_entityframeworkcore, microsoft_entityframeworkcore_changetracking (+8 more)
+Nodes (15): Ebt.Core.Certificates, Ebt.Core.Entities, Ebt.Core.Data, Ebt.Core.Receivables, ebt_api_infrastructure_crud, microsoft_entityframeworkcore, microsoft_entityframeworkcore_changetracking, microsoft_entityframeworkcore_design (+7 more)
 
 ### Community 97 - "sales_pipeline.dart"
 Cohesion: 0.04
@@ -787,23 +782,23 @@ Nodes (54): _advance, _advanceStep, api, _badge, _billTo, build, _canAdvance, _c
 
 ### Community 98 - "FiscalDocument"
 Cohesion: 0.04
-Nodes (54): FiscalDocument, AccessKey, AdditionalInfo, CancelledAt, CancelledBy, CancelProtocol, CancelReason, CfopCode (+46 more)
+Nodes (55): FiscalDocument, AccessKey, AdditionalInfo, CancelledAt, CancelledBy, CancelProtocol, CancelReason, CfopCode (+47 more)
 
 ### Community 99 - "screens/duplicates.dart"
 Cohesion: 0.08
 Nodes (25): AutomaticKeepAliveClientMixin, build, createState, _dismiss, DuplicateGroupsView, _DuplicateGroupsViewState, DuplicatesAlert, _DuplicatesAlertState (+17 more)
 
-### Community 100 - "FiscalEndpoints"
-Cohesion: 0.18
-Nodes (9): FiscalSettings, WebApplication, FiscalCarrierOut, FiscalEndpoints, MonthlyPriceOut, TaxRuleIn, TaxRuleOut, ClaimsPrincipal (+1 more)
+### Community 100 - ".Errors"
+Cohesion: 0.25
+Nodes (7): FiscalSettings, WebApplication, FiscalCarrierOut, FiscalEndpoints, MonthlyPriceOut, TaxRuleIn, TaxRuleOut
 
 ### Community 101 - "BackupSettingsTests"
-Cohesion: 0.15
-Nodes (12): BackupSettingsDto, DateTimeOffset, DayOfWeek, TimeOnly, BackupSchedule, DateTimeOffset, Fact, HttpClient (+4 more)
+Cohesion: 0.31
+Nodes (5): BackupSettingsDto, Fact, HttpClient, Task, BackupSettingsTests
 
-### Community 102 - "requisitions.dart"
-Cohesion: 0.06
-Nodes (33): api, _approve, base, build, _cancel, _cancellable, createState, _error (+25 more)
+### Community 102 - "DeliveryOut"
+Cohesion: 0.19
+Nodes (20): DateOnly, DateTimeOffset, IReadOnlyList, DeliveryLineOut, DeliveryOut, DeliverySummaryOut, LostReasonOut, PipelineCard (+12 more)
 
 ### Community 103 - "record_nav.dart"
 Cohesion: 0.05
@@ -818,8 +813,8 @@ Cohesion: 0.07
 Nodes (30): build, createState, customerOrderPdf, _day, detail, didUpdateWidget, dispose, doc (+22 more)
 
 ### Community 106 - "ProductionEndpoints"
-Cohesion: 0.10
-Nodes (18): Audit findings (coupling and bottlenecks), Knowledge graph, MetaGest architecture, MVC mapping, Permissions, Why there is no MVC folder move, Exception, Expression (+10 more)
+Cohesion: 0.27
+Nodes (6): Expression, Func, IResult, ProductionSettings, WebApplication, ProductionEndpoints
 
 ### Community 107 - "tube_diagram.dart"
 Cohesion: 0.04
@@ -834,24 +829,24 @@ Cohesion: 0.05
 Nodes (39): api, base, _body, build, context, createState, _delete, _edit (+31 more)
 
 ### Community 110 - "PriceSimulatorExtrasTests"
-Cohesion: 0.18
+Cohesion: 0.19
 Nodes (11): IdOnly, PriceSimulationIn, DateOnly, Fact, HttpClient, Task, IdOnly, PriceSimulatorExtrasTests (+3 more)
 
 ### Community 111 - "return"
-Cohesion: 0.03
-Nodes (71): ButtonStyleButton, CheckboxListTile, main, open, main, _cert, _delivery, f (+63 more)
+Cohesion: 0.02
+Nodes (88): ButtonStyleButton, StagePath, _cert, _delivery, f, lines, main, _pendingHistory (+80 more)
 
 ### Community 112 - "UserRole"
 Cohesion: 0.12
 Nodes (15): AuthorizationOptions, IReadOnlyDictionary, Access, UserRole, Admin, Engineering, Production, Purchasing (+7 more)
 
-### Community 114 - "ProductOut"
-Cohesion: 0.20
-Nodes (15): Random, MachineIn, ProductOut, List, BulkApplyIn, ProcessIn, ProductionReasonIn, ProcessLine (+7 more)
+### Community 114 - "ProcessSuggestionTests"
+Cohesion: 0.19
+Nodes (17): Random, MachineIn, MachineOut, List, BulkApplyIn, ProcessIn, ProductionReasonIn, IReadOnlyDictionary (+9 more)
 
-### Community 115 - "SefazSpClient"
-Cohesion: 0.09
-Nodes (35): Body, HttpMessageHandler, FiscalException, Field, Status, CancellationToken, HttpClient, Task (+27 more)
+### Community 115 - "SefazOptions"
+Cohesion: 0.12
+Nodes (25): Body, HttpMessageHandler, X509Certificate2, SefazOptions, CertificatePassword, CertificatePath, IsReal, Mode (+17 more)
 
 ### Community 116 - "dart:async"
 Cohesion: 0.03
@@ -862,36 +857,36 @@ Cohesion: 0.19
 Nodes (4): Fail(), Find-Port(), Test-Bindable(), Test-Port()
 
 ### Community 118 - "MovementType"
-Cohesion: 0.07
-Nodes (29): CancellationToken, ClaimsPrincipal, DateOnly, DateTimeOffset, Expression, StockSettings, Task, ClosingOut (+21 more)
+Cohesion: 0.10
+Nodes (23): DateOnly, DateTimeOffset, ClosingOut, ReservationOut, StockDocumentOut, StockLotOut, StockMovementOut, MovementType (+15 more)
 
-### Community 119 - "settings_admin.dart"
-Cohesion: 0.07
-Nodes (27): AdminSection, at, BackupSection, BackupStatus, build, configured, count, DrillInfo (+19 more)
+### Community 119 - ".MapReceivables"
+Cohesion: 0.25
+Nodes (10): WebApplication, CancellationToken, DateOnly, IQueryable, IReadOnlyList, Task, CustomerBalance, PostPayment (+2 more)
 
 ### Community 120 - "dashboard_test.dart"
 Cohesion: 0.03
-Nodes (76): Card, formatEditUpdate, _plain, StripTab, client, json, legacyListTest, lists (+68 more)
+Nodes (76): Card, StripTab, client, json, legacyListTest, lists, log, main (+68 more)
 
 ### Community 121 - "fiscal.dart"
 Cohesion: 0.04
-Nodes (48): api, _authSection, base, _body, build, _cancel, _cancelConsequences, cfops (+40 more)
+Nodes (49): api, _authSection, base, _body, build, _cancel, _cancelConsequences, cfops (+41 more)
 
 ### Community 122 - ".Setup"
 Cohesion: 0.24
 Nodes (11): BackupSettingsInput, BackupListResponse, DateTimeOffset, Dir, Fact, HttpClient, HttpResponseMessage, InlineData (+3 more)
 
-### Community 123 - "settings_widgets.dart"
-Cohesion: 0.07
-Nodes (27): build, children, control, createState, _data, _error, formatMoment, _gap (+19 more)
+### Community 123 - "StockDocument"
+Cohesion: 0.11
+Nodes (19): List, StockDocument, CreatedAt, CreatedBy, Customer, CustomerId, Date, Id (+11 more)
 
 ### Community 124 - "ImportOptions"
 Cohesion: 0.15
 Nodes (12): IReadOnlyList, ImportOptions, CodePage, DefaultNcm, Directory, DryRun, Steps, CancellationToken (+4 more)
 
 ### Community 125 - "Product"
-Cohesion: 0.19
-Nodes (11): Quality certificates, CancellationToken, IEnumerable, IReadOnlyList, JsonSerializerOptions, List, Task, LegacySpec (+3 more)
+Cohesion: 0.13
+Nodes (19): Quality certificates, CancellationToken, IEnumerable, IReadOnlyList, JsonSerializerOptions, List, Task, LegacySpec (+11 more)
 
 ### Community 126 - "price_trend_chart.dart"
 Cohesion: 0.06
@@ -899,23 +894,23 @@ Nodes (36): a, build, cents, change, count, createState, customer, customerLabel
 
 ### Community 127 - "settings_sections.dart"
 Cohesion: 0.06
-Nodes (36): bool?, AboutSection, AccountSection, _AccountSectionState, AppearanceSection, build, _busy, _clearCache (+28 more)
+Nodes (34): bool?, AboutSection, AccountSection, _AccountSectionState, AppearanceSection, build, _busy, _clearCache (+26 more)
 
 ### Community 128 - "simulator_groups_test.dart"
 Cohesion: 0.06
 Nodes (31): base, diagram, diameter, main, openSim, profile, pump, pumpAndSettle (+23 more)
 
-### Community 129 - "CertificateService"
-Cohesion: 0.15
-Nodes (15): CancellationToken, ClaimsPrincipal, IServiceCollection, Task, WebApplication, CertificateEndpoints, CancellationToken, CultureInfo (+7 more)
+### Community 129 - "QualityCertificate"
+Cohesion: 0.06
+Nodes (46): CancellationToken, ClaimsPrincipal, IServiceCollection, Task, WebApplication, CertificateEndpoints, CancellationToken, CultureInfo (+38 more)
 
 ### Community 130 - "ProcessSuggester"
-Cohesion: 0.06
-Nodes (38): ProcessSuggestionOut, Machine, Code, Family, Id, Name, WorkCenter, WorkCenterId (+30 more)
+Cohesion: 0.08
+Nodes (32): Machine, Code, Family, Id, Name, WorkCenter, WorkCenterId, CancellationToken (+24 more)
 
-### Community 131 - "Sales.cs"
-Cohesion: 0.04
-Nodes (56): DateTimeOffset, BillTo, Bts, Ebt, LostReason, Competitor, CustomerGaveUp, LeadTime (+48 more)
+### Community 131 - "SalesOrder"
+Cohesion: 0.03
+Nodes (77): PriceHistory, ModelBuilder, SalesSettings, DateTimeOffset, BillTo, Bts, Ebt, PaymentTerm (+69 more)
 
 ### Community 132 - "production_floor_test.dart"
 Cohesion: 0.05
@@ -925,25 +920,25 @@ Nodes (43): body, client, _Fake, has, _json, last, load, loadStatus (+35 more)
 Cohesion: 0.20
 Nodes (9): Build, Estoque, MetaGest — Flutter client, Painel, Roles, Run, Screens, Suprimentos (+1 more)
 
-### Community 134 - "audit.dart"
-Cohesion: 0.09
-Nodes (22): _action, _actions, AuditDetailDialog, auditEntityName, AuditScreen, _AuditScreenState, build, createState (+14 more)
-
-### Community 135 - "RequisitionOut"
-Cohesion: 0.24
-Nodes (12): DueDateIn, OrderFromQuotationIn, ReasonIn, RequisitionOut, BidInput, DateOnly, Fact, HttpClient (+4 more)
-
-### Community 136 - "SefazEnvironment"
+### Community 134 - "drafts.dart"
 Cohesion: 0.12
-Nodes (24): Data flow of the sales chain, IConfiguration, IServiceCollection, SefazEnvironment, Homologation, Production, CancellationToken, Task (+16 more)
+Nodes (15): formatEditUpdate, _plain, _all, clear, DraftRegistry, DraftStore, keepFor, _key (+7 more)
+
+### Community 135 - "PurchasingEdgeTests"
+Cohesion: 0.25
+Nodes (11): OrderFromQuotationIn, QuotationSupplierIn, ReasonIn, BidInput, DateOnly, Fact, HttpClient, HttpResponseMessage (+3 more)
+
+### Community 136 - "SefazSpClient"
+Cohesion: 0.08
+Nodes (38): Features built, Data flow of the sales chain, IConfiguration, IServiceCollection, SefazEnvironment, Homologation, Production, CancellationToken (+30 more)
 
 ### Community 137 - "StatelessWidget"
-Cohesion: 0.03
-Nodes (61): _ContactLine, _CopyButton, _CustomerCompany, _CustomerHeader, _CustomerOrders, _MetricLine, ModuleCard, _ImportResultDialog (+53 more)
+Cohesion: 0.02
+Nodes (145): _ContactLine, _CopyButton, _CustomerCompany, _CustomerHeader, _CustomerOrders, ModuleCard, OverdueScreen, _ImportResultDialog (+137 more)
 
 ### Community 138 - "PurchaseOrderLine"
 Cohesion: 0.03
-Nodes (83): PurchasingSettings, ModelBuilder, DateOnly, List, GoodsReceipt, CalculatedTotal, DivergenceJustification, Id (+75 more)
+Nodes (71): PurchasingSettings, ModelBuilder, DateOnly, GoodsReceipt, CalculatedTotal, DivergenceJustification, Id, Installments (+63 more)
 
 ### Community 139 - "FiscalDocumentLine"
 Cohesion: 0.07
@@ -958,32 +953,32 @@ Cohesion: 0.06
 Nodes (31): DateTimeOffset, FeasibilityStudy, Characteristics, CommercialAt, CommercialBy, CommercialNote, CreatedAt, CreatedBy (+23 more)
 
 ### Community 142 - "CustomerOut"
-Cohesion: 0.14
-Nodes (27): List, CustomerTaxImportIn, CustomerAddressOut, CustomerIn, CustomerOut, ProductIn, PaymentTermOut, LegacySpecImportResult (+19 more)
+Cohesion: 0.30
+Nodes (13): List, CustomerTaxImportIn, CustomerCompany, CustomerIn, CustomerOut, ConsumerType, CustomerTaxMatch, CustomerTaxResult (+5 more)
 
 ### Community 143 - "report_doc.dart"
 Cohesion: 0.08
 Nodes (25): build, cells, enabled, fileBase, filters, flex, headers, kind (+17 more)
 
 ### Community 144 - "IExceptionHandler"
-Cohesion: 0.11
-Nodes (18): IExceptionHandler, microsoft_aspnetcore_diagnostics, CancellationToken, Exception, HttpContext, ValueTask, FiscalExceptionHandler, Exception (+10 more)
+Cohesion: 0.10
+Nodes (20): IExceptionHandler, microsoft_aspnetcore_diagnostics, npgsql, CancellationToken, Exception, HttpContext, ValueTask, FiscalExceptionHandler (+12 more)
 
-### Community 145 - ".Arrange"
-Cohesion: 0.40
+### Community 145 - "MoneyGuardTests"
+Cohesion: 0.41
 Nodes (5): DateOnly, Fact, HttpClient, Task, MoneyGuardTests
 
 ### Community 146 - "Auth.cs"
-Cohesion: 0.09
-Nodes (27): microsoft_aspnetcore_authentication_jwtbearer, microsoft_aspnetcore_identity, microsoft_identitymodel_tokens, PasswordHasher, CancellationToken, ClaimsPrincipal, DateTimeOffset, HttpContext (+19 more)
+Cohesion: 0.04
+Nodes (62): Entry, IPasswordHasher, microsoft_aspnetcore_authentication_jwtbearer, microsoft_aspnetcore_identity, microsoft_identitymodel_tokens, PasswordHasher, CancellationToken, ClaimsPrincipal (+54 more)
 
 ### Community 147 - "deliveries.dart"
 Cohesion: 0.04
-Nodes (54): api, base, _body, build, _cancel, _cancelNote, _certificateGate, _certificatesToGenerate (+46 more)
+Nodes (56): api, base, _body, build, _cancel, _cancelNote, _certificateGate, _certificatesToGenerate (+48 more)
 
-### Community 148 - "static const"
-Cohesion: 0.05
-Nodes (40): AppPrefs, appVersion, printPrompts, rowsPerPage, rowsPerPageChoices, _all, clear, DraftRegistry (+32 more)
+### Community 148 - "print_gate.dart"
+Cohesion: 0.11
+Nodes (18): _atPrefix, changes, choice, clear, continueLabel, count, doneOn, isDone (+10 more)
 
 ### Community 149 - "Stock Exceptions"
 Cohesion: 0.29
@@ -994,16 +989,16 @@ Cohesion: 0.23
 Nodes (10): Client, Fact, HttpClient, HttpResponseMessage, InlineData, JsonElement, Login, Task (+2 more)
 
 ### Community 151 - "Ebt.Core.Inventory"
-Cohesion: 0.17
-Nodes (9): Ebt.Core.Viability, Ebt.Core.Services, Ebt.Core.Production, Ebt.Core.Fiscal, Ebt.Core.Inventory, Ebt.Core.Sales, ebt_core_services_text, microsoft_extensions_hosting (+1 more)
+Cohesion: 0.20
+Nodes (8): Ebt.Core.Viability, Ebt.Core.Services, Ebt.Core.Production, Ebt.Core.Fiscal, Ebt.Core.Inventory, Ebt.Core.Sales, ebt_core_services_text, xunit
 
 ### Community 152 - "certificate_doc.dart"
 Cohesion: 0.08
 Nodes (23): address, _b, buildCertificatePdf, cancelled, _cell, company, _dash, doc (+15 more)
 
 ### Community 153 - "State"
-Cohesion: 0.03
-Nodes (88): EntitySpec, _CustomerAddressesState, build, _buildList, canWrite, createState, dispose, _edit (+80 more)
+Cohesion: 0.02
+Nodes (120): EntitySpec, _CustomerAddresses, _CustomerAddressesState, build, _buildList, canWrite, createState, dispose (+112 more)
 
 ### Community 154 - "DB Transactions"
 Cohesion: 0.33
@@ -1017,9 +1012,9 @@ Nodes (3): GeneratedRegex, Regex, SqlIdentifier
 Cohesion: 0.17
 Nodes (18): From, CancellationToken, DateOnly, IReadOnlyList, List, Task, WebApplication, BillingRow (+10 more)
 
-### Community 158 - "String?"
-Cohesion: 0.02
-Nodes (88): ApiClient get, api, build, createState, _draft, _draftAll, _eligible, _list (+80 more)
+### Community 158 - "order_invoice.dart"
+Cohesion: 0.05
+Nodes (38): api, _body, build, createState, _error, id, initState, _items (+30 more)
 
 ### Community 159 - "quick_actions.dart"
 Cohesion: 0.06
@@ -1035,23 +1030,23 @@ Nodes (12): Idle, Max, DateTimeOffset, AuditOut, Dictionary, Fact, HttpClient, H
 
 ### Community 162 - ".ReleasedOrderAsync"
 Cohesion: 0.25
-Nodes (7): DateOnly, Fact, HttpClient, HttpResponseMessage, List, Task, FiscalIssuerTests
+Nodes (8): DateOnly, Fact, HttpClient, HttpResponseMessage, JsonElement, List, Task, FiscalIssuerTests
 
 ### Community 165 - "BomService"
-Cohesion: 0.22
-Nodes (13): Item, CancellationToken, Dictionary, IReadOnlyList, List, Seq, Task, BomCycleException (+5 more)
+Cohesion: 0.19
+Nodes (14): IResult, Item, CancellationToken, Dictionary, IReadOnlyList, List, Seq, Task (+6 more)
 
-### Community 166 - "RowVersionFilter"
-Cohesion: 0.24
-Nodes (7): EndpointFilterDelegate, EndpointFilterInvocationContext, IEndpointFilter, CancellationToken, Task, ValueTask, RowVersionFilter
+### Community 166 - "Employee"
+Cohesion: 0.12
+Nodes (17): WorkCenter, Code, CostCenter, Id, Name, Employee, Active, Code (+9 more)
 
-### Community 167 - "ProductionModels.cs"
-Cohesion: 0.11
-Nodes (25): IReadOnlySet, DateOnly, IReadOnlyList, TimeOnly, BulkRequirementsResult, LoadRow, OperationProgress, OrderInput (+17 more)
+### Community 167 - ".ScheduleTreeAsync"
+Cohesion: 0.23
+Nodes (9): IReadOnlySet, CancellationToken, DateOnly, IReadOnlyList, List, Task, DateOnly, WorkCalendar (+1 more)
 
 ### Community 168 - "purchasing_flow_test.dart"
-Cohesion: 0.06
-Nodes (30): _openList, _receive, _new, build, _pushed, main, answer, body (+22 more)
+Cohesion: 0.05
+Nodes (38): answer, body, _day, _Env, failWith, _json, last, log (+30 more)
 
 ### Community 171 - ".CreditAsync"
 Cohesion: 0.47
@@ -1062,16 +1057,16 @@ Cohesion: 0.09
 Nodes (22): FiscalSettings, CancelWindowHours, City, CityIbgeCode, Cnpj, Company, CompanyName, Complement (+14 more)
 
 ### Community 174 - "Graph Report - sidergest  (2026-11-01)"
-Cohesion: 0.22
-Nodes (8): Community Hubs (Navigation), Corpus Check, God Nodes (most connected - your core abstractions), Graph Freshness, Graph Report - sidergest  (2026-11-01), Import Cycles, Summary, Surprising Connections (you probably didn't know these)
+Cohesion: 0.15
+Nodes (14): Community Hubs (Navigation), Corpus Check, God Nodes (most connected - your core abstractions), Graph Freshness, Graph Report - sidergest  (2026-11-01), Import Cycles, Knowledge Gaps, Suggested Questions (+6 more)
 
 ### Community 175 - "admin_screens_test.dart"
 Cohesion: 0.12
 Nodes (16): client, json, log, main, open, openPreferences, pumpAndSettle, pumpWidget (+8 more)
 
 ### Community 176 - "Ebt.Api.Infrastructure"
-Cohesion: 0.13
-Nodes (13): Ebt.Api.Infrastructure, Ebt.Api.Endpoints, Ebt.Core.Maintenance, Ebt.Core.Duplicates, Ebt.Tests, microsoft_aspnetcore_authorization, microsoft_aspnetcore_routing, microsoft_extensions_dependencyinjection (+5 more)
+Cohesion: 0.10
+Nodes (21): Ebt.Api.Infrastructure, Ebt.Api.Endpoints, Ebt.Core.Duplicates, Ebt.Core.Purchasing, Ebt.Tests, ICollectionFixture, microsoft_aspnetcore_authorization, microsoft_aspnetcore_hosting (+13 more)
 
 ### Community 177 - "SalesOrderStatus"
 Cohesion: 0.15
@@ -1089,21 +1084,21 @@ Nodes (50): build, _certificateCovers, deliveryNeedsInvoice, deliveryPath, deliv
 Cohesion: 0.06
 Nodes (35): api, approved, _base, _blank, build, _busy, changed, _choose (+27 more)
 
-### Community 181 - "SteelEndpoints.cs"
+### Community 181 - ".Steel_lot_slitter_and_usage_balance"
 Cohesion: 0.21
-Nodes (12): DateOnly, DateTimeOffset, Expression, IServiceCollection, SlitterJobIn, SlitterJobOut, SteelEndpoints, SteelLotIn (+4 more)
+Nodes (13): DateOnly, DateTimeOffset, Expression, IServiceCollection, SlitterJobIn, SlitterJobOut, SteelEndpoints, SteelLotIn (+5 more)
 
 ### Community 182 - "SearchEndpoints.cs"
 Cohesion: 0.26
 Nodes (10): Key, Policy, CancellationToken, IReadOnlyList, Task, WebApplication, SearchEndpoints, SearchGroup (+2 more)
 
-### Community 183 - ".Delivery_records_lot_invoiced_value_and_balances"
-Cohesion: 0.27
-Nodes (9): Setup, FeasibilityNoteIn, DateOnly, Fact, HttpClient, List, Task, Setup (+1 more)
+### Community 183 - "StockImportOptions"
+Cohesion: 0.14
+Nodes (13): DateOnly, StockImportOptions, CodePage, Directory, DryRun, OpeningDate, OwnLocation, ThirdPartyLocation (+5 more)
 
-### Community 184 - "TaxRule"
-Cohesion: 0.03
-Nodes (67): DateOnly, DateTimeOffset, List, FiscalEvent, CreatedAt, CreatedBy, Document, DocumentId (+59 more)
+### Community 184 - "Cfop"
+Cohesion: 0.02
+Nodes (98): CfopIn, CfopOut, FiscalSettings, ModelBuilder, DateOnly, DateTimeOffset, List, Cfop (+90 more)
 
 ### Community 185 - "login.dart"
 Cohesion: 0.07
@@ -1114,16 +1109,16 @@ Cohesion: 0.07
 Nodes (29): actions.dart, actionLabel, build, createState, didUpdateWidget, _dismiss, dismissDuplicate, _dismissed (+21 more)
 
 ### Community 187 - "MetaGest operations"
-Cohesion: 0.10
-Nodes (20): Android release signing, Automatic backup (set in the app), Backups, Behind a reverse proxy, By hand, Disaster recovery (the computer is gone), E-mail (quote sending), Fiscal data of the old system (+12 more)
+Cohesion: 0.07
+Nodes (25): Android release signing, Automatic backup (set in the app), Backups, Behind a reverse proxy, By hand, Disaster recovery (the computer is gone), E-mail (quote sending), Fiscal data of the old system (+17 more)
 
 ### Community 188 - "idle_guard.dart"
 Cohesion: 0.07
 Nodes (30): build, _check, checkEvery, child, _closeWarning, createState, dispose, _ExpiryDialog (+22 more)
 
-### Community 189 - "NfPreview"
-Cohesion: 0.36
-Nodes (8): DateOnly, IReadOnlyList, NfPreview, NfPreviewInstallment, NfPreviewLine, NfPreviewParty, NfPreviewTransport, NfProblem
+### Community 189 - ".PreviewSaleAsync"
+Cohesion: 0.16
+Nodes (14): CancellationToken, DateOnly, IReadOnlyList, Task, NfPreview, NfPreviewInstallment, NfPreviewLine, NfPreviewParty (+6 more)
 
 ### Community 190 - "RefreshToken"
 Cohesion: 0.10
@@ -1134,8 +1129,8 @@ Cohesion: 0.13
 Nodes (14): Auth and roles, Endpoints, Estoque, Import legacy DBFs, Knowledge graph (Graphify), Layout (MVC mapping), MetaGest — Engenharia, Estoque, Suprimentos, PCP, Quick start (Windows) (+6 more)
 
 ### Community 192 - ".Describe"
-Cohesion: 0.16
-Nodes (10): Tables, GeneratedRegex, IReadOnlyList, Regex, LegacyDbf, LegacyTable, Control, Dictionary (+2 more)
+Cohesion: 0.18
+Nodes (8): Tables, GeneratedRegex, IReadOnlyList, Regex, LegacyTable, Control, Control, Dictionary
 
 ### Community 193 - "SecurityHardeningTests"
 Cohesion: 0.17
@@ -1146,40 +1141,40 @@ Cohesion: 0.06
 Nodes (32): 10. Como manter o histórico atualizado, 11. Ideias para o futuro, 12. Para quem for mexer no código, 1. Para que serve, 2. Onde encontrar, 3. Como usar, 4. O que o simulador mostra, 5. Como a sugestão é calculada (+24 more)
 
 ### Community 195 - "AuditInterceptor"
-Cohesion: 0.13
-Nodes (18): DbContextErrorEventData, DbContextEventData, EntityEntry, IDbContextTransaction, InterceptionResult, SaveChangesCompletedEventData, SaveChangesInterceptor, CancellationToken (+10 more)
+Cohesion: 0.05
+Nodes (51): DbConnection, DbContextErrorEventData, DbContextEventData, EntityEntry, Fk, IDbContextTransaction, IHttpContextAccessor, InterceptionResult (+43 more)
 
 ### Community 196 - "../session.dart"
-Cohesion: 0.02
-Nodes (102): ../api.dart, audit.dart, ChangeNotifier, f, _Fonts, lastSaveOffThread, _loaded, _loadFonts (+94 more)
+Cohesion: 0.03
+Nodes (74): ../api.dart, audit.dart, action, _Activity, _ActivitySkeleton, ActivityView, _ActivityViewState, at (+66 more)
 
 ### Community 197 - ".Lockout_and_signing_other_devices_out_are_audited"
 Cohesion: 0.40
 Nodes (6): Fact, HttpClient, List, Name, Task, AuditGapTests
 
 ### Community 198 - "system_text"
-Cohesion: 0.10
-Nodes (12): Ebt.DbfImport, dbfdatareader, system_globalization, system_reflection, system_security_cryptography, system_security_cryptography_x509certificates, system_security_cryptography_xml, system_text (+4 more)
+Cohesion: 0.09
+Nodes (14): Ebt.DbfImport, Ebt.Core.Maintenance, dbfdatareader, system_collections_concurrent, system_globalization, system_reflection, system_security_cryptography, system_security_cryptography_x509certificates (+6 more)
 
 ### Community 199 - "discard_guard.dart"
-Cohesion: 0.06
-Nodes (36): bool get, anyDirty, build, child, confirmDiscard, createState, didChangeDependencies, dirty (+28 more)
+Cohesion: 0.08
+Nodes (25): anyDirty, build, child, confirmDiscard, createState, didChangeDependencies, dirty, DirtyRegistry (+17 more)
 
 ### Community 200 - "Mail.cs"
 Cohesion: 0.07
 Nodes (32): mailkit, mailkit_net_smtp, mailkit_security, microsoft_extensions_configuration, mimekit, SecureSocketOptions, CancellationToken, IConfiguration (+24 more)
 
-### Community 201 - ".Sale_nf_uses_monthly_price_over_the_order_price_is_recorded_only_after_authorization_and_can_be_cancelled"
-Cohesion: 0.17
-Nodes (22): SaleSetup, CancelInvoiceIn, FiscalSettingsDto, InutilizationOut, InutilizeIn, MonthlyPriceIn, StockLocationIn, StockLocationOut (+14 more)
+### Community 201 - "Page"
+Cohesion: 0.10
+Nodes (44): SaleSetup, CancelInvoiceIn, FiscalSettingsDto, InutilizationOut, InutilizeIn, MonthlyPriceIn, StockLocationIn, StockLocationOut (+36 more)
 
-### Community 203 - "Cfop"
-Cohesion: 0.09
-Nodes (21): CfopIn, CfopOut, Cfop, Active, Code, CofinsCst, DefaultCofinsPercent, DefaultPisPercent (+13 more)
+### Community 203 - "customer_pdf_test.dart"
+Cohesion: 0.12
+Nodes (15): activeTests, _api, client, _customer, deleteTests, _firstPage, _json, lastResult (+7 more)
 
 ### Community 206 - "Ebt.Api/Program.cs"
-Cohesion: 0.13
-Nodes (14): Ebt.Core.Mail, ICollectionFixture, microsoft_aspnetcore_hosting, microsoft_aspnetcore_httpoverrides, microsoft_aspnetcore_mvc_testing, microsoft_aspnetcore_testhost, microsoft_openapi, npgsql (+6 more)
+Cohesion: 0.29
+Nodes (5): Ebt.Core.Mail, microsoft_aspnetcore_httpoverrides, microsoft_openapi, system_text_json_serialization, system_threading_ratelimiting
 
 ### Community 207 - ".Setup"
 Cohesion: 0.24
@@ -1190,28 +1185,28 @@ Cohesion: 0.53
 Nodes (4): Get-DumpKind(), Remove-Dump(), Remove-OldDumps(), Say()
 
 ### Community 211 - ".EvaluateAsync"
-Cohesion: 0.14
+Cohesion: 0.15
 Nodes (18): BackupHealth, DrillFile, DrillStatus, ReadyReport, BackupSettings, CancellationToken, DateTimeOffset, IConfiguration (+10 more)
 
-### Community 213 - "package:flutter/material.dart"
-Cohesion: 0.08
-Nodes (20): build, ch, hi, lo, _lum, main, ratio, main (+12 more)
+### Community 213 - "nav.dart"
+Cohesion: 0.20
+Nodes (9): ensureVisible, link, module, openModule, openScreen, pumpAndSettle, tap, target (+1 more)
 
-### Community 214 - ".NewDb"
+### Community 214 - "PriceSuggestionTests"
 Cohesion: 0.22
 Nodes (7): DateOnly, Fact, HttpClient, HttpResponseMessage, Task, PriceSuggestionTests, Today
 
-### Community 215 - "PurchaseOrder"
-Cohesion: 0.04
-Nodes (48): DateTimeOffset, BidStatus, Approved, Pending, Rejected, PurchaseOrder, ClosedAt, ClosedBy (+40 more)
+### Community 215 - "Quotation"
+Cohesion: 0.03
+Nodes (65): DateTimeOffset, List, BidStatus, Approved, Pending, Rejected, PurchaseOrder, ClosedAt (+57 more)
 
 ### Community 217 - "tab_frame.dart"
 Cohesion: 0.09
 Nodes (23): anchor, build, _chips, createState, current, didUpdateWidget, has, icon (+15 more)
 
 ### Community 218 - "customers_test.dart"
-Cohesion: 0.08
-Nodes (23): _num, _address, addresses, answer, creditLimit, _customer, _Env, _json (+15 more)
+Cohesion: 0.11
+Nodes (17): _num, _address, addresses, answer, creditLimit, _customer, _Env, _json (+9 more)
 
 ### Community 219 - "Delivery"
 Cohesion: 0.05
@@ -1221,21 +1216,21 @@ Nodes (42): List, Delivery, Address, AddressId, Carrier, CreatedAt, CreatedBy, D
 Cohesion: 0.24
 Nodes (9): BackgroundService, Request lifecycle, PeriodicTimer, CancellationToken, ILogger, IServiceScopeFactory, Task, TimeSpan (+1 more)
 
-### Community 222 - "CLAUDE.md — MetaGest"
-Cohesion: 0.10
-Nodes (18): CLAUDE.md — MetaGest, Dev setup, Features built, Gotchas, graphify, Migrations, Project overview, Sales flow (+10 more)
+### Community 222 - ".Import_replaces_the_legacy_customer_reference_and_fills_code_lot_and_origin_note"
+Cohesion: 0.18
+Nodes (10): IServiceScope, DateTimeOffset, IReadOnlyList, CertificateMeasureOut, CertificateTemplateOut, LegacySpecImportResult, Fact, List (+2 more)
 
-### Community 223 - "VoidCallback"
-Cohesion: 0.09
-Nodes (20): AppTextScale, build, child, factor, max, min, build, child (+12 more)
+### Community 223 - ".SnapshotStructureAsync"
+Cohesion: 0.35
+Nodes (5): BulkResult, CancellationToken, Name, Task, Trade
 
 ### Community 224 - "SystemEndpoints"
 Cohesion: 0.10
-Nodes (28): AssemblyInformationalVersionAttribute, BackupItem, BackupListFile, RestoreResult, DeleteResult, DeleteState, ListedAt, RestoreState (+20 more)
+Nodes (29): AssemblyInformationalVersionAttribute, BackupItem, BackupListFile, RestoreResult, DeleteResult, DeleteState, ListedAt, RestoreState (+21 more)
 
-### Community 225 - "alerts.dart"
-Cohesion: 0.10
-Nodes (19): AlertBell, AlertInfo, _all, build, center, clear, count, filter (+11 more)
+### Community 225 - "responsive.dart"
+Cohesion: 0.17
+Nodes (11): build, child, DialogBody, dialogWidth, ideal, isTouchPlatform, scaledHeight, size (+3 more)
 
 ### Community 226 - "PurchaseRequisition"
 Cohesion: 0.06
@@ -1270,68 +1265,68 @@ Cohesion: 0.10
 Nodes (19): _b, buildEntityListPdf, buildEntityPdf, buildEntitySheetPdf, cell, code, count, doc (+11 more)
 
 ### Community 250 - "FakeMail"
-Cohesion: 0.20
+Cohesion: 0.19
 Nodes (11): CancellationToken, DateTimeOffset, Fact, IServiceScopeFactory, List, Task, FakeMail, Enabled (+3 more)
 
 ### Community 252 - "dart:convert"
 Cohesion: 0.04
-Nodes (66): ApiException, main, enterText, fakeBackend, json, login, main, page (+58 more)
+Nodes (71): CheckboxListTile, ApiException, main, enterText, fakeBackend, json, login, main (+63 more)
 
 ### Community 253 - "Revision"
-Cohesion: 0.12
-Nodes (17): DateTimeOffset, RevisionIn, RevisionOut, DateTimeOffset, Revision, Code, CreatedAt, Id (+9 more)
+Cohesion: 0.13
+Nodes (15): RevisionIn, DateTimeOffset, Revision, Code, CreatedAt, Id, Kind, Product (+7 more)
 
 ### Community 254 - "PriceHistoryImporter"
-Cohesion: 0.09
-Nodes (20): Row, IConfiguration, IMemoryCache, IServiceCollection, CancellationToken, DateOnly, DbUpdateException, Dictionary (+12 more)
+Cohesion: 0.12
+Nodes (15): Row, CancellationToken, DateOnly, DbUpdateException, Dictionary, IEnumerable, IReadOnlyDictionary, IReadOnlyList (+7 more)
 
-### Community 255 - "Page"
-Cohesion: 0.13
-Nodes (25): IHostedService, DateOnly, DateTimeOffset, IReadOnlyList, Task, CorrectionIn, FiscalCarrierIn, FiscalDocumentOut (+17 more)
+### Community 255 - ".ReleasedSaleAsync"
+Cohesion: 0.15
+Nodes (21): IHostedService, Setup, DateOnly, DateTimeOffset, IReadOnlyList, Task, CorrectionIn, FiscalCarrierIn (+13 more)
 
-### Community 256 - "StockMovement"
-Cohesion: 0.06
-Nodes (37): ModelBuilder, StockSettings, StockBalance, Id, Location, LocationId, Lot, LotId (+29 more)
+### Community 256 - "MVC mapping"
+Cohesion: 0.17
+Nodes (9): MVC mapping, IServiceCollection, Exception, HttpContext, IConfiguration, IMemoryCache, IServiceCollection, ValueTask (+1 more)
 
 ### Community 257 - "IdempotencyKey"
-Cohesion: 0.13
-Nodes (13): ModelBuilder, DateTimeOffset, IdempotencyKey, BodyHash, CreatedAt, Id, InFlight, Key (+5 more)
+Cohesion: 0.11
+Nodes (16): _Chevron, CustomClipper, ModelBuilder, DateTimeOffset, IdempotencyKey, BodyHash, CreatedAt, Id (+8 more)
 
-### Community 258 - "purchase_orders_test.dart"
-Cohesion: 0.09
-Nodes (21): main, open, answer, body, _day, _Env, failWith, _json (+13 more)
+### Community 258 - "SalesSettings"
+Cohesion: 0.18
+Nodes (11): SalesSettings, ApprovalValidityDays, DefaultConditions, DefaultValidityDays, FollowUpDays, Id, MaxDiscountPercent, MinimumOrderValue (+3 more)
 
-### Community 259 - "CustomerAddressIn"
-Cohesion: 0.27
-Nodes (8): CustomerAddressIn, ProductKind, Part, Fact, HttpClient, List, Task, EngineeringTests
+### Community 259 - "EngineeringTests"
+Cohesion: 0.28
+Nodes (7): ProductKind, Part, Fact, HttpClient, List, Task, EngineeringTests
 
-### Community 260 - ".InvokeAsync"
-Cohesion: 0.27
-Nodes (5): ReadOnlyMemory, CancellationToken, HttpContext, Task, ValueTask
+### Community 260 - "IdempotencyMiddleware"
+Cohesion: 0.14
+Nodes (13): ReadOnlyMemory, RequestDelegate, CancellationToken, DateTime, GeneratedRegex, HttpContext, ILogger, IServiceScopeFactory (+5 more)
 
 ### Community 261 - "record_links.dart"
 Cohesion: 0.09
 Nodes (21): certificates.dart, i, id, ids, kind, openRecordByKind, page, recordLabels (+13 more)
 
 ### Community 263 - "NfeSchema"
-Cohesion: 0.17
-Nodes (10): Lazy, IReadOnlyList, Stream, Type, EmbeddedResolver, NfeSchema, Uri, XmlResolver (+2 more)
+Cohesion: 0.09
+Nodes (19): Lazy, Como funciona, Devolução e CC-e, Emissão de NF-e, Ligar a SEFAZ real (SEFAZ-SP), O que é STUB / não feito, Premissas a confirmar com o contador, IReadOnlyList (+11 more)
 
 ### Community 264 - "backup-agent.ps1"
 Cohesion: 0.35
 Nodes (14): Get-Instant(), Get-NextDue(), Invoke-Agent(), Invoke-DeleteRequest(), Invoke-DrillIfDue(), Invoke-RestoreRequest(), Invoke-Sql(), Publish-BackupList() (+6 more)
 
-### Community 265 - "IdempotencyMiddleware"
-Cohesion: 0.22
-Nodes (8): RequestDelegate, DateTime, GeneratedRegex, ILogger, IServiceScopeFactory, Regex, TimeSpan, IdempotencyMiddleware
+### Community 265 - "FeasibilityOut"
+Cohesion: 0.29
+Nodes (8): CancellationToken, DateTimeOffset, IReadOnlyList, Task, FeasibilityIn, FeasibilityOrderOut, FeasibilityOut, SignoffOut
 
 ### Community 266 - "Backend conventions"
 Cohesion: 0.10
 Nodes (31): Ambiguous, By, Backend conventions, Flutter conventions, Repo layout, Created, D, Known (+23 more)
 
 ### Community 267 - "FiscalDataImporter"
-Cohesion: 0.20
-Nodes (17): CancellationToken, HashSet, IReadOnlyList, JsonSerializerOptions, List, Task, BundleCarrier, BundleCfop (+9 more)
+Cohesion: 0.17
+Nodes (21): CustomerMap, CancellationToken, Dictionary, HashSet, IReadOnlyList, JsonSerializerOptions, List, Task (+13 more)
 
 ### Community 271 - "unload_guard_web.dart"
 Cohesion: 0.40
@@ -1342,12 +1337,12 @@ Cohesion: 0.07
 Nodes (29): _acronyms, _cap, cut, d, _fold, hit, _isShouting, lead (+21 more)
 
 ### Community 275 - "freeze_layout.dart"
-Cohesion: 0.17
-Nodes (11): BoxConstraints?, createRenderObject, FreezeLayout, frozen, _last, performLayout, _RenderFreezeLayout, updateRenderObject (+3 more)
+Cohesion: 0.10
+Nodes (18): BoxConstraints?, AppTextScale, build, child, factor, max, min, createRenderObject (+10 more)
 
-### Community 276 - "_Chevron"
-Cohesion: 0.67
-Nodes (3): _Chevron, CustomClipper, Path
+### Community 276 - "DbfImportTests"
+Cohesion: 0.33
+Nodes (4): IDisposable, Fact, Task, DbfImportTests
 
 ### Community 278 - "esc_back.dart"
 Cohesion: 0.10
@@ -1357,13 +1352,13 @@ Nodes (21): build, child, createState, didPop, didPush, didRemove, didReplace, d
 Cohesion: 0.67
 Nodes (3): DateSlashFormatter, _UpperCase, TextInputFormatter
 
-### Community 280 - "load_error.dart"
-Cohesion: 0.10
-Nodes (20): build, createState, _data, _error, _fetch, icon, initState, label (+12 more)
+### Community 280 - "ProductionOrderStatus"
+Cohesion: 0.25
+Nodes (8): ProductionOrderStatus, Cancelled, Closed, Created, Finished, InProduction, Released, Stopped
 
-### Community 285 - "Customer"
-Cohesion: 0.07
-Nodes (29): Customer, ProductCustomer, Active, Customer, CustomerDescription, CustomerId, CustomerPartNumber, Product (+21 more)
+### Community 285 - "OrderMaterial"
+Cohesion: 0.18
+Nodes (10): DateOnly, OrderMaterial, Customer, CustomerId, Id, LastDate, Material, Note (+2 more)
 
 ### Community 298 - "ProcessTemplate"
 Cohesion: 0.07
@@ -1382,64 +1377,60 @@ Cohesion: 0.15
 Nodes (12): IAsyncLifetime, Program, HttpClient, Task, WebApplicationFactory, PurchasingFixture, ConnectionString, Handler (+4 more)
 
 ### Community 302 - "Map"
-Cohesion: 0.05
-Nodes (40): api, build, _busy, _changes, _choose, createState, _error, f (+32 more)
+Cohesion: 0.03
+Nodes (68): _body, build, _busy, _confirm, createState, dataResetConfirmWord, _DataResetDialog, _DataResetDialogState (+60 more)
 
-### Community 303 - "String get"
-Cohesion: 0.10
-Nodes (20): build, _busy, createState, current, DeviceInfo, DevicesView, _DevicesViewState, _error (+12 more)
+### Community 303 - ".MapPriceSuggestion"
+Cohesion: 0.33
+Nodes (5): ClaimsPrincipal, DateTimeOffset, WebApplication, PriceSimulationOut, PriceSuggestionEndpoints
 
 ### Community 304 - "StockLot"
-Cohesion: 0.10
-Nodes (21): InspectionIn, LotStatus, Quarantine, Rejected, Released, StockLot, Code, HeatNumber (+13 more)
+Cohesion: 0.06
+Nodes (32): InspectionIn, LotStatus, Quarantine, Rejected, Released, StockBalance, Id, Location (+24 more)
 
 ### Community 305 - ".ImportCoreAsync"
 Cohesion: 0.17
-Nodes (15): Op, CancellationToken, DateOnly, DbUpdateException, Dictionary, IEnumerable, IReadOnlyDictionary, IReadOnlyList (+7 more)
+Nodes (13): Op, CancellationToken, DateOnly, DbUpdateException, Dictionary, IEnumerable, IReadOnlyList, List (+5 more)
 
 ### Community 306 - ".NewOrderAsync"
 Cohesion: 0.25
 Nodes (9): DateOnly, Fact, HttpClient, HttpResponseMessage, IEnumerable, JsonElement, List, Task (+1 more)
 
-### Community 307 - "suppliers_test.dart"
-Cohesion: 0.15
-Nodes (12): client, _json, log, main, _page, _performance, _pump, pumpAndSettle (+4 more)
+### Community 307 - "FeasibilityStatus"
+Cohesion: 0.29
+Nodes (6): FeasibilitySummaryOut, FeasibilityStatus, Approved, Draft, InReview, Rejected
 
 ### Community 308 - "SmartSearch"
 Cohesion: 0.35
 Nodes (6): Parsed, IQueryable, IReadOnlyList, Regex, Parsed, SmartSearch
 
-### Community 309 - "AppUser"
-Cohesion: 0.11
-Nodes (17): IPasswordHasher, ILogger, AppUser, Active, DisplayName, Email, FailedLogins, HideLegacyAlerts (+9 more)
+### Community 309 - "PurchasingSettings"
+Cohesion: 0.29
+Nodes (7): PurchasingSettings, AllowEarlyReceipt, EarlyReceiptGraceDays, Id, ReceivingLocation, ReceivingLocationId, ReceivingTolerancePercent
 
 ### Community 310 - ".Customers_are_found_by_any_words_of_the_name_without_accents_and_by_document_or_city"
 Cohesion: 0.33
 Nodes (6): Fact, HttpClient, JsonElement, List, Task, SmartSearchTests
 
-### Community 311 - ".ShippedWithNfAsync"
-Cohesion: 0.30
-Nodes (10): DateTimeOffset, ReceivablePaymentIn, ReceivablePaymentOut, DateOnly, Fact, HttpClient, List, Task (+2 more)
+### Community 311 - ".Duplicatas_take_partial_payments_reversals_and_follow_the_nf_status"
+Cohesion: 0.25
+Nodes (11): DateTimeOffset, ReceivablePaymentIn, ReceivablePaymentOut, AgingRow, DateOnly, Fact, HttpClient, List (+3 more)
 
-### Community 312 - "DuplicateDismissal"
-Cohesion: 0.17
-Nodes (10): ModelBuilder, DateTimeOffset, DuplicateDismissal, CreatedAt, CreatedBy, HighId, Id, Kind (+2 more)
+### Community 312 - "MetaGest architecture"
+Cohesion: 0.33
+Nodes (5): Audit findings (coupling and bottlenecks), Knowledge graph, MetaGest architecture, Permissions, Why there is no MVC folder move
 
-### Community 313 - "StockSettings"
-Cohesion: 0.29
-Nodes (7): StockSettings, AllowNegativeStock, CuttingServicePerKg, DeductIcmsFromAverage, Id, ScrapPercent, ScrapResalePerKg
+### Community 314 - ".NextRun"
+Cohesion: 0.14
+Nodes (10): DateTimeOffset, DayOfWeek, TimeOnly, BackupSchedule, DateOnly, DateTime, DateTimeOffset, Clock (+2 more)
 
-### Community 314 - ".Today"
-Cohesion: 0.26
-Nodes (5): DateOnly, DateTime, DateTimeOffset, Clock, TimeZoneInfo
-
-### Community 315 - "TokenService"
-Cohesion: 0.18
-Nodes (9): Entry, ConcurrentDictionary, IConfiguration, TimeSpan, TokenService, ReuseGrace, UserCache, Generation (+1 more)
+### Community 315 - ".The_list_carries_the_contact_data_of_the_default_address"
+Cohesion: 0.50
+Nodes (3): Fact, Task, SupplierListTests
 
 ### Community 316 - ".Production_dashboard_splits_late_orders_into_recent_and_legacy"
-Cohesion: 0.24
-Nodes (8): IReadOnlyDictionary, ProductionDashboardOut, OpenOrdersSummaryOut, DateOnly, Fact, JsonElement, Task, DashboardTests
+Cohesion: 0.36
+Nodes (5): DateOnly, Fact, JsonElement, Task, DashboardTests
 
 ### Community 317 - "PriceHistory"
 Cohesion: 0.12
@@ -1449,61 +1440,37 @@ Nodes (15): DateOnly, PriceHistory, CustomerName, Date, DiameterMm, Id, ImportKe
 Cohesion: 0.19
 Nodes (12): Where settings live (map), CancellationToken, DateTimeOffset, Dictionary, IConfiguration, ILogger, IReadOnlyList, IServiceScopeFactory (+4 more)
 
-### Community 320 - "ProductionOrderMaterial"
-Cohesion: 0.14
-Nodes (14): ProductionOrderMaterial, ComponentProduct, ComponentProductId, Id, Material, MaterialId, OperationSequence, Order (+6 more)
-
 ### Community 321 - "LegacyRow"
-Cohesion: 0.32
+Cohesion: 0.33
 Nodes (4): IReadOnlyDictionary, LegacyRow, DateOnly, LegacyRowDates
 
 ### Community 322 - "DuplicateService"
-Cohesion: 0.06
-Nodes (45): Party, DismissResult, Pairs, Records, IReadOnlyList, WebApplication, DismissIn, DuplicateEndpoints (+37 more)
+Cohesion: 0.05
+Nodes (55): Party, DismissResult, Pairs, Records, IReadOnlyList, WebApplication, DismissIn, DuplicateEndpoints (+47 more)
 
 ### Community 326 - ".NewCustomerAsync"
-Cohesion: 0.29
-Nodes (7): CustomerNew, ItemNew, TermId, Fact, HttpClient, Task, NoveltyTests
+Cohesion: 0.26
+Nodes (8): CustomerNew, ItemNew, AddressId, TermId, Fact, HttpClient, Task, NoveltyTests
 
-### Community 327 - "StockLocationKind"
-Cohesion: 0.22
-Nodes (9): IReadOnlyList, AvailabilityOut, LocationQuantity, LowStockRequisitionsOut, StockLocationKind, Internal, Quarantine, Shipping (+1 more)
-
-### Community 328 - "FiscalReconcileService"
-Cohesion: 0.27
-Nodes (8): CancellationToken, IConfiguration, ILogger, IReadOnlyList, IServiceScopeFactory, Task, TimeSpan, FiscalReconcileService
+### Community 328 - "CLAUDE.md — MetaGest"
+Cohesion: 0.10
+Nodes (17): CLAUDE.md — MetaGest, Dev setup, Fiscal / NF, Gotchas, graphify, Migrations, Project overview, Workflow rules (+9 more)
 
 ### Community 329 - "NoteTally"
 Cohesion: 0.33
 Nodes (6): Last, N, Dictionary, Text, NoteTally, Top
 
-### Community 330 - ".Classify"
-Cohesion: 0.28
-Nodes (5): Price history (suggestion of price for a tube), Regex, PriceSpec, InlineData, Theory
-
-### Community 331 - "JwtOptions"
-Cohesion: 0.25
-Nodes (8): JwtOptions, Audience, ClockSkewSeconds, ExpiresMinutes, Issuer, RefreshDays, RefreshReuseGraceSeconds, SigningKey
-
 ### Community 334 - "LiveOrdersHidden"
-Cohesion: 0.29
+Cohesion: 0.22
 Nodes (6): IAsyncDisposable, Id, Source, List, ValueTask, LiveOrdersHidden
 
-### Community 335 - ".InTransaction"
-Cohesion: 0.16
-Nodes (12): Delivery, SaleInvoiceOptions, CancellationToken, DateOnly, HashSet, IReadOnlyCollection, Task, CancellationToken (+4 more)
-
-### Community 337 - "AuditEntry"
-Cohesion: 0.25
-Nodes (8): DateTimeOffset, AuditEntry, Action, At, Changes, Entity, EntityId, User
+### Community 335 - ".ShipAsync"
+Cohesion: 0.14
+Nodes (14): Sales flow, Delivery, SaleInvoiceOptions, SalesException, Field, Status, CancellationToken, DateOnly (+6 more)
 
 ### Community 340 - "workdays.dart"
 Cohesion: 0.10
 Nodes (20): a, addWorkDays, d, day, _easter, goodFriday, h, _holidayCache (+12 more)
-
-### Community 341 - "NfeKey"
-Cohesion: 0.33
-Nodes (3): IReadOnlyDictionary, NfeKey, NfeKeyTests
 
 ### Community 342 - "export-price-history.ps1"
 Cohesion: 0.47
@@ -1513,13 +1480,9 @@ Nodes (3): CustomerKey(), Fold(), ToUnit()
 Cohesion: 0.52
 Nodes (3): Fact, Task, SearchTests
 
-### Community 345 - ".ListAsync"
-Cohesion: 0.33
-Nodes (5): CancellationToken, IReadOnlyCollection, List, Task, LowStock
-
-### Community 346 - "ICurrentUser"
-Cohesion: 0.40
-Nodes (5): IHttpContextAccessor, HttpCurrentUser, Name, ICurrentUser, Name
+### Community 345 - ".MapInventory"
+Cohesion: 0.12
+Nodes (16): CancellationToken, ClaimsPrincipal, Expression, IReadOnlyList, StockSettings, Task, WebApplication, AvailabilityOut (+8 more)
 
 ### Community 347 - "_TrendPainter"
 Cohesion: 0.67
@@ -1529,29 +1492,29 @@ Nodes (3): _TrendPainter, _TubePainter, CustomPainter
 Cohesion: 0.23
 Nodes (6): DateOnly, WorkDays, Fact, WorkDaysParityTests, Fact, WorkDaysTests
 
-### Community 359 - "SalesException"
-Cohesion: 0.50
-Nodes (3): SalesException, Field, Status
+### Community 350 - "ApiFixture"
+Cohesion: 0.14
+Nodes (11): DateTimeOffset, HttpResponseMessage, JsonSerializerOptions, Task, WebApplicationFactory, ApiFixture, ConnectionString, HttpExtensions (+3 more)
 
 ## Knowledge Gaps
-- **6701 isolated node(s):** `IdempotencyScope`, `LruMap`, `status`, `message`, `fieldErrors` (+6696 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 7569 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **75 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **6708 isolated node(s):** `IdempotencyScope`, `LruMap`, `status`, `message`, `fieldErrors` (+6703 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 7579 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **78 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Ebt.Core.Services` connect `Ebt.Core.Inventory` to `Ebt.Core.Entities`, `simulator_groups_test.dart`, `BomService`, `system_text`, `.SuggestCoreAsync`, `Ebt.Api/Program.cs`, `Ebt.Api.Infrastructure`, `.Today`, `.MapReports`, `.Add`?**
-  _High betweenness centrality (0.199) - this node is a cross-community bridge._
-- **Why does `EbtDbContext` connect `EbtDbContext` to `PurchasingEndpoints.cs`, `StockService`, `PurchasingService`, `DataResetService`, `ProductionImport`, `.MapQuotes`, `.ConfigureSales`, `SalesService`, `SalesOrder`, `.OnModelCreating`, `ProductionEndpoints.cs`, `.MapProducts`, `PurchasingImport`, `ProductionReport`, `ImportReport`, `SalesOrderLine`, `Importer`, `Material`, `ReceivableRow`, `MasterDataEndpoints.cs`, `GoodsReceived`, `.MapViability`, `.SuggestCoreAsync`, `StockDocument`, `RoutingOperation`, `ProductionService`, `QualityCertificate`, `CustomerAddress`, `CrudSpec`, `SteelLot`, `FiscalService`, `.Requisition_quotation_order_receipt_flow`, `Ebt.Core.Entities`, `FiscalDocument`, `ProductionEndpoints`, `MovementType`, `ImportOptions`, `Product`, `CertificateService`, `ProcessSuggester`, `Sales.cs`, `PurchaseOrderLine`, `FiscalDocumentLine`, `CustomerOut`, `Auth.cs`, `DB Transactions`, `.MapReports`, `BomService`, `RowVersionFilter`, `Graph Report - sidergest  (2026-11-01)`, `SalesOrderStatus`, `SearchEndpoints.cs`, `TaxRule`, `RefreshToken`, `MetaGest — Engenharia, Estoque, Suprimentos, PCP`, `SecurityHardeningTests`, `Cfop`, `.EvaluateAsync`, `.NewDb`, `Delivery`, `SystemEndpoints`, `PurchaseRequisition`, `AverageCost`, `QuoteLine`, `Revision`, `PriceHistoryImporter`, `Page`, `StockMovement`, `IdempotencyKey`, `.InvokeAsync`, `Backend conventions`, `FiscalDataImporter`, `Customer`, `ProcessTemplate`, `Product`, `PriceSimulation`, `StockLot`, `.ImportCoreAsync`, `AppUser`, `DuplicateDismissal`, `TokenService`, `AlertService`, `ProductionOrderMaterial`, `DuplicateService`, `.InTransaction`, `AuditEntry`, `.ListAsync`?**
-  _High betweenness centrality (0.173) - this node is a cross-community bridge._
-- **Why does `_Nf` connect `nf_doc.dart` to `Page`?**
-  _High betweenness centrality (0.158) - this node is a cross-community bridge._
+- **Why does `Ebt.Core.Services` connect `Ebt.Core.Inventory` to `Ebt.Core.Entities`, `simulator_groups_test.dart`, `BomService`, `system_text`, `.SuggestCoreAsync`, `Ebt.Api/Program.cs`, `Ebt.Api.Infrastructure`, `.NextRun`, `.MapReports`, `.Add`?**
+  _High betweenness centrality (0.206) - this node is a cross-community bridge._
+- **Why does `EbtDbContext` connect `EbtDbContext` to `PurchasingEndpoints`, `StockService`, `PurchasingService`, `.AdminAsync`, `ProductionImport`, `.MapQuotes`, `ProductionOrderOperation`, `SalesService`, `SupplierAddress`, `ProductionEndpoints.cs`, `.MapProducts`, `PurchasingImport`, `ProductionReport`, `ImportReport`, `SalesOrderLine`, `Importer`, `Material`, `MasterDataEndpoints.cs`, `GoodsReceived`, `.MapViability`, `.SuggestCoreAsync`, `StockMovement`, `RoutingOperation`, `ProductionService`, `CertificateTemplate`, `CustomerAddress`, `CrudSpec`, `SteelLot`, `FiscalService`, `PurchasingEndpoints.cs`, `Ebt.Core.Entities`, `FiscalDocument`, `.MapReceivables`, `ImportOptions`, `Product`, `QualityCertificate`, `ProcessSuggester`, `SalesOrder`, `PurchaseOrderLine`, `FiscalDocumentLine`, `Auth.cs`, `DB Transactions`, `.MapReports`, `BomService`, `Employee`, `Graph Report - sidergest  (2026-11-01)`, `SalesOrderStatus`, `SearchEndpoints.cs`, `Cfop`, `RefreshToken`, `MetaGest — Engenharia, Estoque, Suprimentos, PCP`, `SecurityHardeningTests`, `AuditInterceptor`, `.EvaluateAsync`, `Quotation`, `Delivery`, `.Import_replaces_the_legacy_customer_reference_and_fills_code_lot_and_origin_note`, `.SnapshotStructureAsync`, `SystemEndpoints`, `PurchaseRequisition`, `AverageCost`, `QuoteLine`, `Revision`, `PriceHistoryImporter`, `.ReleasedSaleAsync`, `MVC mapping`, `IdempotencyKey`, `IdempotencyMiddleware`, `FeasibilityOut`, `Backend conventions`, `FiscalDataImporter`, `OrderMaterial`, `ProcessTemplate`, `Product`, `PriceSimulation`, `StockLot`, `.ImportCoreAsync`, `MetaGest architecture`, `AlertService`, `DuplicateService`, `.ConfigureViability`, `.ShipAsync`, `.MapInventory`?**
+  _High betweenness centrality (0.180) - this node is a cross-community bridge._
+- **Why does `_Nf` connect `nf_doc.dart` to `.ReleasedSaleAsync`?**
+  _High betweenness centrality (0.159) - this node is a cross-community bridge._
 - **Are the 7 inferred relationships involving `EbtDbContext` (e.g. with `Backend conventions` and `Audit findings (coupling and bottlenecks)`) actually correct?**
   _`EbtDbContext` has 7 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `IdempotencyScope`, `LruMap`, `status` to the rest of the system?**
-  _6701 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _6708 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `entities.dart` be split into smaller, more focused modules?**
   _Cohesion score 0.018867924528301886 - nodes in this community are weakly interconnected._
 - **Should `EbtDbContext` be split into smaller, more focused modules?**
-  _Cohesion score 0.018164881229622728 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.018604651162790697 - nodes in this community are weakly interconnected._

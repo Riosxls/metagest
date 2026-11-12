@@ -33,6 +33,8 @@ public class Customer : IHasSource
     public string? Phone { get; set; }
     /// <summary>Overrides the credit limit of the payment term when set.</summary>
     public decimal? CreditLimit { get; set; }
+    /// <summary>The customer wants the quality certificate before the load leaves: shipping items without an issued certificate is then refused. By default the NF comes first and the certificate (with the NF number) after it.</summary>
+    public bool RequireCertificateBeforeShip { get; set; }
     /// <summary>The customer's usual IPI (%): the default of a new quote line when the price list gives none.</summary>
     public decimal? IpiPercent { get; set; }
     /// <summary>The customer's usual ICMS (%) on sales. It depends on the destination state, so a quote line only takes it when the price list gives none.</summary>
