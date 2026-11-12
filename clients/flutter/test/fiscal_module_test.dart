@@ -324,5 +324,44 @@ void main() {
       // The save goes to the company in view (the form is not submitted here; the target is what matters).
       expect(sent.where((r) => r.method == 'PUT'), isEmpty);
     });
+
+    testWidgets('the emission switch asks first: turning on warns about the missing A1 and the spent numbers, and nothing is sent until confirmed', (
+      tester,
+    ) async {
+      final sent = await pumpScreen(tester, (s) => FiscalSettingsScreen(session: s, initialCompany: 'BST'));
+      expect(tester.widget<Switch>(find.byKey(const ValueKey('fiscal-enabled-switch'))).value, isFalse);
+      await tester.tap(find.byKey(const ValueKey('fiscal-enabled-switch')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Ligar a emissão de NF-e do BST?'), findsOneWidget);
+      expect(find.textContaining('ainda não há certificado digital A1'), findsOneWidget);
+      expect(find.textContaining('gastaria o número 897'), findsOneWidget);
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+      expect(sent.where((r) => r.method == 'PUT'), isEmpty);
+      expect(tester.widget<Switch>(find.byKey(const ValueKey('fiscal-enabled-switch'))).value, isFalse);
+
+      await tester.tap(find.byKey(const ValueKey('fiscal-enabled-switch')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ligar emissão'));
+      await tester.pumpAndSettle();
+      final put = sent.singleWhere((r) => r.method == 'PUT');
+      expect(put.url.path, '/api/fiscal/settings');
+      expect(put.url.queryParameters['company'], 'BST');
+      expect(jsonDecode(put.body)['enabled'], isTrue);
+    });
+
+    testWidgets('turning it off also asks, and says shipping stops issuing the NF', (tester) async {
+      final sent = await pumpScreen(tester, (s) => FiscalSettingsScreen(session: s));
+      expect(tester.widget<Switch>(find.byKey(const ValueKey('fiscal-enabled-switch'))).value, isTrue);
+      await tester.tap(find.byKey(const ValueKey('fiscal-enabled-switch')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Desligar a emissão de NF-e do EBT?'), findsOneWidget);
+      expect(find.textContaining('o número da NF volta a ser digitado à mão'), findsOneWidget);
+      await tester.tap(find.text('Desligar emissão'));
+      await tester.pumpAndSettle();
+      final put = sent.singleWhere((r) => r.method == 'PUT');
+      expect(put.url.queryParameters['company'], 'EBT');
+      expect(jsonDecode(put.body)['enabled'], isFalse);
+    });
   });
 }

@@ -8,6 +8,7 @@ import '../reports/danfe_doc.dart';
 import '../session.dart';
 import '../theme_tokens.dart';
 import '../widgets/actions.dart';
+import '../widgets/entity_form.dart' show confirm, showError;
 import '../widgets/load_error.dart';
 import '../widgets/page_column.dart';
 import '../widgets/pipeline.dart';
@@ -205,8 +206,22 @@ class _FiscalDocumentScreenState extends State<FiscalDocumentScreen> {
       title: 'Devolver da NF ${d['number']}',
       fields: [
         for (final (l, balance) in items)
-          FieldSpec('q_${l['id']}', '${l['code']} · ${fmt(l['description'])}', type: FieldType.decimal, min: 0, max: balance, hint: 'Saldo a devolver: ${fmtNum(balance, 4)} ${l['unit']}. Vazio = não devolve'),
-        const FieldSpec('locationId', 'Voltar ao estoque em', type: FieldType.lookup, lookup: LookupSpec('/api/stock-locations'), required: true, hint: 'Local que recebe as peças devolvidas'),
+          FieldSpec(
+            'q_${l['id']}',
+            '${l['code']} · ${fmt(l['description'])}',
+            type: FieldType.decimal,
+            min: 0,
+            max: balance,
+            hint: 'Saldo a devolver: ${fmtNum(balance, 4)} ${l['unit']}. Vazio = não devolve',
+          ),
+        const FieldSpec(
+          'locationId',
+          'Voltar ao estoque em',
+          type: FieldType.lookup,
+          lookup: LookupSpec('/api/stock-locations'),
+          required: true,
+          hint: 'Local que recebe as peças devolvidas',
+        ),
         const FieldSpec('reason', 'Motivo da devolução', required: true, hint: 'Sai na NF de devolução'),
       ],
       submit: (b) async => b,
@@ -223,7 +238,8 @@ class _FiscalDocumentScreenState extends State<FiscalDocumentScreen> {
     final ok = await confirmStep(
       context,
       title: 'Emitir a NF de devolução?',
-      message: 'Será emitida uma NF de entrada referenciando a NF ${d['number']}, e as peças voltam ao estoque. Para desfazer só cancelando a NF de devolução, dentro do prazo.',
+      message:
+          'Será emitida uma NF de entrada referenciando a NF ${d['number']}, e as peças voltam ao estoque. Para desfazer só cancelando a NF de devolução, dentro do prazo.',
       confirmLabel: 'Emitir devolução',
       icon: Icons.assignment_return_outlined,
     );
@@ -402,7 +418,12 @@ class _FiscalDocumentScreenState extends State<FiscalDocumentScreen> {
           Section(
             title: 'NFs de devolução',
             child: SimpleTable(
-              columns: [col('NF', 'number', numeric: true), labelCol('Situação', 'status', fiscalStatuses), moneyCol('Valor', 'invoiceTotal'), dateCol('Emissão', 'issuedAt')],
+              columns: [
+                col('NF', 'number', numeric: true),
+                labelCol('Situação', 'status', fiscalStatuses),
+                moneyCol('Valor', 'invoiceTotal'),
+                dateCol('Emissão', 'issuedAt'),
+              ],
               rows: (d['returns'] as List).cast<Map<String, dynamic>>(),
               actions: (e) => [
                 IconButton(
@@ -422,7 +443,13 @@ class _FiscalDocumentScreenState extends State<FiscalDocumentScreen> {
           Section(
             title: 'Cartas de correção',
             child: SimpleTable(
-              columns: [col('Nº', 'sequence', numeric: true), dateCol('Enviada em', 'createdAt'), col('Texto', 'text'), col('Protocolo', 'protocol'), col('Por', 'createdBy')],
+              columns: [
+                col('Nº', 'sequence', numeric: true),
+                dateCol('Enviada em', 'createdAt'),
+                col('Texto', 'text'),
+                col('Protocolo', 'protocol'),
+                col('Por', 'createdBy'),
+              ],
               rows: (d['events'] as List).cast<Map<String, dynamic>>(),
             ),
           ),
@@ -474,7 +501,12 @@ class _FiscalDocumentScreenState extends State<FiscalDocumentScreen> {
       tone: d['status'] == 'Rejected' ? Tone.danger : Tone.warning,
       actions: [
         if (s.canFiscalCancel && d['status'] == 'Pending')
-          FilledButton.icon(key: const ValueKey('fiscal-reconcile'), onPressed: _reconcile, icon: const Icon(Icons.sync), label: const Text('Conciliar com a SEFAZ')),
+          FilledButton.icon(
+            key: const ValueKey('fiscal-reconcile'),
+            onPressed: _reconcile,
+            icon: const Icon(Icons.sync),
+            label: const Text('Conciliar com a SEFAZ'),
+          ),
       ],
     );
   }
@@ -603,6 +635,30 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
     }
   }
 
+  /// Switches the emission of one company on or off, always after a warning that says what changes (and, with no A1 certificate, that the numbers are spent on notes with no fiscal value).
+  Future<void> _toggleEnabled(Map<String, dynamic> d, bool on) async {
+    final company = '${d['company'] ?? _company}';
+    final simulated = d['sefazSimulated'] != false;
+    final environment = _environments[d['environment']] ?? '${d['environment']}';
+    final message = on
+        ? 'Ligar a emissão de NF-e do $company?\n\n'
+              'A partir de agora, expedir uma entrega de um pedido "Faturar para $company" (e enviar uma remessa de beneficiamento) emite a nota fiscal.\n\n'
+              '${simulated ? 'Atenção: ainda não há certificado digital A1. A nota sairia num simulador interno, SEM valor fiscal, mas gastaria o número ${d['nextNumber']} e a numeração não volta atrás.' : 'Ambiente: $environment. Cada nota usa um número da numeração (próximo: ${d['nextNumber']}) e a numeração não volta atrás.'}\n\n'
+              'Quer mesmo ligar?'
+        : 'Desligar a emissão de NF-e do $company?\n\n'
+              'Expedir uma entrega deixa de emitir a nota: o número da NF volta a ser digitado à mão. As notas já emitidas continuam como estão.';
+    if (!await confirm(context, message, confirmLabel: on ? 'Ligar emissão' : 'Desligar emissão', danger: on && simulated)) return;
+    try {
+      await widget.session.api.put('/api/fiscal/settings?company=$company', {for (final f in _fields) f.key: d[f.key], 'enabled': on});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(on ? 'Emissão do $company ligada.' : 'Emissão do $company desligada.')));
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+    if (mounted) _retry();
+  }
+
   void _retry() => setState(() {
     _future = _fetch();
   });
@@ -635,14 +691,21 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
                   key: const ValueKey('fiscal-company'),
                   segments: [
                     for (final x in data.issuers)
-                      ButtonSegment(value: '${x['company']}', label: Text('${x['company']}', key: ValueKey('fiscal-company-${x['company']}')), icon: Icon(x['enabled'] == true ? Icons.check_circle_outline : Icons.circle_outlined)),
+                      ButtonSegment(
+                        value: '${x['company']}',
+                        label: Text('${x['company']}', key: ValueKey('fiscal-company-${x['company']}')),
+                        icon: Icon(x['enabled'] == true ? Icons.check_circle_outline : Icons.circle_outlined),
+                      ),
                   ],
                   selected: {'${d['company']}'},
                   onSelectionChanged: (v) => setState(() => _company = v.first),
                 ),
               ),
               const SizedBox(height: 4),
-              Text('Cada empresa emite com o seu CNPJ, a sua série e a sua numeração. Um pedido usa o emitente do "Faturar para".', style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                'Cada empresa emite com o seu CNPJ, a sua série e a sua numeração. Um pedido usa o emitente do "Faturar para".',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
               gap,
             ],
             NextStepCard(
@@ -652,8 +715,18 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
                   : 'Enquanto desligada, o número da NF continua sendo digitado à mão.',
               tone: d['enabled'] == true ? Tone.success : Tone.warning,
               actions: [
-                if (widget.session.isAdmin)
+                if (widget.session.isAdmin) ...[
+                  // The switch asks first, whichever way it moves: turning emission on spends numbers, turning it off changes how shipping works.
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Switch(key: const ValueKey('fiscal-enabled-switch'), value: d['enabled'] == true, onChanged: (v) => _toggleEnabled(d, v)),
+                      const SizedBox(width: 4),
+                      Text('Emissão ligada', style: Theme.of(context).textTheme.labelLarge),
+                    ],
+                  ),
                   FilledButton.tonalIcon(onPressed: () => _edit(d), icon: const Icon(Icons.edit_outlined), label: const Text('Editar parâmetros')),
+                ],
               ],
             ),
             if (missing.isNotEmpty) ...[
@@ -669,7 +742,7 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
               title: 'Emitente',
               child: InfoGrid([
                 ('Empresa', '${d['company'] ?? 'EBT'}'),
-              ('Razão social', or('companyName')),
+                ('Razão social', or('companyName')),
                 ('CNPJ', or('cnpj')),
                 ('Inscrição estadual', or('stateRegistration')),
                 (
@@ -705,7 +778,10 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           for (final c in data.cfops!.cast<Map>())
-                            Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Text('${c['code']} · ${c['description']}${c['active'] == false ? ' (inativo)' : ''}')),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Text('${c['code']} · ${c['description']}${c['active'] == false ? ' (inativo)' : ''}'),
+                            ),
                         ],
                       ),
               ),
