@@ -259,6 +259,9 @@ class _ShellState extends State<Shell> {
   /// Screens left behind by [_go], newest last, so Esc and Back return to the previous screen and not always to the Painel.
   final _history = <({String id, String? filter})>[];
 
+  /// A system screen opened from the settings window: Back from it (or from one of its tabs) opens the window again on the section it was on.
+  ({String screen, String? section})? _settingsReturn;
+
   /// Screens kept alive (filters, sort and scroll survive a visit elsewhere), keyed by [_key]. Oldest first.
   final _mounted = <String, ({String id, String? filter})>{};
 
@@ -311,7 +314,10 @@ class _ShellState extends State<Shell> {
     super.initState();
     RecordTrail.top.value = null;
     // The settings window lists the system screens (Parâmetros dos módulos, Usuários...) and opens them through this Shell.
-    SettingsLinks.open = _go;
+    SettingsLinks.open = (id, section) {
+      _settingsReturn = (screen: id, section: section);
+      unawaited(_go(id));
+    };
     final start = _startLocation();
     if (start != null) {
       _current = start.id;
@@ -604,6 +610,8 @@ class _ShellState extends State<Shell> {
   void _goNow(String id, String? filter) {
     _innerNav?.popUntil((r) => r.isFirst);
     if (id == _current && filter == _filter) return;
+    // Going anywhere that is not that screen or its tabs drops the way back to the settings window.
+    if (_settingsReturn case final r? when id != r.screen && !_sameGroup(id, r.screen)) _settingsReturn = null;
     final tab = _sameGroup(_current, id);
     if (id == 'dashboard') {
       _history.clear();
@@ -631,6 +639,20 @@ class _ShellState extends State<Shell> {
       inner.maybePop();
       return true;
     }
+    if (_settingsReturn case final r? when _current == r.screen || _sameGroup(_current, r.screen)) {
+      _settingsReturn = null;
+      _backOneScreen();
+      // The window comes back over the screen it was opened from, on the section it had.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(showUserSettings(context, widget.session, section: r.section));
+      });
+      return true;
+    }
+    return _backOneScreen();
+  }
+
+  /// Previous screen of the history, else the Painel; false when already there.
+  bool _backOneScreen() {
     if (_history.isNotEmpty) {
       final t = _history.removeLast();
       _fwd.add((id: _current, filter: _filter));

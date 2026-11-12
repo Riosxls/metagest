@@ -164,6 +164,42 @@ void main() {
     expect(find.text('Dispositivo e sobre'), findsOneWidget);
   });
 
+  testWidgets('Back from a system screen opened in Preferências brings the window back on the same section', (tester) async {
+    await pump(tester, 'Admin');
+    await openPreferences(tester);
+    await tester.tap(find.byKey(const ValueKey('settings-nav-general')));
+    await tester.pumpAndSettle();
+    final link = find.byKey(const ValueKey('settings-screen-users'));
+    await tester.scrollUntilVisible(
+      link,
+      100,
+      scrollable: find.descendant(of: find.byType(Dialog), matching: find.byType(Scrollable)).first,
+    );
+    await tester.tap(link);
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing, reason: 'the window closed to show the page');
+    // Moving between the tabs of the page is not a trip.
+    await tester.tap(find.byKey(const ValueKey('tab-permissions')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Voltar'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsOneWidget, reason: 'Back reopens Preferências');
+    expect(tester.widget<Text>(find.byKey(const ValueKey('settings-title'))).data, 'Geral');
+  });
+
+  testWidgets('going elsewhere from that screen forgets the way back to Preferências', (tester) async {
+    await pump(tester, 'Admin');
+    await open(tester, 'Usuários');
+    await tester.tap(find.widgetWithText(ListTile, 'Painel'));
+    await tester.pumpAndSettle();
+    await open(tester, 'Usuários');
+    await tester.tap(find.widgetWithText(ListTile, 'Painel'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+  });
+
   testWidgets('Admin lists users, chips and unlock only for locked', (tester) async {
     final (_, log) = await pump(tester, 'Admin');
     await open(tester, 'Usuários');

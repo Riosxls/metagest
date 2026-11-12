@@ -269,7 +269,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       trailing: const Icon(Icons.open_in_new, size: 18),
       onTap: () => _guard(() {
         Navigator.pop(context);
-        SettingsLinks.open?.call(l.item.id);
+        SettingsLinks.open?.call(l.item.id, _selected);
       }),
     ),
   );
@@ -354,6 +354,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
 }
 
 /// How the settings window opens a system screen on the main window. The Shell sets [open] while it is on screen; without it the window lists no screens.
+/// The second argument is the section the window was on, so Back from that screen can bring the window back on it.
 class SettingsLinks {
-  static void Function(String id)? open;
+  static void Function(String id, String? section)? open;
 }
