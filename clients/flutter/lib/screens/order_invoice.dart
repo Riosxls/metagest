@@ -37,11 +37,11 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   /// Data of the load that goes on the NF and can be edited before confirming (sent with the dispatch; empty = the server's default).
   static const _extra = {
     'carrier': 'Transportadora',
-    'packages': 'Volumes (quantidade)',
+    'packages': 'Volumes',
     'grossWeightKg': 'Peso bruto (kg)',
-    'vehiclePlate': 'Placa do veículo',
+    'vehiclePlate': 'Placa',
     'freight': r'Frete na NF (R$)',
-    'cfop': 'CFOP (vazio = o do endereço de entrega ou 5101)',
+    'cfop': 'CFOP',
     'lotNumber': 'Nº do lote',
     'notes': 'Observações da entrega',
   };
@@ -61,6 +61,9 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     }
     super.dispose();
   }
+
+  /// 500.0 -> "500", 12.5 -> "12,5" (what a person types).
+  String _numText(num v) => (v == v.roundToDouble() ? v.toInt().toString() : v.toString()).replaceAll('.', ',');
 
   /// `orderLineId:quantity,...` of the weighed quantities typed (0 when empty or invalid, which leaves the item out).
   String _linesQuery() => [for (final e in _qty.entries) '${e.key}:${parseDecimal(e.value.text.trim()) ?? 0}'].join(',');
@@ -84,7 +87,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
           // The first load proposes what is still to ship; the weighed quantities typed afterwards are kept on the next loads.
           for (final l in (nf['orderLines'] as List? ?? const []).cast<Map<String, dynamic>>()) {
             if ((l['remaining'] as num) > 0) {
-              _qty.putIfAbsent(l['orderLineId'] as int, () => TextEditingController(text: '${l['quantity']}'.replaceAll('.', ',')));
+              _qty.putIfAbsent(l['orderLineId'] as int, () => TextEditingController(text: _numText(l['quantity'] as num)));
             }
           }
         });
@@ -168,7 +171,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     children: [
       Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 8, 24), children: _preview(o, nf))),
       SizedBox(
-        width: 410,
+        width: 440,
         child: ListView(padding: const EdgeInsets.fromLTRB(8, 16, 16, 24), children: [_actionPanel(nf)]),
       ),
     ],
@@ -431,6 +434,8 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
           _kv('Peso líquido', transport['netWeightKg'] == null ? null : '${fmtNum(transport['netWeightKg'], 3)} kg'),
           _kv('Peso bruto', transport['grossWeightKg'] == null ? null : '${fmtNum(transport['grossWeightKg'], 3)} kg'),
           _kv('Volumes', (transport['packages'] ?? 0) == 0 ? null : '${transport['packages']} · ${fmt(transport['species'])}'),
+          const SizedBox(height: 6),
+          Text('Líquido = peso das mercadorias. Bruto = com a embalagem; se não for digitado, sai igual ao líquido (como nas NFs antigas).', style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
     );
@@ -480,23 +485,25 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   String? _default(String key, Map<String, dynamic> nf) {
     final t = nf['transport'] as Map<String, dynamic>? ?? const {};
     return switch (key) {
-      'carrier' => t['carrier'] == null ? null : 'Vazio = ${t['carrier']}',
-      'grossWeightKg' => t['grossWeightKg'] == null ? null : 'Vazio = ${fmtNum(t['grossWeightKg'], 3)} kg (peso líquido)',
-      'packages' => (t['packages'] ?? 0) == 0 ? 'Digite quantos volumes saem (espécie: VOLUME)' : 'Vazio = ${t['packages']} (pela embalagem do produto)',
-      'vehiclePlate' => 'Opcional',
+      'carrier' => t['carrier'] == null ? null : 'Padrão: ${t['carrier']}',
+      'grossWeightKg' => t['grossWeightKg'] == null ? null : 'Padrão: ${fmtNum(t['grossWeightKg'], 3)} kg (o líquido)',
+      'packages' => 'Padrão: ${(t['packages'] ?? 0) == 0 ? 1 : t['packages']}',
+      'cfop' => 'Padrão: o do endereço de entrega ou 5101',
+      'freight' => 'Só se o frete for cobrado na NF',
+      'vehiclePlate' => 'Opcional (vai em branco)',
       _ => null,
     };
   }
 
   Widget _extraField(String key, Map<String, dynamic> nf) => SizedBox(
-    width: key == 'notes' || key == 'cfop' || key == 'carrier' ? double.infinity : 175,
+    width: key == 'notes' || key == 'cfop' || key == 'carrier' ? double.infinity : 180,
     child: TextField(
       key: ValueKey('invoice-extra-$key'),
       controller: _extraCtl[key],
       keyboardType: _numericExtra.contains(key) ? const TextInputType.numberWithOptions(decimal: true) : null,
       minLines: key == 'notes' ? 2 : 1,
       maxLines: key == 'notes' ? 3 : 1,
-      decoration: InputDecoration(isDense: true, labelText: _extra[key], helperText: _default(key, nf), border: const OutlineInputBorder()),
+      decoration: InputDecoration(isDense: true, labelText: _extra[key], helperText: _default(key, nf), helperMaxLines: 3, border: const OutlineInputBorder()),
     ),
   );
 

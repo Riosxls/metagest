@@ -1,3 +1,4 @@
+using Ebt.Core.Sales;
 using System.Text.RegularExpressions;
 using Ebt.Core.Data;
 using Ebt.Core.Entities;
@@ -99,7 +100,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
                 db.SalesEvents.Add(new SalesEvent { Kind = SalesRecordKind.Delivery, RecordId = delivery.Id, Action = "nf-price-warning", Note = doc.Warnings, User = user, At = DateTimeOffset.UtcNow });
             }
             var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, opt.Carrier ?? delivery.Carrier, opt.VehiclePlate ?? delivery.VehiclePlate, delivery.Packages, opt.GrossWeightKg ?? delivery.GrossWeightKg,
-                delivery.Lines.Select(l => (products[order.Lines.First(x => x.Id == l.OrderLineId).ProductId].NetWeightKg, l.Quantity)).ToList(), settings, ct);
+                delivery.Lines.Select(l => { var ol = order.Lines.First(x => x.Id == l.OrderLineId); return (SalesService.KgPerUnit(ol, products[ol.ProductId]), l.Quantity); }).ToList(), settings, ct);
 
             // A shipment that failed after SEFAZ authorized its NF was rolled back, but the authorized NF (committed on its own connection) stayed without a delivery.
             // Shipping again must pick that NF up, not issue a second one for the same goods.

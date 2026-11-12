@@ -1,3 +1,4 @@
+using Ebt.Core.Sales;
 using Ebt.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -93,6 +94,8 @@ public sealed partial class FiscalService
         var shippedByLine = await db.DeliveryLines.AsNoTracking().Where(l => l.Delivery!.OrderId == orderId && (l.Delivery.Status == DeliveryStatus.Shipped || l.Delivery.Status == DeliveryStatus.Delivered))
             .GroupBy(l => l.OrderLineId).Select(g => new { g.Key, Qty = g.Sum(x => x.Quantity) }).ToDictionaryAsync(x => x.Key, x => x.Qty, ct);
         var orderLines = new List<NfPreviewOrderLine>();
+        var weights = new List<(decimal? NetWeightKg, decimal Quantity)>(); // kg per unit x quantity: a line sold by KG already is kg
+
         var sources = new List<(string Price, string Tax)>();
         var noNcm = new List<string>();
         var noPrice = new List<string>();
@@ -104,6 +107,7 @@ public sealed partial class FiscalService
             var qty = quantities is null ? remaining : quantities.GetValueOrDefault(ol.Id);
             orderLines.Add(new NfPreviewOrderLine(ol.Id, ol.Sequence, p.Code, ol.Description, p.StockUnit, ol.Quantity, remaining, Math.Max(0, qty)));
             if (qty <= 0) continue;
+            weights.Add((SalesService.KgPerUnit(ol, p), qty));
             var monthly = await MonthlyPriceAsync(p.Id, customer.Id, cfop.Code, local.Year, local.Month, ct);
             var price = monthly ?? ol.UnitPrice;
             if (price <= 0) noPrice.Add(p.Code);
@@ -137,7 +141,7 @@ public sealed partial class FiscalService
             catch (FiscalException) { Add("Duplicatas", "O pedido e o cliente não têm prazo de pagamento para gerar as duplicatas.", "Pedido de venda > Prazo de pagamento"); }
         }
         var volumes = doc.Lines.Sum(l => products[l.ProductId!.Value].PiecesPerPackage is > 0 ? (int)Math.Ceiling(l.Quantity / products[l.ProductId!.Value].PiecesPerPackage!.Value) : 0);
-        var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, null, null, volumes, null, doc.Lines.Select(l => (products[l.ProductId!.Value].NetWeightKg, l.Quantity)).ToList(), s, ct);
+        var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, null, null, volumes, null, weights, s, ct);
         if (transport.NetWeightKg is null) Add("Transporte", "Algum produto sem peso líquido: a NF sai sem o peso (pesoL).", "Engenharia > Produtos > Peso líquido", blocking: false);
 
         var ofIds = order.Lines.Where(l => l.ProductionOrderId != null).Select(l => l.ProductionOrderId!.Value).ToList();
