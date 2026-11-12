@@ -7,6 +7,7 @@ import '../session.dart';
 import '../widgets/actions.dart';
 import '../widgets/duplicates.dart';
 import '../widgets/load_error.dart';
+import '../widgets/pipeline.dart' show Tone, toneColors;
 import 'customers.dart' show openCustomer;
 import 'product_detail.dart' show openProduct;
 import 'suppliers.dart' show openSupplier;
@@ -202,6 +203,88 @@ class _GroupCard extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Opens the duplicates screen on the tab of [kind] ('customers', 'products' or 'suppliers') as a page of its own, with Back to the list.
+void openDuplicates(BuildContext context, Session session, String kind) => unawaited(
+  Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: const Text('Cadastros duplicados')),
+        body: DuplicatesScreen(session: session, initialKind: kind),
+      ),
+    ),
+  ),
+);
+
+/// "Atenção" strip above the list of customers, products or suppliers: shown only when the server finds suspected duplicates of that kind, and a tap
+/// opens the duplicates screen on that kind. It is a hint, never a blocker: while loading or when the check fails, nothing shows.
+class DuplicatesAlert extends StatefulWidget {
+  const DuplicatesAlert({super.key, required this.session, required this.kind});
+
+  final Session session;
+
+  /// 'customers', 'products' or 'suppliers'.
+  final String kind;
+
+  @override
+  State<DuplicatesAlert> createState() => _DuplicatesAlertState();
+}
+
+class _DuplicatesAlertState extends State<DuplicatesAlert> {
+  int _groups = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await widget.session.api.get('/api/duplicates/${widget.kind}');
+      final groups = r is Map ? (r['groups'] as List?)?.length ?? 0 : 0;
+      if (mounted) setState(() => _groups = groups);
+    } catch (e) {
+      debugPrint('duplicates: alert not loaded: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_groups == 0) return const SizedBox.shrink();
+    final (bg, fg) = toneColors(context, Tone.warning);
+    final what = duplicateKindLabels[widget.kind]!.toLowerCase();
+    return Padding(
+      key: const ValueKey('duplicates-alert'),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Material(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => openDuplicates(context, widget.session, widget.kind),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(Icons.content_copy_outlined, color: fg, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _groups == 1 ? 'Atenção: 1 grupo de $what parece duplicado' : 'Atenção: $_groups grupos de $what parecem duplicados',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(color: fg),
+                  ),
+                ),
+                Text('Ver', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+                Icon(Icons.chevron_right, color: fg, size: 18),
+              ],
+            ),
+          ),
         ),
       ),
     );

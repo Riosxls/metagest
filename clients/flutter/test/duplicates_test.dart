@@ -185,4 +185,69 @@ void main() {
     await pumpApp(tester, DuplicatesScreen(session: sessionFor('Sales', MockClient((r) async => json({'message': 'Banco indisponível'}, 500)))));
     expect(find.text('Tentar novamente'), findsOneWidget);
   });
+
+  group('the Atenção strip on the lists', () {
+    Map<String, dynamic> groupsOf(int n) => {
+      'groups': [
+        for (var i = 0; i < n; i++)
+          {
+            'members': [rec(i * 2 + 1, 'Cliente ${i * 2 + 1}'), rec(i * 2 + 2, 'Cliente ${i * 2 + 2}')],
+            'pairs': [],
+          },
+      ],
+      'pairs': n,
+      'records': n * 2,
+    };
+
+    testWidgets('shows only when there are suspects, says how many, and a tap opens the duplicates screen on that kind', (tester) async {
+      final paths = <String>[];
+      final client = MockClient((r) async {
+        paths.add(r.url.path);
+        if (r.url.path == '/api/duplicates/suppliers') return json(groupsOf(2));
+        if (r.url.path.startsWith('/api/duplicates/')) return json({'groups': [], 'pairs': 0, 'records': 0});
+        return json({'items': [], 'total': 0, 'skip': 0, 'take': 50});
+      });
+      final session = sessionFor('Sales', client);
+      await pumpApp(
+        tester,
+        Column(
+          children: [DuplicatesAlert(key: const ValueKey('c'), session: session, kind: 'customers')],
+        ),
+      );
+      expect(find.byKey(const ValueKey('duplicates-alert')), findsNothing, reason: 'nothing suspected: nothing shown');
+
+      await pumpApp(
+        tester,
+        Column(
+          children: [DuplicatesAlert(key: const ValueKey('s'), session: session, kind: 'suppliers')],
+        ),
+      );
+      expect(find.text('Atenção: 2 grupos de fornecedores parecem duplicados'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('duplicates-alert')));
+      await tester.pumpAndSettle();
+      expect(find.text('Cadastros duplicados'), findsOneWidget);
+      // The screen opens on the Fornecedores tab.
+      expect(paths.where((p) => p == '/api/duplicates/suppliers').length, greaterThanOrEqualTo(2));
+    });
+
+    testWidgets('one group is said in the singular, and a failed check shows nothing', (tester) async {
+      final one = sessionFor('Sales', MockClient((r) async => json(groupsOf(1))));
+      await pumpApp(
+        tester,
+        Column(
+          children: [DuplicatesAlert(key: const ValueKey('one'), session: one, kind: 'products')],
+        ),
+      );
+      expect(find.text('Atenção: 1 grupo de produtos parece duplicado'), findsOneWidget);
+
+      final broken = sessionFor('Sales', MockClient((r) async => json({'message': 'x'}, 500)));
+      await pumpApp(
+        tester,
+        Column(
+          children: [DuplicatesAlert(key: const ValueKey('broken'), session: broken, kind: 'products')],
+        ),
+      );
+      expect(find.byKey(const ValueKey('duplicates-alert')), findsNothing);
+    });
+  });
 }

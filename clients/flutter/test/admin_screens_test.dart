@@ -64,10 +64,13 @@ Future<(Session, List<http.Request>)> pump(WidgetTester tester, String role) asy
     }
     return json({'items': [], 'total': 0, 'skip': 0, 'take': 50});
   });
-  final session = Session(api: ApiClient(baseUrl: 'http://api.test', client: client, token: 'tok'))
-    ..username = 'ana'
-    ..role = role
-    ..permissions = rolePermissions[role]!;
+  final session =
+      Session(
+          api: ApiClient(baseUrl: 'http://api.test', client: client, token: 'tok'),
+        )
+        ..username = 'ana'
+        ..role = role
+        ..permissions = rolePermissions[role]!;
   await tester.pumpWidget(
     MaterialApp(
       theme: appTheme(Brightness.light),
@@ -81,8 +84,9 @@ Future<(Session, List<http.Request>)> pump(WidgetTester tester, String role) asy
   return (session, log);
 }
 
-/// The system screens are listed in Preferências (avatar menu) under Administração, not in the avatar menu nor in the sidebar.
-const _screenIds = {'Usuários': 'users', 'Permissões': 'permissions', 'Auditoria': 'audit', 'Parâmetros dos módulos': 'settings', 'Cadastros duplicados': 'duplicates'};
+/// Preferências lists one entry for Usuários, Permissões and Auditoria (its tabs): the entry opens Usuários, the other two are tabs of that screen.
+const _screenIds = {'Usuários': 'users', 'Permissões': 'users', 'Auditoria': 'users', 'Parâmetros dos módulos': 'settings'};
+const _tabIds = {'Permissões': 'permissions', 'Auditoria': 'audit'};
 
 Future<void> openPreferences(WidgetTester tester) async {
   await tester.tap(find.byTooltip('Conta'));
@@ -94,10 +98,18 @@ Future<void> openPreferences(WidgetTester tester) async {
 Future<void> open(WidgetTester tester, String title) async {
   await openPreferences(tester);
   final tile = find.byKey(ValueKey('settings-screen-${_screenIds[title]}'));
-  await tester.scrollUntilVisible(tile, 100, scrollable: find.descendant(of: find.byType(Dialog), matching: find.byType(Scrollable)).first);
+  await tester.scrollUntilVisible(
+    tile,
+    100,
+    scrollable: find.descendant(of: find.byType(Dialog), matching: find.byType(Scrollable)).first,
+  );
   await tester.pumpAndSettle();
   await tester.tap(tile);
   await tester.pumpAndSettle();
+  if (_tabIds[title] case final tab?) {
+    await tester.tap(find.byKey(ValueKey('tab-$tab')));
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -116,10 +128,37 @@ void main() {
         expect(find.byKey(ValueKey('settings-screen-$id')), findsNothing, reason: '$role/$id');
       }
       expect(find.byKey(const ValueKey('settings-screen-settings')), findsOneWidget, reason: role);
-      expect(find.byKey(const ValueKey('settings-screen-duplicates')), findsOneWidget, reason: role);
+      expect(
+        find.byKey(const ValueKey('settings-screen-duplicates')),
+        findsNothing,
+        reason: 'duplicates are reached from the customer, product and supplier lists',
+      );
       await tester.tap(find.byKey(const ValueKey('settings-close')));
       await tester.pumpAndSettle();
     }
+  });
+
+  testWidgets('the admin list in Preferências is short: Usuários, Permissões and Auditoria are one entry, and duplicates are not listed', (tester) async {
+    await pump(tester, 'Admin');
+    await openPreferences(tester);
+    for (final id in ['settings', 'users']) {
+      await tester.scrollUntilVisible(
+        find.byKey(ValueKey('settings-screen-$id')),
+        100,
+        scrollable: find.descendant(of: find.byType(Dialog), matching: find.byType(Scrollable)).first,
+      );
+      expect(find.byKey(ValueKey('settings-screen-$id')), findsOneWidget, reason: id);
+    }
+    for (final id in ['permissions', 'audit', 'duplicates']) {
+      expect(find.byKey(ValueKey('settings-screen-$id')), findsNothing, reason: id);
+    }
+    expect(find.text('Usuários e acesso'), findsOneWidget);
+    // Related personal sections are merged too.
+    for (final id in ['print', 'about']) {
+      expect(find.byKey(ValueKey('settings-nav-$id')), findsNothing, reason: id);
+    }
+    expect(find.text('Aparência e impressão'), findsWidgets);
+    expect(find.text('Dispositivo e sobre'), findsOneWidget);
   });
 
   testWidgets('Admin lists users, chips and unlock only for locked', (tester) async {

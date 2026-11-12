@@ -1,3 +1,4 @@
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import '../widgets/entity_form.dart';
 import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
 import '../widgets/record_selection.dart';
+import 'duplicates.dart' show DuplicatesAlert;
 import 'entity_selection.dart';
 import 'product_detail.dart';
 import 'stock_balances.dart';
@@ -75,9 +77,17 @@ class _EntityListScreenState extends State<EntityListScreen> {
 
   List<RowAction> _rowActions(Map<String, dynamic> e) => [
     if (isMaterial)
-      RowAction('Saldo e movimentos', Icons.inventory_outlined, () => openItemStock(context, widget.session, materialId: e['id'] as int, title: '${e['code']} · ${e['description'] ?? ''}')),
+      RowAction(
+        'Saldo e movimentos',
+        Icons.inventory_outlined,
+        () => openItemStock(context, widget.session, materialId: e['id'] as int, title: '${e['code']} · ${e['description'] ?? ''}'),
+      ),
     if (isProduct)
-      RowAction('Saldo em estoque', Icons.inventory_outlined, () => openItemStock(context, widget.session, productId: e['id'] as int, title: '${e['code']} · ${e['name'] ?? ''}')),
+      RowAction(
+        'Saldo em estoque',
+        Icons.inventory_outlined,
+        () => openItemStock(context, widget.session, productId: e['id'] as int, title: '${e['code']} · ${e['name'] ?? ''}'),
+      ),
     if (spec.whereUsed) RowAction('Onde é usado', Icons.account_tree_outlined, () => _whereUsed(e)),
     if (isProduct) RowAction('Editar cadastro', Icons.edit_outlined, () => _edit(e)),
   ];
@@ -96,7 +106,19 @@ class _EntityListScreenState extends State<EntityListScreen> {
   );
 
   @override
-  Widget build(BuildContext context) => RecordList(
+  Widget build(BuildContext context) {
+    final list = _buildList(context);
+    // Products are the one master-data list that can hold the same item twice: the strip shows only when the server finds suspects.
+    if (widget.spec.path != products.path) return list;
+    return Column(
+      children: [
+        DuplicatesAlert(session: widget.session, kind: 'products'),
+        Expanded(child: list),
+      ],
+    );
+  }
+
+  Widget _buildList(BuildContext context) => RecordList(
     key: _list,
     api: widget.session.api,
     path: spec.path,

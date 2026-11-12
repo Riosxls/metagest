@@ -101,7 +101,7 @@ void main() {
     expect(find.text('Metalúrgica Alfa'), findsOneWidget);
     expect(find.text('12.345.678/0001-99'), findsOneWidget);
     expect(find.text('Sorocaba/SP'), findsOneWidget);
-    expect(env.log.first.url.queryParameters['active'], 'true');
+    expect(env.log.firstWhere((r) => r.url.path == '/api/customers').url.queryParameters['active'], 'true');
   });
 
   testWidgets('new customer posts company data and a first delivery address', (tester) async {

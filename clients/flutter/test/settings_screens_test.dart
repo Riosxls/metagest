@@ -77,7 +77,7 @@ void main() {
   group('frame', () {
     testWidgets('lists the sections; Administração is only for admins', (tester) async {
       await open(tester, 'Reader', none);
-      for (final id in ['appearance', 'general', 'print', 'account', 'data', 'about']) {
+      for (final id in ['appearance', 'general', 'notifications', 'account', 'data']) {
         expect(find.byKey(ValueKey('settings-nav-$id')), findsOneWidget, reason: id);
       }
       expect(find.byKey(const ValueKey('settings-nav-admin')), findsNothing);
@@ -112,12 +112,12 @@ void main() {
       await open(tester, 'Reader', none);
       tester.view.physicalSize = const Size(500, 900);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('settings-nav-about')), findsOneWidget);
-      await goTo(tester, 'print');
+      expect(find.byKey(const ValueKey('settings-nav-data')), findsOneWidget);
+      await goTo(tester, 'appearance');
       expect(find.byKey(const ValueKey('settings-print-prompts')), findsOneWidget);
       await tapV(tester, find.byKey(const ValueKey('settings-back-to-menu')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('settings-nav-print')), findsOneWidget);
+      expect(find.byKey(const ValueKey('settings-nav-appearance')), findsOneWidget);
     });
   });
 
@@ -173,7 +173,7 @@ void main() {
   group('impressão', () {
     testWidgets('turning prompts off lets printGate pass without asking', (tester) async {
       final (s, _) = await open(tester, 'Reader', none);
-      await goTo(tester, 'print');
+      await goTo(tester, 'appearance');
       await tapV(tester, find.byKey(const ValueKey('settings-print-prompts')));
       await tester.pumpAndSettle();
       expect(s.printPrompts, isFalse);
@@ -201,7 +201,8 @@ void main() {
       await open(tester, 'Reader', none);
       await PrintLog.mark('quote:1:po');
       await PrintLog.mark('order:2:of');
-      await goTo(tester, 'print');
+      await goTo(tester, 'general');
+      await goTo(tester, 'appearance');
       expect(find.text('2 papéis já impressos, baixados ou ignorados.'), findsOneWidget);
       await tapV(tester, find.byKey(const ValueKey('settings-print-forget')));
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));

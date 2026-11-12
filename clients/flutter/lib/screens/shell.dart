@@ -98,6 +98,12 @@ final tabGroups = <TabGroup>[
     (id: 'fiscal-documents', label: 'Notas fiscais'),
     (id: 'receivables', label: 'Contas a receber'),
   ]),
+  // Who may sign in, what each role can do and what changed: one entry in Preferências instead of three.
+  const TabGroup('Sistema', 'Usuários e acesso', Icons.group_outlined, [
+    (id: 'users', label: 'Usuários'),
+    (id: 'permissions', label: 'Permissões'),
+    (id: 'audit', label: 'Auditoria'),
+  ]),
   TabGroup('Fiscal', 'Parâmetros fiscais', Icons.tune_outlined, [
     (id: 'fiscal-settings', label: 'Emitente e emissão'),
     (id: taxRules.path, label: 'Regras de imposto'),

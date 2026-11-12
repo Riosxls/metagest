@@ -11,6 +11,7 @@ import '../widgets/load_error.dart';
 import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
 import 'customers.dart' show fmtDocument;
+import 'duplicates.dart' show DuplicatesAlert;
 import 'orders.dart';
 import 'receipts.dart';
 import 'stock_documents.dart';
@@ -63,7 +64,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => RecordList(
+  Widget build(BuildContext context) => Column(children: [DuplicatesAlert(session: widget.session, kind: 'suppliers'), Expanded(child: RecordList(
     key: _list,
     api: widget.session.api,
     path: suppliers.path,
@@ -78,7 +79,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
         ? FloatingActionButton.extended(heroTag: 'new-sup', onPressed: _new, icon: const Icon(Icons.add), label: const Text('Novo'))
         : null,
     onTap: (e) => openSupplier(context, widget.session, e['id'] as int, e),
-  );
+  ))]);
 }
 
 /// Supplier detail.

@@ -20,6 +20,7 @@ import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
 import '../widgets/record_selection.dart';
 import 'customer_print.dart';
+import 'duplicates.dart' show DuplicatesAlert;
 import 'receivables.dart';
 import 'sales_common.dart';
 import 'sales_quotes.dart' show newQuote;
@@ -273,7 +274,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => RecordList(
+  Widget build(BuildContext context) => Column(children: [DuplicatesAlert(session: widget.session, kind: 'customers'), Expanded(child: RecordList(
     key: _list,
     api: widget.session.api,
     path: '/api/customers',
@@ -303,7 +304,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     ],
     rowColor: (ctx, e) => e['active'] == true ? null : Theme.of(ctx).colorScheme.surfaceContainerHighest,
     onTap: (e) => openCustomer(context, widget.session, e['id'] as int, e),
-  );
+  ))]);
 }
 
 /// Customer detail: company data, addresses, default prazo and credit limit.

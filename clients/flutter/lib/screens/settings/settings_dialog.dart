@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../session.dart';
 import '../../widgets/discard_guard.dart';
 import '../backup_alert.dart';
-import '../shell.dart' show NavItem, navItems;
+import '../shell.dart' show NavItem, navItems, tabGroupOf;
 import 'settings_activity.dart';
 import 'settings_admin.dart';
 import 'settings_notifications.dart';
@@ -32,15 +32,42 @@ const _adminOnly = {'backup', 'admin'};
 /// Reachable by link (section: 'activity') but not listed in the menu: it is already under Conta e acesso.
 const _hiddenFromMenu = {'activity'};
 
+/// Old names of sections that were merged (links and saved places may still say 'print' or 'about').
+const _sectionAlias = {'print': 'appearance', 'about': 'data'};
+
+/// System screens that are reached from where they matter (the duplicates strip on the customer, product and supplier lists), not from here.
+const _notListedHere = {'duplicates'};
+
 final _sections = <_Section>[
-  _Section('appearance', Icons.palette_outlined, 'Aparência', (c, s, open, out) => AppearanceSection(session: s)),
+  // Related sections share one entry: fewer items to scan, and what belongs together is read together.
+  _Section(
+    'appearance',
+    Icons.palette_outlined,
+    'Aparência e impressão',
+    (c, s, open, out) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppearanceSection(session: s),
+        PrintSection(session: s),
+      ],
+    ),
+  ),
   _Section('general', Icons.tune, 'Geral', (c, s, open, out) => GeneralSection(session: s, open: open)),
-  _Section('print', Icons.print_outlined, 'Impressão', (c, s, open, out) => PrintSection(session: s)),
   _Section('notifications', Icons.notifications_outlined, 'Notificações', (c, s, open, out) => NotificationsSection(session: s)),
   _Section('account', Icons.person_outline, 'Conta e acesso', (c, s, open, out) => AccountSection(session: s, open: open, onSignOut: out)),
   _Section('activity', Icons.history, 'Minha atividade', (c, s, open, out) => ActivityView(session: s)),
-  _Section('data', Icons.devices_other_outlined, 'Dispositivo', (c, s, open, out) => DataSection(session: s)),
-  _Section('about', Icons.info_outline, 'Sobre', (c, s, open, out) => AboutSection(session: s)),
+  _Section(
+    'data',
+    Icons.devices_other_outlined,
+    'Dispositivo e sobre',
+    (c, s, open, out) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DataSection(session: s),
+        AboutSection(session: s),
+      ],
+    ),
+  ),
   _Section('backup', Icons.backup_outlined, 'Backup', (c, s, open, out) => BackupSection(session: s)),
   _Section('admin', Icons.storage_outlined, 'Manutenção de dados', (c, s, open, out) => AdminSection(session: s, open: open)),
 ];
@@ -84,7 +111,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
   @override
   void initState() {
     super.initState();
-    _selected = _visible.any((s) => s.id == widget.section) ? widget.section : null;
+    final want = _sectionAlias[widget.section] ?? widget.section;
+    _selected = _visible.any((s) => s.id == want) ? want : null;
     if (widget.session.isAdmin) {
       fetchBackupAlert(widget.session).then((a) {
         if (mounted && a != null) setState(() => _backupAlert = a);
@@ -190,10 +218,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
-  /// System screens (not modules) the user may open: Parâmetros dos módulos, Cadastros duplicados and, for admins, Usuários, Permissões, Auditoria.
-  List<NavItem> get _screenLinks => [
+  /// System screens (not modules) the user may open: Parâmetros dos módulos and, for admins, Usuários e acesso (Usuários, Permissões and Auditoria are its tabs).
+  List<({NavItem item, String title, IconData icon})> get _screenLinks => [
     for (final i in navItems())
-      if (i.section == 'Sistema' && i.shownTo(widget.session)) i,
+      if (i.section == 'Sistema' &&
+          i.shownTo(widget.session) &&
+          !_notListedHere.contains(i.id) &&
+          (tabGroupOf(i.id) == null || tabGroupOf(i.id)!.tabs.first.id == i.id))
+        (item: i, title: tabGroupOf(i.id)?.title ?? i.title, icon: tabGroupOf(i.id)?.icon ?? i.icon),
   ];
 
   Widget _sectionTile(_Section s, String? selected) {
@@ -220,24 +252,24 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 
   /// A system screen listed here opens on the main window: the settings window closes first (after the unsaved-edit check).
-  Widget _screenTile(NavItem i) => Padding(
+  Widget _screenTile(({NavItem item, String title, IconData icon}) l) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 1),
     child: ListTile(
-      key: ValueKey('settings-screen-${i.id}'),
+      key: ValueKey('settings-screen-${l.item.id}'),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      leading: Icon(i.icon),
-      title: Text(i.title),
+      leading: Icon(l.icon),
+      title: Text(l.title),
       trailing: const Icon(Icons.chevron_right, size: 18),
       onTap: () => _guard(() {
         Navigator.pop(context);
-        SettingsLinks.open?.call(i.id);
+        SettingsLinks.open?.call(l.item.id);
       }),
     ),
   );
 
   Widget _nav(String? selected) {
     final menu = _visible.where((s) => !_hiddenFromMenu.contains(s.id));
-    final screens = SettingsLinks.open == null ? const <NavItem>[] : _screenLinks;
+    final screens = SettingsLinks.open == null ? const <({NavItem item, String title, IconData icon})>[] : _screenLinks;
     final adminSections = [
       for (final s in menu)
         if (_adminOnly.contains(s.id)) s,
@@ -257,7 +289,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
               style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
             ),
           ),
-        for (final i in screens) _screenTile(i),
+        for (final l in screens) _screenTile(l),
         for (final s in adminSections) _sectionTile(s, selected),
       ],
     );

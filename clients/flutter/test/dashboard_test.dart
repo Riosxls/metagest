@@ -367,7 +367,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Preferências'));
     await tester.pumpAndSettle();
-    expect(find.text('Aparência'), findsWidgets);
+    expect(find.text('Aparência e impressão'), findsWidgets);
     expect(find.byKey(const ValueKey('settings-nav-admin')), findsNothing, reason: 'the Administração section is for admins');
     expect(find.byKey(const ValueKey('open-data-reset')), findsNothing);
   });
