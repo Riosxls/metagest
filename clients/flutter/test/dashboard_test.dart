@@ -273,7 +273,7 @@ void main() {
     expect(find.byKey(const ValueKey('admin-settings')), findsNothing);
     await tester.tap(find.text('Preferências'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('settings-screen-settings')), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-nav-modules')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('settings-close')));
     await tester.pumpAndSettle();
     await openModule(tester, 'Estoque');

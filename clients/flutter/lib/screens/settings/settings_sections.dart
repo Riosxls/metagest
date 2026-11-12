@@ -20,8 +20,7 @@ class AppearanceSection extends StatelessWidget {
   final Session session;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => SettingsGrid(
     children: [
       SettingsGroup(
         title: 'Tema e tamanho',
@@ -107,8 +106,7 @@ class GeneralSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final homes = homeScreenChoices(session);
     final home = homes.any((h) => h.id == session.homeScreen) ? session.homeScreen : 'dashboard';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return SettingsGrid(
       children: [
         SettingsGroup(
           title: 'Ao entrar',
@@ -199,8 +197,7 @@ class _PrintSectionState extends State<PrintSection> {
   @override
   Widget build(BuildContext context) {
     final s = widget.session;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return SettingsGrid(
       children: [
         SettingsGroup(
           title: 'Papéis do pedido',
@@ -297,8 +294,7 @@ class _AccountSectionState extends State<AccountSection> {
   Widget build(BuildContext context) {
     final s = widget.session;
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return SettingsGrid(
       children: [
         SettingsGroup(
           title: 'Perfil',
@@ -414,8 +410,7 @@ class DataSection extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => SettingsGrid(
     children: [
       SettingsGroup(
         title: 'Dados do aplicativo',
@@ -501,8 +496,7 @@ class AboutSection extends StatelessWidget {
           return null;
         }
       },
-      builder: (context, about, reload) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (context, about, reload) => SettingsGrid(
         children: [
           SettingsGroup(
             title: 'Aplicativo',

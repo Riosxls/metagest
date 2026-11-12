@@ -127,7 +127,7 @@ void main() {
       for (final id in ['users', 'permissions', 'audit']) {
         expect(find.byKey(ValueKey('settings-screen-$id')), findsNothing, reason: '$role/$id');
       }
-      expect(find.byKey(const ValueKey('settings-screen-settings')), findsOneWidget, reason: role);
+      expect(find.byKey(const ValueKey('settings-nav-modules')), findsOneWidget, reason: role);
       expect(
         find.byKey(const ValueKey('settings-screen-duplicates')),
         findsNothing,
@@ -141,7 +141,7 @@ void main() {
   testWidgets('the admin list in Preferências is short: Usuários, Permissões and Auditoria are one entry, and duplicates are not listed', (tester) async {
     await pump(tester, 'Admin');
     await openPreferences(tester);
-    for (final id in ['settings', 'users']) {
+    for (final id in ['users']) {
       await tester.scrollUntilVisible(
         find.byKey(ValueKey('settings-screen-$id')),
         100,
@@ -153,6 +153,9 @@ void main() {
       expect(find.byKey(ValueKey('settings-screen-$id')), findsNothing, reason: id);
     }
     expect(find.text('Usuários e acesso'), findsOneWidget);
+    // Parâmetros dos módulos is a section of the window itself (its four cards fit), not a link to a page.
+    expect(find.byKey(const ValueKey('settings-nav-modules')), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-screen-settings')), findsNothing);
     // Related personal sections are merged too.
     for (final id in ['print', 'about']) {
       expect(find.byKey(ValueKey('settings-nav-$id')), findsNothing, reason: id);

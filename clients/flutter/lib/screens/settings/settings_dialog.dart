@@ -4,6 +4,7 @@ import '../../session.dart';
 import '../../widgets/discard_guard.dart';
 import '../backup_alert.dart';
 import '../shell.dart' show NavItem, navItems, tabGroupOf;
+import '../stock_closing.dart' show SettingsScreen;
 import 'settings_activity.dart';
 import 'settings_admin.dart';
 import 'settings_notifications.dart';
@@ -29,6 +30,9 @@ class _Section {
 /// Sections only administrators see.
 const _adminOnly = {'backup', 'admin'};
 
+/// Sections under the Administração / Sistema heading (Parâmetros dos módulos is for everyone, the other two for admins).
+const _systemBlock = {'modules', 'backup', 'admin'};
+
 /// Reachable by link (section: 'activity') but not listed in the menu: it is already under Conta e acesso.
 const _hiddenFromMenu = {'activity'};
 
@@ -36,7 +40,7 @@ const _hiddenFromMenu = {'activity'};
 const _sectionAlias = {'print': 'appearance', 'about': 'data'};
 
 /// System screens that are reached from where they matter (the duplicates strip on the customer, product and supplier lists), not from here.
-const _notListedHere = {'duplicates'};
+const _notListedHere = {'duplicates', 'settings'};
 
 final _sections = <_Section>[
   // Related sections share one entry: fewer items to scan, and what belongs together is read together.
@@ -68,6 +72,8 @@ final _sections = <_Section>[
       ],
     ),
   ),
+  // The four parameter cards are short forms: they fit the window, so they live here instead of on a page of their own (the screen 'settings' stays for links).
+  _Section('modules', Icons.tune, 'Parâmetros dos módulos', (c, s, open, out) => SettingsScreen(session: s, embedded: true)),
   _Section('backup', Icons.backup_outlined, 'Backup', (c, s, open, out) => BackupSection(session: s)),
   _Section('admin', Icons.storage_outlined, 'Manutenção de dados', (c, s, open, out) => AdminSection(session: s, open: open)),
 ];
@@ -145,8 +151,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
-    final width = (screen.width - 48).clamp(280.0, 1040.0);
-    final height = (screen.height - 48).clamp(320.0, 760.0);
+    final width = (screen.width - 48).clamp(280.0, 1240.0);
+    final height = (screen.height - 48).clamp(320.0, 860.0);
     final wide = width >= _wideFrom;
     final selected = wide ? (_selected ?? 'appearance') : _selected;
     return DirtyScope(
@@ -181,7 +187,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     child: wide
                         ? Row(
                             children: [
-                              SizedBox(width: 220, child: _nav(selected)),
+                              SizedBox(width: 248, child: _nav(selected)),
                               const VerticalDivider(width: 1),
                               Expanded(child: _content(context, selected)),
                             ],
@@ -259,7 +265,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       leading: Icon(l.icon),
       title: Text(l.title),
-      trailing: const Icon(Icons.chevron_right, size: 18),
+      // Opens a full page (wide tables and filters need the room), so it says it leaves the window.
+      trailing: const Icon(Icons.open_in_new, size: 18),
       onTap: () => _guard(() {
         Navigator.pop(context);
         SettingsLinks.open?.call(l.item.id);
@@ -270,6 +277,10 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget _nav(String? selected) {
     final menu = _visible.where((s) => !_hiddenFromMenu.contains(s.id));
     final screens = SettingsLinks.open == null ? const <({NavItem item, String title, IconData icon})>[] : _screenLinks;
+    final systemFirst = [
+      for (final s in menu)
+        if (s.id == 'modules') s,
+    ];
     final adminSections = [
       for (final s in menu)
         if (_adminOnly.contains(s.id)) s,
@@ -278,9 +289,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       children: [
         for (final s in menu)
-          if (!_adminOnly.contains(s.id)) _sectionTile(s, selected),
+          if (!_systemBlock.contains(s.id)) _sectionTile(s, selected),
         // Everything that is not personal sits under one heading: system screens first, then the administrator tools.
-        if (screens.isNotEmpty || adminSections.isNotEmpty)
+        if (screens.isNotEmpty || adminSections.isNotEmpty || systemFirst.isNotEmpty)
           Padding(
             key: const ValueKey('settings-admin-heading'),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
@@ -289,6 +300,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
               style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
             ),
           ),
+        for (final s in systemFirst) _sectionTile(s, selected),
         for (final l in screens) _screenTile(l),
         for (final s in adminSections) _sectionTile(s, selected),
       ],
@@ -327,7 +339,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
             child: Align(
               alignment: Alignment.topLeft,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 680),
+                constraints: const BoxConstraints(maxWidth: 1000),
                 child: KeyedSubtree(
                   key: ValueKey('${section.id}/${_subs.length}'),
                   child: sub == null ? section.build(context, widget.session, _open, _signOut) : sub.builder(context),

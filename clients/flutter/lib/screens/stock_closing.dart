@@ -1,3 +1,4 @@
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../widgets/page_column.dart';
 import '../widgets/pipeline.dart' show confirmStep;
 import '../widgets/record_list.dart';
 import '../widgets/responsive.dart';
+import 'settings/settings_widgets.dart' show SettingsGrid;
 
 int? parsePeriod(String s) {
   final m = RegExp(r'^(\d{1,2})/(\d{4})$').firstMatch(s.trim());
@@ -335,9 +337,12 @@ class _ClosingScreenState extends State<ClosingScreen> {
 
 /// Stock settings screen.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.session});
+  const SettingsScreen({super.key, required this.session, this.embedded = false});
 
   final Session session;
+
+  /// Inside the settings window (Preferências > Parâmetros dos módulos): the four cards flow in the window instead of a page of their own with its scroll.
+  final bool embedded;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -450,41 +455,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final pu = r[1] as Map<String, dynamic>;
       final pr = r[2] as Map<String, dynamic>;
       final sa = r[3] as Map<String, dynamic>;
+      final cards = <Widget>[
+        _card('Estoque', '/api/stock/settings', stockFields, st, [
+          ('Saldo negativo', st['allowNegativeStock'] == true ? 'Permitido' : 'Bloqueado'),
+          ('ICMS no custo médio', st['deductIcmsFromAverage'] == true ? 'Deduzido' : 'Incluído'),
+          ('Serviço de corte', '${fmtMoney(st['cuttingServicePerKg'])}/kg'),
+          ('Revenda de sucata', '${fmtMoney(st['scrapResalePerKg'])}/kg'),
+          ('Sucata', '${fmt(st['scrapPercent'])} %'),
+        ]),
+        _card('Compras e recebimento', '/api/purchasing/settings', purchasingFields, pu, [
+          ('Tolerância de recebimento', '${fmt(pu['receivingTolerancePercent'])} %'),
+          ('Entrega antecipada', pu['allowEarlyReceipt'] == true ? 'Aceita até ${pu['earlyReceiptGraceDays']} dias' : 'Não aceita'),
+          ('Local de recebimento', fmt(pu['receivingLocation'] ?? 'ALM (padrão)')),
+        ]),
+        _card('PCP', '/api/production/settings', productionFields, pr, [
+          ('Tolerância de excedente', '${fmt(pr['overrunTolerancePercent'])} %'),
+          ('Jornada', '${fmt(pr['hoursPerDay'])} h/dia${pr['workSaturdays'] == true ? ' · inclui sábado' : ''}'),
+          ('Local de requisição', fmt(pr['issueLocation'] ?? 'ALM (padrão)')),
+          ('Entrada de acabado', fmt(pr['receiptLocation'] ?? 'PA (padrão)')),
+        ]),
+        _card('Comercial', '/api/sales/settings', salesFields, sa, [
+          ('Desconto sem autorização', 'até ${fmt(sa['maxDiscountPercent'])} %'),
+          ('Validade do orçamento', '${fmt(sa['defaultValidityDays'])} dias'),
+          ('Faturamento mínimo', (sa['minimumOrderValue'] as num? ?? 0) == 0 ? 'Sem mínimo' : fmtMoney(sa['minimumOrderValue'])),
+          ('Preço fora da tabela', sa['offListNeedsApproval'] == true ? 'exige autorização' : 'livre'),
+          ('Cobrar resposta', 'após ${fmt(sa['followUpDays'])} dias'),
+          ('Validade da autorização', '${fmt(sa['approvalValidityDays'])} dias'),
+          ('Local de expedição', fmt(sa['shippingLocation'] ?? 'Acabado do PCP (padrão)')),
+          ('Condições gerais', fmt(sa['defaultConditions'])),
+        ]),
+      ];
+      if (widget.embedded) {
+        return SettingsGrid(children: [for (final c in cards) Padding(padding: const EdgeInsets.only(bottom: 16), child: c)]);
+      }
       return PageColumn(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _card('Estoque', '/api/stock/settings', stockFields, st, [
-              ('Saldo negativo', st['allowNegativeStock'] == true ? 'Permitido' : 'Bloqueado'),
-              ('ICMS no custo médio', st['deductIcmsFromAverage'] == true ? 'Deduzido' : 'Incluído'),
-              ('Serviço de corte', '${fmtMoney(st['cuttingServicePerKg'])}/kg'),
-              ('Revenda de sucata', '${fmtMoney(st['scrapResalePerKg'])}/kg'),
-              ('Sucata', '${fmt(st['scrapPercent'])} %'),
-            ]),
-            const SizedBox(height: 12),
-            _card('Compras e recebimento', '/api/purchasing/settings', purchasingFields, pu, [
-              ('Tolerância de recebimento', '${fmt(pu['receivingTolerancePercent'])} %'),
-              ('Entrega antecipada', pu['allowEarlyReceipt'] == true ? 'Aceita até ${pu['earlyReceiptGraceDays']} dias' : 'Não aceita'),
-              ('Local de recebimento', fmt(pu['receivingLocation'] ?? 'ALM (padrão)')),
-            ]),
-            const SizedBox(height: 12),
-            _card('PCP', '/api/production/settings', productionFields, pr, [
-              ('Tolerância de excedente', '${fmt(pr['overrunTolerancePercent'])} %'),
-              ('Jornada', '${fmt(pr['hoursPerDay'])} h/dia${pr['workSaturdays'] == true ? ' · inclui sábado' : ''}'),
-              ('Local de requisição', fmt(pr['issueLocation'] ?? 'ALM (padrão)')),
-              ('Entrada de acabado', fmt(pr['receiptLocation'] ?? 'PA (padrão)')),
-            ]),
-            const SizedBox(height: 12),
-            _card('Comercial', '/api/sales/settings', salesFields, sa, [
-              ('Desconto sem autorização', 'até ${fmt(sa['maxDiscountPercent'])} %'),
-              ('Validade do orçamento', '${fmt(sa['defaultValidityDays'])} dias'),
-              ('Faturamento mínimo', (sa['minimumOrderValue'] as num? ?? 0) == 0 ? 'Sem mínimo' : fmtMoney(sa['minimumOrderValue'])),
-              ('Preço fora da tabela', sa['offListNeedsApproval'] == true ? 'exige autorização' : 'livre'),
-              ('Cobrar resposta', 'após ${fmt(sa['followUpDays'])} dias'),
-              ('Validade da autorização', '${fmt(sa['approvalValidityDays'])} dias'),
-              ('Local de expedição', fmt(sa['shippingLocation'] ?? 'Acabado do PCP (padrão)')),
-              ('Condições gerais', fmt(sa['defaultConditions'])),
-            ]),
+            for (final (i, c) in cards.indexed) ...[if (i > 0) const SizedBox(height: 12), c],
           ],
         ),
       );

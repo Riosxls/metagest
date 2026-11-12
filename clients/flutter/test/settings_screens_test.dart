@@ -41,10 +41,13 @@ Future<(Session, List<http.Request>)> open(WidgetTester tester, String role, Fut
     log.add(r);
     return handler(r);
   });
-  final session = Session(api: ApiClient(baseUrl: 'http://api.test', client: client, token: 'tok')..refreshToken = 'r-mine')
-    ..username = 'ana'
-    ..role = role
-    ..permissions = rolePermissions[role]!;
+  final session =
+      Session(
+          api: ApiClient(baseUrl: 'http://api.test', client: client, token: 'tok')..refreshToken = 'r-mine',
+        )
+        ..username = 'ana'
+        ..role = role
+        ..permissions = rolePermissions[role]!;
   await tester.pumpWidget(
     MaterialApp(
       theme: appTheme(Brightness.light),
@@ -52,7 +55,12 @@ Future<(Session, List<http.Request>)> open(WidgetTester tester, String role, Fut
       supportedLocales: const [Locale('pt', 'BR')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       home: Builder(
-        builder: (c) => Scaffold(body: TextButton(onPressed: () => showUserSettings(c, session, section: section), child: const Text('abrir'))),
+        builder: (c) => Scaffold(
+          body: TextButton(
+            onPressed: () => showUserSettings(c, session, section: section),
+            child: const Text('abrir'),
+          ),
+        ),
       ),
     ),
   );
@@ -81,7 +89,12 @@ void main() {
         expect(find.byKey(ValueKey('settings-nav-$id')), findsOneWidget, reason: id);
       }
       expect(find.byKey(const ValueKey('settings-nav-admin')), findsNothing);
-      expect(find.byKey(const ValueKey('settings-admin-heading')), findsNothing, reason: 'non-admins have no administrator tools to separate');
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('settings-admin-heading')), matching: find.text('Sistema')),
+        findsOneWidget,
+        reason: 'a reader still sees Parâmetros dos módulos, under the Sistema heading',
+      );
+      expect(find.byKey(const ValueKey('settings-nav-modules')), findsOneWidget);
       await tapV(tester, find.byKey(const ValueKey('settings-close')));
       await tester.pumpAndSettle();
       await open(tester, 'Admin', none);
@@ -106,6 +119,54 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Tela inicial'), findsOneWidget);
       expect(find.byKey(const ValueKey('settings-sub-back')), findsNothing);
+    });
+
+    testWidgets('Parâmetros dos módulos is a section of the window: its cards show here, and a wide window lays groups side by side', (tester) async {
+      await open(tester, 'Admin', (r) async {
+        return switch (r.url.path) {
+          '/api/stock/settings' => json({
+            'allowNegativeStock': false,
+            'deductIcmsFromAverage': true,
+            'cuttingServicePerKg': 1,
+            'scrapResalePerKg': 1,
+            'scrapPercent': 2,
+          }),
+          '/api/purchasing/settings' => json({'receivingTolerancePercent': 5, 'allowEarlyReceipt': true, 'earlyReceiptGraceDays': 3}),
+          '/api/production/settings' => json({'overrunTolerancePercent': 5, 'hoursPerDay': 8, 'workSaturdays': false}),
+          '/api/sales/settings' => json({
+            'maxDiscountPercent': 5,
+            'defaultValidityDays': 15,
+            'minimumOrderValue': 0,
+            'offListNeedsApproval': true,
+            'followUpDays': 5,
+            'approvalValidityDays': 7,
+          }),
+          _ => json({}),
+        };
+      });
+      await goTo(tester, 'modules');
+      expect(find.byKey(const ValueKey('settings-title')), findsOneWidget);
+      expect(find.text('Compras e recebimento'), findsOneWidget);
+      expect(find.text('PCP'), findsOneWidget);
+      // Two columns: the first two cards sit on the same row.
+      expect(tester.getTopLeft(find.text('Estoque').last).dy, tester.getTopLeft(find.text('Compras e recebimento')).dy);
+      expect(find.byType(Dialog), findsOneWidget, reason: 'it did not leave the window');
+    });
+
+    testWidgets('the personal sections use two columns on a wide window and one on a narrow one', (tester) async {
+      await open(tester, 'Reader', none);
+      await goTo(tester, 'appearance');
+      final theme = tester.getTopLeft(find.text('Tema e tamanho'));
+      final prompts = tester.getTopLeft(find.text('Acessibilidade'));
+      expect(prompts.dy, theme.dy, reason: 'wide: side by side');
+      expect(prompts.dx, greaterThan(theme.dx));
+      tester.view.physicalSize = const Size(700, 1200);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('Acessibilidade')).dy,
+        greaterThan(tester.getTopLeft(find.text('Tema e tamanho')).dy),
+        reason: 'narrow: one under the other',
+      );
     });
 
     testWidgets('on a narrow window the sections are a menu first', (tester) async {
@@ -232,7 +293,16 @@ void main() {
     });
 
     testWidgets('profile: a server validation error is shown and nothing changes', (tester) async {
-      final (s, _) = await open(tester, 'Reader', (r) async => json({'errors': {'email': ['Invalid email']}}, 400), section: 'account');
+      final (s, _) = await open(
+        tester,
+        'Reader',
+        (r) async => json({
+          'errors': {
+            'email': ['Invalid email'],
+          },
+        }, 400),
+        section: 'account',
+      );
       await tester.enterText(find.byKey(const ValueKey('settings-profile-email')), 'sem-arroba');
       await tester.pump();
       await tapV(tester, find.byKey(const ValueKey('settings-profile-save')));
@@ -324,7 +394,15 @@ void main() {
     testWidgets('shows app and server facts', (tester) async {
       await open(tester, 'Reader', (r) async {
         if (r.url.path == '/api/system/about') {
-          return json({'version': '1.4.2', 'runtime': '.NET 10.0.14', 'environment': 'Production', 'serverTime': '2026-11-01T12:00:00Z', 'timeZone': 'America/Sao_Paulo', 'lastMigration': '20261101_SessionDevices', 'databaseOk': true});
+          return json({
+            'version': '1.4.2',
+            'runtime': '.NET 10.0.14',
+            'environment': 'Production',
+            'serverTime': '2026-11-01T12:00:00Z',
+            'timeZone': 'America/Sao_Paulo',
+            'lastMigration': '20261101_SessionDevices',
+            'databaseOk': true,
+          });
         }
         return json({});
       }, section: 'about');
@@ -345,7 +423,12 @@ void main() {
 
     testWidgets('backup: recent, old, missing and unconfigured', (tester) async {
       final recent = DateTime.now().toUtc().subtract(const Duration(hours: 3)).toIso8601String();
-      await open(tester, 'Admin', (r) => backup({'configured': true, 'count': 14, 'lastBackupAt': recent, 'lastBackupFile': 'ebt-nightly-1.dump', 'lastBackupSizeBytes': 5242880}), section: 'backup');
+      await open(
+        tester,
+        'Admin',
+        (r) => backup({'configured': true, 'count': 14, 'lastBackupAt': recent, 'lastBackupFile': 'ebt-nightly-1.dump', 'lastBackupSizeBytes': 5242880}),
+        section: 'backup',
+      );
       expect(find.text('Backup em dia'), findsOneWidget);
       expect(find.text('ebt-nightly-1.dump'), findsOneWidget);
       expect(find.textContaining('14 arquivos'), findsOneWidget);
@@ -353,7 +436,12 @@ void main() {
 
     testWidgets('backup older than 36 hours is flagged', (tester) async {
       final old = DateTime.now().toUtc().subtract(const Duration(hours: 50)).toIso8601String();
-      await open(tester, 'Admin', (r) => backup({'configured': true, 'count': 3, 'lastBackupAt': old, 'lastBackupFile': 'a.dump', 'lastBackupSizeBytes': 2048}), section: 'backup');
+      await open(
+        tester,
+        'Admin',
+        (r) => backup({'configured': true, 'count': 3, 'lastBackupAt': old, 'lastBackupFile': 'a.dump', 'lastBackupSizeBytes': 2048}),
+        section: 'backup',
+      );
       expect(find.text('Último backup está velho'), findsOneWidget);
     });
 
@@ -428,13 +516,21 @@ void main() {
   group('desconexão por inatividade', () {
     testWidgets('signs out after the chosen idle time and tells the login screen why', (tester) async {
       var now = DateTime(2026, 11, 1, 9);
-      final session = Session(api: ApiClient(baseUrl: 'http://api.test', client: MockClient((r) async => json({})), token: 'tok'))
-        ..username = 'ana'
-        ..expiresAt = DateTime.now().add(const Duration(hours: 1))
-        ..idleLockMinutes = 15;
+      final session =
+          Session(
+              api: ApiClient(baseUrl: 'http://api.test', client: MockClient((r) async => json({})), token: 'tok'),
+            )
+            ..username = 'ana'
+            ..expiresAt = DateTime.now().add(const Duration(hours: 1))
+            ..idleLockMinutes = 15;
       await tester.pumpWidget(
         MaterialApp(
-          home: IdleGuard(session: session, checkEvery: const Duration(seconds: 1), now: () => now, child: const Scaffold(body: Text('conteúdo'))),
+          home: IdleGuard(
+            session: session,
+            checkEvery: const Duration(seconds: 1),
+            now: () => now,
+            child: const Scaffold(body: Text('conteúdo')),
+          ),
         ),
       );
       now = now.add(const Duration(minutes: 10));
@@ -458,10 +554,17 @@ void main() {
         if (r.url.path == '/api/auth/activity') posts.add(r.body);
         return json({});
       });
-      final session = Session(api: ApiClient(baseUrl: 'http://api.test', client: client, token: 'tok'))
-        ..expiresAt = DateTime.now().add(const Duration(hours: 1))
-        ..idleLockMinutes = 15;
-      await tester.pumpWidget(MaterialApp(home: IdleGuard(session: session, checkEvery: const Duration(seconds: 1), now: () => now, child: const SizedBox())));
+      final session =
+          Session(
+              api: ApiClient(baseUrl: 'http://api.test', client: client, token: 'tok'),
+            )
+            ..expiresAt = DateTime.now().add(const Duration(hours: 1))
+            ..idleLockMinutes = 15;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: IdleGuard(session: session, checkEvery: const Duration(seconds: 1), now: () => now, child: const SizedBox()),
+        ),
+      );
       await tester.tapAt(const Offset(10, 10));
       await tester.tapAt(const Offset(12, 12));
       await tester.pump();
@@ -477,8 +580,14 @@ void main() {
 
     testWidgets('never means never', (tester) async {
       var now = DateTime(2026, 11, 1, 9);
-      final session = Session(api: ApiClient(baseUrl: 'http://api.test', client: MockClient((r) async => json({})), token: 'tok'))..expiresAt = DateTime.now().add(const Duration(hours: 1));
-      await tester.pumpWidget(MaterialApp(home: IdleGuard(session: session, checkEvery: const Duration(seconds: 1), now: () => now, child: const SizedBox())));
+      final session = Session(
+        api: ApiClient(baseUrl: 'http://api.test', client: MockClient((r) async => json({})), token: 'tok'),
+      )..expiresAt = DateTime.now().add(const Duration(hours: 1));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: IdleGuard(session: session, checkEvery: const Duration(seconds: 1), now: () => now, child: const SizedBox()),
+        ),
+      );
       now = now.add(const Duration(hours: 9));
       await tester.pump(const Duration(seconds: 1));
       expect(session.api.token, 'tok');

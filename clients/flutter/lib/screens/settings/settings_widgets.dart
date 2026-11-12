@@ -35,6 +35,28 @@ class SettingsGroup extends StatelessWidget {
   }
 }
 
+/// Lays the groups of a section side by side when the window is wide enough (two columns of at least [minColumn]), one under the other otherwise,
+/// so a wide settings window is used instead of leaving half of it empty.
+class SettingsGrid extends StatelessWidget {
+  const SettingsGrid({super.key, required this.children, this.minColumn = 400});
+
+  final List<Widget> children;
+  final double minColumn;
+
+  static const _gap = 32.0;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      if (!box.maxWidth.isFinite || box.maxWidth < 2 * minColumn + _gap) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
+      }
+      final w = (box.maxWidth - _gap) / 2;
+      return Wrap(spacing: _gap, children: [for (final c in children) SizedBox(width: w, child: c)]);
+    },
+  );
+}
+
 /// A label with its explanation on the left and the control underneath (or beside it on wide screens).
 class SettingRow extends StatelessWidget {
   const SettingRow({super.key, required this.title, this.subtitle, required this.control});
