@@ -261,4 +261,63 @@ public class FiscalIssuerTests(ApiFixture api)
         Assert.Equal("BST", FiscalCompany.Parse("bst"));
         Assert.Null(FiscalCompany.Parse("outra"));
     }
+
+    [Fact]
+    public async Task A_bst_file_matches_its_customers_by_cnpj_fills_only_the_gaps_and_never_rewrites_what_the_ebt_data_has()
+    {
+        var admin = await api.AdminAsync();
+        var code = Code("B");
+        var product = await (await admin.Post("/api/products", Tube(code))).Read<ProductOut>();
+        // The EBT code of this customer is "5"; in the BST system the same company is code "77", and BST code "5" is somebody else.
+        // Documents are unique per run: other tests leave customers with the same CNPJ behind, and a document shared by two customers is (rightly) ambiguous.
+        var cnpj = "7" + Guid.NewGuid().ToString("N").Where(char.IsDigit).Concat("0123456789012").Take(13).Aggregate("", (a, c) => a + c);
+        var otherCnpj = "8" + Guid.NewGuid().ToString("N").Where(char.IsDigit).Concat("0123456789012").Take(13).Aggregate("", (a, c) => a + c);
+        var customer = await (await admin.Post("/api/customers", new CustomerIn("Cliente " + Code("C"), null, null, ConsumerType.Normal))).Read<CustomerOut>();
+        (await admin.Post($"/api/customers/{customer.Id}/addresses", new CustomerAddressIn(cnpj, "SP", null, "148061942112", true, "Av. Brasil", "100", null, "Centro", "Embu", "3515004", "06800000", "5101", "Edilto", "compras@cliente.com", null))).EnsureSuccessStatusCode();
+        var other = await (await admin.Post("/api/customers", new CustomerIn("Outro " + Code("C"), null, null, ConsumerType.Normal))).Read<CustomerOut>();
+        (await admin.Post($"/api/customers/{other.Id}/addresses", new CustomerAddressIn(otherCnpj, "SP", null, "148061942112", true, "Rua A", "1", null, "Centro", "Embu", "3515004", "06800000", "5101", "X", "x@x.com", null))).EnsureSuccessStatusCode();
+        // An EBT rule and an EBT price already exist for the other customer: the BST file must not rewrite them.
+        (await admin.Post("/api/fiscal/tax-rules", new TaxRuleIn(product.Id, other.Id, "5101", "00", 18m, 0m, "50", 3.25m, 0.65m, 3m))).EnsureSuccessStatusCode();
+        (await admin.Post("/api/fiscal/monthly-prices", new MonthlyPriceIn(product.Id, other.Id, "5101", Today.Year, Today.Month, 100m))).EnsureSuccessStatusCode();
+
+        var bundle = new
+        {
+            source = "BST",
+            customers = new object[]
+            {
+                new { code = "77", name = "A", documents = new[] { cnpj } },
+                new { code = "5", name = "B", documents = new[] { otherCnpj } },
+                new { code = "88", name = "C", documents = new[] { "99999999000199" } }, // not registered here
+                new { code = "99", name = "D", documents = Array.Empty<string>() }           // no document in the old system
+            },
+            taxRules = new object[]
+            {
+                new { productCode = code, customerCode = "77", cfop = "5101", icmsCst = "00", icmsPercent = 18m, ipiCst = "55", ipiPercent = 0m, pisPercent = 0.65m, cofinsPercent = 3m },
+                new { productCode = code, customerCode = "5", cfop = "5101", icmsCst = "00", icmsPercent = 12m, ipiCst = "55", ipiPercent = 0m, pisPercent = 0.65m, cofinsPercent = 3m },
+                new { productCode = code, customerCode = "88", cfop = "5101", icmsCst = "00", icmsPercent = 18m, ipiCst = "55", ipiPercent = 0m, pisPercent = 0.65m, cofinsPercent = 3m }
+            },
+            monthlyPrices = new object[]
+            {
+                new { productCode = code, customerCode = "77", cfop = "5101", year = Today.Year, month = Today.Month, unitPrice = 25.5m },
+                new { productCode = code, customerCode = "5", cfop = "5101", year = Today.Year, month = Today.Month, unitPrice = 999m }
+            }
+        };
+
+        var preview = await (await UploadAsync(admin, bundle, apply: false)).Read<FiscalImportResult>();
+        var rules = preview.Sections.Single(x => x.Section == "taxRules");
+        Assert.Equal(1, rules.Added);
+        Assert.Equal(0, rules.Updated);
+        Assert.Equal(1, rules.Skipped); // customer 88 is not registered
+        Assert.Contains(rules.Notes, n => n.Contains("ligados pelo CNPJ/CPF: 2 de 4"));
+        Assert.Contains(rules.Notes, n => n.Contains("mantidos como estão"));
+        Assert.Empty((await (await admin.GetAsync($"/api/fiscal/tax-rules?q={code}")).Read<Page<TaxRuleOut>>()).Items.Where(r => r.CustomerId == customer.Id));
+
+        Assert.True((await UploadAsync(admin, bundle, apply: true)).IsSuccessStatusCode);
+        var saved = (await (await admin.GetAsync($"/api/fiscal/tax-rules?q={code}")).Read<Page<TaxRuleOut>>()).Items;
+        Assert.Equal(18m, Assert.Single(saved, r => r.CustomerId == customer.Id).IcmsPercent);
+        Assert.Equal(18m, Assert.Single(saved, r => r.CustomerId == other.Id).IcmsPercent); // the EBT rule stayed as it was
+        var prices = (await (await admin.GetAsync($"/api/fiscal/monthly-prices?q={code}")).Read<Page<JsonElement>>()).Items;
+        Assert.Equal(25.5m, prices.Single(p => p.GetProperty("customerId").GetInt32() == customer.Id).GetProperty("unitPrice").GetDecimal());
+        Assert.Equal(100m, prices.Single(p => p.GetProperty("customerId").GetInt32() == other.Id).GetProperty("unitPrice").GetDecimal());
+    }
 }

@@ -14,13 +14,16 @@ public sealed record BundleTaxRule(string ProductCode, string CustomerCode, stri
 
 public sealed record BundleUfRate(string Uf, decimal Percent);
 
+/// <summary>A customer of the old system the file refers to by <c>customerCode</c>, with the CNPJ/CPF of its addresses: how another company's codes are matched to MetaGest customers.</summary>
+public sealed record BundleCustomer(string Code, string? Name, List<string>? Documents);
+
 public sealed record BundlePrice(string ProductCode, string CustomerCode, string Cfop, int Year, int Month, decimal UnitPrice);
 
 public sealed record BundleCfop(string Code, string Description, bool Taxed, string IcmsCst, string IpiCst, string PisCst, string CofinsCst, decimal DefaultPisPercent, decimal DefaultCofinsPercent,
     string? IpiFramingCode, bool GeneratesInstallments);
 
 /// <summary>The file built by <c>scripts/export-fiscal-data.ps1</c> from the legacy DBFs: everything the NF needs that MetaGest did not import with the registers.</summary>
-public sealed record FiscalBundle(string? Source, BundleIssuer? Issuer, List<BundleCarrier>? Carriers, List<BundleTaxRule>? TaxRules, List<BundlePrice>? MonthlyPrices, List<BundleCfop>? Cfops, List<BundleUfRate>? UfRates = null);
+public sealed record FiscalBundle(string? Source, BundleIssuer? Issuer, List<BundleCarrier>? Carriers, List<BundleTaxRule>? TaxRules, List<BundlePrice>? MonthlyPrices, List<BundleCfop>? Cfops, List<BundleUfRate>? UfRates = null, List<BundleCustomer>? Customers = null);
 
 /// <param name="Section">issuer, cfops, carriers, taxRules or monthlyPrices.</param>
 /// <param name="Notes">Why rows were left out or what deserves a look.</param>
@@ -59,14 +62,16 @@ public sealed class FiscalDataImporter(EbtDbContext db)
         if (bundle is null) throw FiscalException.Invalid("file", "Arquivo vazio");
 
         var company = FiscalCompany.Parse(bundle.Source) ?? throw FiscalException.Invalid("file", "O campo \"source\" do arquivo deve ser EBT ou BST");
+        // EBT's codes are the legacy codes already on the customers; another company's codes are matched by CNPJ/CPF through the customers listed in its file.
+        var map = company == FiscalCompany.Ebt ? null : await MapCustomersAsync(bundle.Customers ?? [], ct);
         var sections = new List<FiscalImportSection>
         {
             await IssuerAsync(bundle.Issuer, company, ct),
             await CfopsAsync(bundle.Cfops ?? [], ct),
             await UfRatesAsync(bundle.UfRates ?? [], ct),
             await CarriersAsync(bundle.Carriers ?? [], ct),
-            company == FiscalCompany.Ebt ? await TaxRulesAsync(bundle.TaxRules ?? [], ct) : OtherCompanyOnly("taxRules", "Impostos por produto e cliente", bundle.TaxRules?.Count ?? 0),
-            company == FiscalCompany.Ebt ? await PricesAsync(bundle.MonthlyPrices ?? [], ct) : OtherCompanyOnly("monthlyPrices", "Preços mensais da NF", bundle.MonthlyPrices?.Count ?? 0)
+            await TaxRulesAsync(bundle.TaxRules ?? [], map, ct),
+            await PricesAsync(bundle.MonthlyPrices ?? [], map, ct)
         };
         if (apply) await db.SaveChangesAsync(ct);
         else db.ChangeTracker.Clear();
@@ -110,12 +115,34 @@ public sealed class FiscalDataImporter(EbtDbContext db)
         return new("issuer", "Dados do emitente", 1, 0, changed > 0 ? 1 : 0, changed > 0 ? 0 : 1, 0, notes);
     }
 
+    /// <summary>What matching another company's customer codes found: the map from code to MetaGest customer, and why the rest was left out.</summary>
+    private sealed record CustomerMap(Dictionary<string, int> Ids, int NoDocument, int NotFound, int Ambiguous, int InFile);
+
     /// <summary>
-    /// Tax rules and monthly prices are tied to customers by the legacy customer code, and that code is the one of the EBT system: the BST system numbers its customers on its own,
-    /// so the same code can be another customer. A file from another company therefore brings only the issuer, CFOPs, ICMS rates and carriers; its rules and prices wait for a customer map.
+    /// Tax rules and monthly prices point to customers by the legacy customer code. The BST system numbers its customers on its own, so its codes cannot be looked up in
+    /// <c>customers.legacy_code</c> (the EBT codes): the file lists each customer with the CNPJ/CPF of its addresses, and a code is mapped only when exactly one MetaGest customer
+    /// has one of those documents on an address. A customer without document, without a match or with several matches is left out and counted.
     /// </summary>
-    private static FiscalImportSection OtherCompanyOnly(string section, string title, int read) =>
-        new(section, title, read, 0, 0, 0, read, read == 0 ? [] : ["Não importado: os códigos de cliente do arquivo são do sistema da outra empresa e poderiam apontar para o cliente errado."]);
+    private async Task<CustomerMap> MapCustomersAsync(List<BundleCustomer> list, CancellationToken ct)
+    {
+        var byDocument = (await db.CustomerAddresses.AsNoTracking().Where(a => a.Document.Length == 11 || a.Document.Length == 14).Select(a => new { a.Document, a.CustomerId }).ToListAsync(ct))
+            .GroupBy(a => a.Document).ToDictionary(g => g.Key, g => g.Select(x => x.CustomerId).Distinct().ToList());
+        var ids = new Dictionary<string, int>();
+        int noDoc = 0, notFound = 0, ambiguous = 0;
+        foreach (var c in list)
+        {
+            var docs = (c.Documents ?? []).Select(Digits).Where(d => d is { Length: 11 or 14 }).Distinct().ToList();
+            if (docs.Count == 0) { noDoc++; continue; }
+            var found = docs.SelectMany(d => byDocument.GetValueOrDefault(d!) ?? []).Distinct().ToList();
+            if (found.Count == 0) notFound++;
+            else if (found.Count > 1) ambiguous++;
+            else ids[(c.Code ?? "").Trim()] = found[0];
+        }
+        return new CustomerMap(ids, noDoc, notFound, ambiguous, list.Count);
+    }
+
+    private static string MapNote(CustomerMap map) =>
+        $"Clientes do arquivo ligados pelo CNPJ/CPF: {map.Ids.Count} de {map.InFile}" + (map.NotFound + map.NoDocument + map.Ambiguous == 0 ? "." : $" ({map.NotFound} sem cadastro, {map.NoDocument} sem documento, {map.Ambiguous} com mais de um cadastro).");
 
     private async Task<FiscalImportSection> CfopsAsync(List<BundleCfop> rows, CancellationToken ct)
     {
@@ -188,11 +215,13 @@ public sealed class FiscalDataImporter(EbtDbContext db)
         return new("carriers", "Transportadoras", rows.Count, added, updated, unchanged, skipped, []);
     }
 
-    private async Task<FiscalImportSection> TaxRulesAsync(List<BundleTaxRule> rows, CancellationToken ct)
+    private async Task<FiscalImportSection> TaxRulesAsync(List<BundleTaxRule> rows, CustomerMap? map, CancellationToken ct)
     {
         var products = await db.Products.AsNoTracking().Select(p => new { p.Code, p.Id }).ToDictionaryAsync(p => p.Code, p => p.Id, ct);
-        var customers = await db.Customers.AsNoTracking().Where(c => c.LegacyCode != null).Select(c => new { c.LegacyCode, c.Id }).ToListAsync(ct);
-        var customerIds = customers.GroupBy(c => c.LegacyCode!.Trim()).ToDictionary(g => g.Key, g => g.First().Id);
+        var customerIds = map?.Ids ?? await LegacyCustomerIdsAsync(ct);
+        // Rules and prices are shared by both companies: a file of the other company only fills what is missing and never rewrites a value that is already there.
+        var gapsOnly = map is not null;
+        var kept = 0;
         var cfops = (await db.Cfops.AsNoTracking().Select(c => c.Code).ToListAsync(ct)).Concat(newCfops).ToHashSet();
         var existing = await db.TaxRules.ToListAsync(ct);
         int added = 0, updated = 0, unchanged = 0;
@@ -213,6 +242,7 @@ public sealed class FiscalDataImporter(EbtDbContext db)
                 added++;
             }
             else if (rule.IcmsCst == r.IcmsCst && rule.IcmsPercent == r.IcmsPercent && rule.IpiCst == r.IpiCst && rule.IpiPercent == r.IpiPercent && rule.PisPercent == r.PisPercent && rule.CofinsPercent == r.CofinsPercent) unchanged++;
+            else if (gapsOnly) kept++;
             else
             {
                 rule.IcmsCst = r.IcmsCst; rule.IcmsPercent = r.IcmsPercent; rule.IpiCst = r.IpiCst; rule.IpiPercent = r.IpiPercent; rule.PisPercent = r.PisPercent; rule.CofinsPercent = r.CofinsPercent;
@@ -220,14 +250,17 @@ public sealed class FiscalDataImporter(EbtDbContext db)
             }
         }
         var notes = skipped.Select(k => $"{k.Value} ignoradas: {k.Key}").ToList();
+        if (map is not null) notes.Insert(0, MapNote(map));
+        if (kept > 0) notes.Add($"{kept} já existem com outros valores (do EBT): mantidos como estão.");
         return new("taxRules", "Impostos por produto e cliente", rows.Count, added, updated, unchanged, skipped.Values.Sum(), notes);
     }
 
-    private async Task<FiscalImportSection> PricesAsync(List<BundlePrice> rows, CancellationToken ct)
+    private async Task<FiscalImportSection> PricesAsync(List<BundlePrice> rows, CustomerMap? map, CancellationToken ct)
     {
         var products = await db.Products.AsNoTracking().Select(p => new { p.Code, p.Id }).ToDictionaryAsync(p => p.Code, p => p.Id, ct);
-        var customers = await db.Customers.AsNoTracking().Where(c => c.LegacyCode != null).Select(c => new { c.LegacyCode, c.Id }).ToListAsync(ct);
-        var customerIds = customers.GroupBy(c => c.LegacyCode!.Trim()).ToDictionary(g => g.Key, g => g.First().Id);
+        var customerIds = map?.Ids ?? await LegacyCustomerIdsAsync(ct);
+        var gapsOnly = map is not null;
+        var kept = 0;
         var cfops = (await db.Cfops.AsNoTracking().Select(c => c.Code).ToListAsync(ct)).Concat(newCfops).ToHashSet();
         var existing = (await db.MonthlyPrices.ToListAsync(ct)).ToDictionary(p => (p.ProductId, p.CustomerId, p.CfopCode, p.Year, p.Month));
         int added = 0, updated = 0, unchanged = 0;
@@ -249,10 +282,18 @@ public sealed class FiscalDataImporter(EbtDbContext db)
                 added++;
             }
             else if (row.UnitPrice == r.UnitPrice) unchanged++;
+            else if (gapsOnly) kept++;
             else { row.UnitPrice = r.UnitPrice; updated++; }
         }
         var notes = skipped.Select(k => $"{k.Value} ignorados: {k.Key}").ToList();
+        if (kept > 0) notes.Add($"{kept} já existem com outro preço (do EBT): mantidos como estão.");
         return new("monthlyPrices", "Preços mensais da NF", rows.Count, added, updated, unchanged, skipped.Values.Sum(), notes);
+    }
+
+    private async Task<Dictionary<string, int>> LegacyCustomerIdsAsync(CancellationToken ct)
+    {
+        var customers = await db.Customers.AsNoTracking().Where(c => c.LegacyCode != null).Select(c => new { c.LegacyCode, c.Id }).ToListAsync(ct);
+        return customers.GroupBy(c => c.LegacyCode!.Trim()).ToDictionary(g => g.Key, g => g.First().Id);
     }
 
     private static string? Digits(string? s) => s is null ? null : (string.Concat(s.Where(char.IsDigit)) is { Length: > 0 } d ? d : null);

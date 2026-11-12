@@ -139,10 +139,26 @@ foreach ($p in $best.Values) {
     }
 }
 
+# ---- customers of this system with their CNPJ/CPF: lets MetaGest match the customer codes of another company (BST) by document
+$usedCodes = @{}
+foreach ($r in $rules) { $usedCodes[$r.customerCode] = $true }
+foreach ($r in $prices) { $usedCodes[$r.customerCode] = $true }
+$docsByCode = @{}
+foreach ($a in (Read-Dbf (Join-Path $Db 'NF020.DBF'))) {
+    $c = Key $a['F02CDCLIE']; $d = Digits $a['F02CGC']
+    if (-not $usedCodes.ContainsKey($c) -or ($d.Length -ne 11 -and $d.Length -ne 14)) { continue }
+    if (-not $docsByCode.ContainsKey($c)) { $docsByCode[$c] = New-Object System.Collections.Generic.List[string] }
+    if (-not $docsByCode[$c].Contains($d)) { $docsByCode[$c].Add($d) }
+}
+$customerNames = @{}
+foreach ($c in (Read-Dbf (Join-Path $Db 'NF010.DBF'))) { $customerNames[(Key $c['F01CDCLIE'])] = $c['F01NMCLIE'] }
+$customers = @()
+foreach ($c in $usedCodes.Keys) { $customers += [ordered]@{ code = $c; name = $customerNames[$c]; documents = @($docsByCode[$c]) } }
+
 $ufRates = @()
 foreach ($k in $ufRate.Keys) { if ($ufRate[$k] -gt 0) { $ufRates += [ordered]@{ uf = $k; percent = $ufRate[$k] } } }
 
-$bundle = [ordered]@{ source = $Source; ufRates = $ufRates; generatedAt = (Get-Date).ToString('s'); issuer = $issuer; cfops = $cfops; carriers = $carriers; taxRules = $rules; monthlyPrices = $prices }
+$bundle = [ordered]@{ source = $Source; ufRates = $ufRates; generatedAt = (Get-Date).ToString('s'); issuer = $issuer; cfops = $cfops; carriers = $carriers; customers = $customers; taxRules = $rules; monthlyPrices = $prices }
 $json = $bundle | ConvertTo-Json -Depth 6
 [IO.File]::WriteAllText($Out, $json, (New-Object Text.UTF8Encoding($false)))
 Write-Host "Wrote $Out"
