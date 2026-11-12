@@ -107,6 +107,18 @@ void main() {
     expect(((body['lines'] as List).single as Map)['quantity'], 9.5);
   });
 
+  testWidgets('the invoice screen fits a narrow window without overflow, action panel before the NF details', (tester) async {
+    final f = MoreFake()..order['status'] = 'Released';
+    f.overrides['GET /api/fiscal/preview/order/9'] = (r) => _json(_preview());
+    await pumpMore(tester, f, (s) => SalesOrderScreen(session: s, id: 9), size: const Size(1400, 2200));
+    await tapKey(tester, 'order-invoice');
+    tester.view.physicalSize = const Size(520, 2600);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('invoice-confirm')), findsOneWidget);
+    expect(find.byKey(const ValueKey('invoice-qty-90')), findsOneWidget);
+  });
+
   testWidgets('the simulation lists what is missing and where to fix it', (tester) async {
     final f = MoreFake()..order['status'] = 'Released';
     f.overrides['GET /api/fiscal/preview/order/9'] = (r) => _json(

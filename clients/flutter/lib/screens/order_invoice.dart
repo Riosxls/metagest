@@ -141,89 +141,10 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     }
   }
 
-  /// The weighed quantity of each item that still has something to ship; the preview below follows what is typed here.
-  Widget _weighing(Map<String, dynamic> nf) {
-    final items = (nf['orderLines'] as List? ?? const []).cast<Map<String, dynamic>>().where((l) => (l['remaining'] as num) > 0).toList();
-    if (items.isEmpty) {
-      return const NextStepCard(
-        key: ValueKey('invoice-nothing-left'),
-        title: 'Nada a expedir',
-        message: 'Todos os itens deste pedido já saíram.',
-        tone: Tone.success,
-        icon: Icons.check_circle_outline,
-      );
-    }
-    return Section(
-      title: 'Carga e quantidade pesada',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'A OF volta da fábrica com o produto pesado, às vezes um pouco a mais ou a menos que o pedido. Digite o peso final de cada item: a NF e a baixa do estoque usam estes valores. Deixe em 0 o item que não vai nesta carga.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          gap,
-          for (final l in items)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: TextField(
-                key: ValueKey('invoice-qty-${l['orderLineId']}'),
-                controller: _qty[l['orderLineId']],
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: 'Item ${l['sequence']} · ${l['code']} (${l['unit']})',
-                  helperText: 'Pedido: ${fmtNum(l['ordered'], 3)} · falta expedir: ${fmtNum(l['remaining'], 3)}',
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-            ),
-          Text('Dados da carga que vão na NF (edite se precisar)', style: Theme.of(context).textTheme.titleSmall),
-          gap,
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              for (final e in _extra.entries)
-                SizedBox(
-                  width: 320,
-                  child: TextField(
-                    key: ValueKey('invoice-extra-${e.key}'),
-                    controller: _extraCtl[e.key],
-                    keyboardType: _numericExtra.contains(e.key) ? const TextInputType.numberWithOptions(decimal: true) : null,
-                    decoration: InputDecoration(labelText: e.value, border: const OutlineInputBorder()),
-                  ),
-                ),
-            ],
-          ),
-          gap,
-          if (nf['fiscalEnabled'] != true)
-            TextField(
-              key: const ValueKey('invoice-number'),
-              controller: _invoiceNumber,
-              decoration: const InputDecoration(
-                labelText: 'Número da NF (emitida fora do sistema)',
-                helperText: 'A emissão fiscal está desligada: o sistema só registra o número',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          gap,
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(key: const ValueKey('invoice-update'), onPressed: _loading || _sending ? null : _load, icon: const Icon(Icons.refresh), label: const Text('Atualizar a prévia')),
-              FilledButton.icon(
-                key: const ValueKey('invoice-confirm'),
-                onPressed: _sending || nf['ready'] != true ? null : () => _dispatch(nf),
-                icon: _sending ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.receipt_long),
-                label: Text(nf['fiscalEnabled'] == true ? 'Confirmar e emitir NF' : 'Confirmar saída com NF digitada'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  // ---- layout ---------------------------------------------------------------------------------------------------------------------------------------------
+
+  /// Width from which the screen shows the NF on the left and the action panel (weighing, load data, total, confirm) beside it.
+  static const _wide = 1000.0;
 
   @override
   Widget build(BuildContext context) {
@@ -231,44 +152,107 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(o == null ? 'Emitir nota fiscal' : 'Emitir nota fiscal · ${o['reference']}', overflow: TextOverflow.ellipsis),
-        actions: [IconButton(key: const ValueKey('invoice-refresh'), tooltip: 'Atualizar a simulação', icon: const Icon(Icons.refresh), onPressed: _loading ? null : _load)],
+        actions: [IconButton(key: const ValueKey('invoice-refresh'), tooltip: 'Atualizar a prévia', icon: const Icon(Icons.refresh), onPressed: _loading ? null : _load)],
       ),
       body: _error != null && nf == null
           ? LoadError(message: _error!, onRetry: _load)
           : nf == null || o == null
           ? const RecordSkeleton()
-          : RefreshIndicator(onRefresh: _load, child: _body(o, nf)),
+          : LayoutBuilder(builder: (context, box) => box.maxWidth >= _wide ? _wideBody(o, nf) : RefreshIndicator(onRefresh: _load, child: _narrowBody(o, nf))),
     );
   }
 
-  Widget _kv(String label, Object? value) {
-    final text = value == null || '$value'.trim().isEmpty ? '—' : '$value';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
+  Widget _wideBody(Map<String, dynamic> o, Map<String, dynamic> nf) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 8, 24), children: _preview(o, nf))),
+      SizedBox(
+        width: 410,
+        child: ListView(padding: const EdgeInsets.fromLTRB(8, 16, 16, 24), children: [_actionPanel(nf)]),
+      ),
+    ],
+  );
+
+  Widget _narrowBody(Map<String, dynamic> o, Map<String, dynamic> nf) {
+    final preview = _preview(o, nf);
+    // Phones and narrow windows: the header and the checklist first, then the action panel, then the rest of the NF.
+    return ListView(padding: const EdgeInsets.all(16), children: [...preview.take(3), _actionPanel(nf), gap, ...preview.skip(3)]);
+  }
+
+  // ---- left: the NF -----------------------------------------------------------------------------------------------------------------------------------------
+
+  Widget _chip(String label, {Tone tone = Tone.neutral, IconData? icon}) => StatusBadge(label, tone: tone, icon: icon);
+
+  /// Order header, path, short explanation and the facts of the operation as chips.
+  Widget _header(Map<String, dynamic> o, Map<String, dynamic> nf) {
+    final skip = o['quoteId'] == null ? 3 : 0;
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('${o['reference']} · ${fmt(o['customerName'])}', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 10),
+        StagePath(
+          steps: flowSteps.sublist(skip),
+          current: invoiceStep - skip,
+          // Back to the order from any earlier step; the later steps live on the order too.
+          onStep: (i) => i + skip == invoiceStep ? null : () => Navigator.maybePop(context),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            _chip('Emitente ${nf['company'] ?? 'EBT'}', icon: Icons.apartment_outlined),
+            _chip('CFOP ${nf['cfop']} · ${fmt(nf['cfopDescription'])}', icon: Icons.swap_horiz),
+            _chip('Série ${nf['series']} · nº ${nf['nextNumber']}', icon: Icons.tag),
+            _chip(nf['environment'] == 'Production' ? 'Produção' : 'Homologação', tone: nf['environment'] == 'Production' ? Tone.warning : Tone.neutral),
+            _chip(nf['fiscalEnabled'] == true ? 'Emissão ligada' : 'Emissão desligada', tone: nf['fiscalEnabled'] == true ? Tone.success : Tone.warning, icon: Icons.power_settings_new),
+            _chip(nf['simulated'] == true ? 'SEFAZ simulada' : 'SEFAZ real', tone: nf['simulated'] == true ? Tone.info : Tone.success, icon: Icons.cloud_outlined),
+          ],
+        ),
+        const SizedBox(height: 10),
+        const NextStepCard(
+          key: ValueKey('invoice-simulation'),
+          title: 'Prévia da nota fiscal',
+          message: 'Confira a NF, ajuste as quantidades pesadas e os dados da carga no painel e confirme. Depois vem o certificado e, por fim, a confirmação da entrega ao cliente.',
+          tone: Tone.info,
+          icon: Icons.receipt_long_outlined,
+        ),
+      ],
+    );
+  }
+
+  Widget _party(String title, IconData icon, Map<String, dynamic> p) {
+    final theme = Theme.of(context);
+    String? join(List<Object?> parts, [String sep = ' · ']) {
+      final v = parts.where((e) => e != null && '$e'.trim().isNotEmpty).join(sep);
+      return v.isEmpty ? null : v;
+    }
+
+    Widget line(String? text, {String missing = '—'}) => Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Text(text ?? missing, style: text == null ? theme.textTheme.bodySmall : theme.textTheme.bodyMedium),
+    );
+    return Section(
+      title: title,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 150, child: Text(label, style: Theme.of(context).textTheme.bodySmall)),
-          Expanded(child: Text(text)),
+          Row(
+            children: [
+              Icon(icon, size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(child: Text(fmt(p['name']), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600))),
+            ],
+          ),
+          line(join(['CNPJ/CPF ${fmt(p['document'])}', 'IE ${fmt(p['stateRegistration'])}'])),
+          line(p['address'] as String?, missing: 'Endereço não informado'),
+          line(join([join([p['city'], p['uf']], ' / '), if (p['zipCode'] != null) 'CEP ${p['zipCode']}', 'IBGE ${fmt(p['cityIbgeCode'])}'])),
         ],
       ),
     );
   }
-
-  Widget _partySection(String title, Map<String, dynamic> p) => Section(
-    title: title,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _kv('Nome', p['name']),
-        _kv('CNPJ/CPF', p['document']),
-        _kv('Inscrição estadual', p['stateRegistration']),
-        _kv('Endereço', p['address']),
-        _kv('Cidade/UF', [if (p['city'] != null) p['city'], if (p['uf'] != null) p['uf']].join(' / ')),
-        _kv('CEP · IBGE', [if (p['zipCode'] != null) p['zipCode'], if (p['cityIbgeCode'] != null) p['cityIbgeCode']].join(' · ')),
-      ],
-    ),
-  );
 
   Widget _problems(Map<String, dynamic> nf) {
     final problems = (nf['problems'] as List).cast<Map<String, dynamic>>();
@@ -289,12 +273,12 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
           NextStepCard(
             key: const ValueKey('invoice-blocked'),
             title: blocking == 1 ? 'Falta 1 item para emitir' : 'Faltam $blocking itens para emitir',
-            message: 'Complete os cadastros indicados e atualize a simulação.',
+            message: 'Complete os cadastros indicados e atualize a prévia.',
             tone: Tone.danger,
             icon: Icons.error_outline,
           ),
         if (problems.isNotEmpty) ...[
-          gap,
+          const SizedBox(height: 8),
           Section(
             title: 'Checklist',
             child: Column(
@@ -319,7 +303,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   String _tax(Object? cst, Object? percent, Object? value) => 'CST $cst · ${fmtNum(percent)}% · R\$ ${fmtNum(value)}';
 
   Widget _items(Map<String, dynamic> nf) => Section(
-    title: 'Itens',
+    title: 'Itens da nota',
     child: SimpleTable(
       columns: [
         ColumnSpec('Produto', (e) => '${e['code']} · ${fmt(e['description'])}'),
@@ -335,95 +319,225 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     ),
   );
 
-  Widget _body(Map<String, dynamic> o, Map<String, dynamic> nf) {
-    final skip = o['quoteId'] == null ? 3 : 0;
+  /// A figure with its label, for the totals strip.
+  Widget _metric(String label, Object? value, {bool strong = false}) {
+    final theme = Theme.of(context);
+    return Container(
+      width: 150,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: strong ? theme.colorScheme.primaryContainer : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: theme.textTheme.labelSmall),
+          const SizedBox(height: 2),
+          Text(fmtMoney(value), style: (strong ? theme.textTheme.titleMedium : theme.textTheme.bodyLarge)?.copyWith(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _totals(Map<String, dynamic> nf) => Section(
+    title: 'Totais',
+    child: Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _metric('Produtos', nf['productsTotal']),
+        _metric('Frete', nf['freightTotal']),
+        _metric('Base do ICMS', nf['icmsBase']),
+        _metric('ICMS', nf['icmsTotal']),
+        _metric('IPI', nf['ipiTotal']),
+        _metric('PIS', nf['pisTotal']),
+        _metric('COFINS', nf['cofinsTotal']),
+        _metric('Total da nota', nf['invoiceTotal'], strong: true),
+      ],
+    ),
+  );
+
+  Widget _kv(String label, Object? value) {
+    final text = value == null || '$value'.trim().isEmpty ? '—' : '$value';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 120, child: Text(label, style: Theme.of(context).textTheme.bodySmall)),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+  }
+
+  /// The NF as the preview builds it: parties side by side, items, totals, duplicatas next to transport, and the complementary text.
+  List<Widget> _preview(Map<String, dynamic> o, Map<String, dynamic> nf) {
     final installments = (nf['installments'] as List).cast<Map<String, dynamic>>();
     final transport = nf['transport'] as Map<String, dynamic>;
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    final issuer = _party(nf['company'] == null ? 'Emitente' : 'Emitente (${nf['company']})', Icons.factory_outlined, nf['issuer'] as Map<String, dynamic>);
+    final recipient = _party('Destinatário', Icons.local_shipping_outlined, nf['recipient'] as Map<String, dynamic>);
+    final dup = Section(
+      title: 'Duplicatas',
+      child: installments.isEmpty
+          ? Text('Sem duplicatas (pagamento à vista ou sem prazo).', style: Theme.of(context).textTheme.bodySmall)
+          : SimpleTable(columns: [col('Parcela', 'sequence'), dateCol('Vencimento', 'dueDate'), moneyCol('Valor', 'amount')], rows: installments),
+    );
+    final trans = Section(
+      title: 'Transporte',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _kv('Frete', transport['mode']),
+          _kv('Transportadora', transport['carrier']),
+          _kv('Peso líquido', transport['netWeightKg'] == null ? null : '${fmtNum(transport['netWeightKg'], 3)} kg'),
+        ],
+      ),
+    );
+    return [
+      _header(o, nf),
+      const SizedBox(height: 12),
+      _problems(nf),
+      const SizedBox(height: 12),
+      LayoutBuilder(
+        builder: (context, box) => box.maxWidth >= 640
+            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: issuer), const SizedBox(width: 12), Expanded(child: recipient)])
+            : Column(children: [issuer, const SizedBox(height: 12), recipient]),
+      ),
+      const SizedBox(height: 12),
+      _items(nf),
+      const SizedBox(height: 12),
+      _totals(nf),
+      const SizedBox(height: 12),
+      LayoutBuilder(
+        builder: (context, box) => box.maxWidth >= 640
+            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: dup), const SizedBox(width: 12), Expanded(child: trans)])
+            : Column(children: [dup, const SizedBox(height: 12), trans]),
+      ),
+      const SizedBox(height: 12),
+      Section(title: 'Informações complementares', child: SelectableText(fmt(nf['additionalInfo']))),
+    ];
+  }
+
+  // ---- right: the action panel ------------------------------------------------------------------------------------------------------------------------------
+
+  Widget _qtyField(Map<String, dynamic> l) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: TextField(
+      key: ValueKey('invoice-qty-${l['orderLineId']}'),
+      controller: _qty[l['orderLineId']],
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        isDense: true,
+        labelText: 'Item ${l['sequence']} · ${l['code']} (${l['unit']})',
+        helperText: 'Pedido ${fmtNum(l['ordered'], 3)} · falta expedir ${fmtNum(l['remaining'], 3)}',
+        border: const OutlineInputBorder(),
+      ),
+    ),
+  );
+
+  Widget _extraField(String key) => SizedBox(
+    width: key == 'notes' || key == 'cfop' || key == 'carrier' ? double.infinity : 175,
+    child: TextField(
+      key: ValueKey('invoice-extra-$key'),
+      controller: _extraCtl[key],
+      keyboardType: _numericExtra.contains(key) ? const TextInputType.numberWithOptions(decimal: true) : null,
+      minLines: key == 'notes' ? 2 : 1,
+      maxLines: key == 'notes' ? 3 : 1,
+      decoration: InputDecoration(isDense: true, labelText: _extra[key], border: const OutlineInputBorder()),
+    ),
+  );
+
+  Widget _step(BuildContext context, int n, String title) => Padding(
+    padding: const EdgeInsets.only(top: 16, bottom: 10),
+    child: Row(
       children: [
-        Text('${o['reference']} · ${fmt(o['customerName'])}', style: Theme.of(context).textTheme.titleMedium),
-        gap,
-        StagePath(
-          steps: flowSteps.sublist(skip),
-          current: invoiceStep - skip,
-          // Back to the order from any earlier step; the later steps live on the order too.
-          onStep: (i) => i + skip == invoiceStep ? null : () => Navigator.maybePop(context),
-        ),
-        gap,
-        NextStepCard(
-          key: const ValueKey('invoice-simulation'),
-          title: 'Prévia da nota fiscal',
-          message:
-              'Confira a NF abaixo. Só ao tocar em "Confirmar e emitir NF" a carga sai do estoque e a nota é emitida; depois vem o certificado e, por fim, a confirmação da entrega ao cliente.',
-          tone: Tone.info,
-          icon: Icons.receipt_long_outlined,
-          actions: [
-            OutlinedButton.icon(key: const ValueKey('invoice-back'), onPressed: () => Navigator.maybePop(context), icon: const Icon(Icons.arrow_back), label: const Text('Voltar ao pedido')),
+        CircleAvatar(radius: 11, backgroundColor: Theme.of(context).colorScheme.primary, child: Text('$n', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onPrimary))),
+        const SizedBox(width: 8),
+        Expanded(child: Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600))),
+      ],
+    ),
+  );
+
+  /// Everything the person does before the truck leaves, in order: what is weighed, the load data, the total to be invoiced and the confirmation.
+  Widget _actionPanel(Map<String, dynamic> nf) {
+    final theme = Theme.of(context);
+    final on = nf['fiscalEnabled'] == true;
+    final items = (nf['orderLines'] as List? ?? const []).cast<Map<String, dynamic>>().where((l) => (l['remaining'] as num) > 0).toList();
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.local_shipping_outlined, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Saída da carga', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600))),
+                _chip(nf['ready'] == true ? 'Pronta' : 'Pendências', tone: nf['ready'] == true ? Tone.success : Tone.danger, icon: nf['ready'] == true ? Icons.check : Icons.error_outline),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: theme.colorScheme.primaryContainer, borderRadius: BorderRadius.circular(12)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Total da nota', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onPrimaryContainer)),
+                  Text(fmtMoney(nf['invoiceTotal']), style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700, color: theme.colorScheme.onPrimaryContainer)),
+                  Text(
+                    on ? 'NF nº ${nf['nextNumber']} · série ${nf['series']} (${nf['company'] ?? 'EBT'})' : 'Emissão desligada: a NF é digitada à mão',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onPrimaryContainer),
+                  ),
+                ],
+              ),
+            ),
+            if (items.isEmpty) ...[
+              const SizedBox(height: 12),
+              const NextStepCard(key: ValueKey('invoice-nothing-left'), title: 'Nada a expedir', message: 'Todos os itens deste pedido já saíram.', tone: Tone.success, icon: Icons.check_circle_outline),
+            ] else ...[
+              _step(context, 1, 'Quantidade pesada'),
+              Text(
+                'A OF volta da fábrica com o produto pesado, às vezes um pouco a mais ou a menos que o pedido. A NF e a baixa do estoque usam estes valores; 0 deixa o item fora da carga.',
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 10),
+              for (final l in items) _qtyField(l),
+              _step(context, 2, 'Dados da carga'),
+              Wrap(spacing: 10, runSpacing: 10, children: [for (final k in _extra.keys) _extraField(k)]),
+              if (!on) ...[
+                _step(context, 3, 'Número da NF'),
+                TextField(
+                  key: const ValueKey('invoice-number'),
+                  controller: _invoiceNumber,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: 'Número da NF (emitida fora do sistema)',
+                    helperText: 'A emissão fiscal está desligada: o sistema só registra o número',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                key: const ValueKey('invoice-confirm'),
+                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                onPressed: _sending || nf['ready'] != true ? null : () => _dispatch(nf),
+                icon: _sending ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.receipt_long),
+                label: Text(on ? 'Confirmar e emitir NF' : 'Confirmar saída com NF digitada'),
+              ),
+              if (nf['ready'] != true)
+                Padding(padding: const EdgeInsets.only(top: 6), child: Text('Resolva as pendências do checklist para liberar a emissão.', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error))),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(key: const ValueKey('invoice-update'), onPressed: _loading || _sending ? null : _load, icon: const Icon(Icons.refresh), label: const Text('Atualizar a prévia')),
+            ],
           ],
         ),
-        gap,
-        _weighing(nf),
-        gap,
-        _problems(nf),
-        gap,
-        Section(
-          title: 'Operação',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _kv('CFOP', '${nf['cfop']} · ${fmt(nf['cfopDescription'])}'),
-              _kv('Série · próximo número', '${nf['series']} · ${nf['nextNumber']}'),
-              _kv('Ambiente', nf['environment'] == 'Production' ? 'Produção' : 'Homologação'),
-              _kv('Emissão fiscal', nf['fiscalEnabled'] == true ? 'Ligada' : 'Desligada (NF digitada à mão na expedição)'),
-              _kv('SEFAZ', nf['simulated'] == true ? 'Simulada (sem certificado A1)' : 'Real'),
-            ],
-          ),
-        ),
-        gap,
-        _partySection(nf['company'] == null ? 'Emitente' : 'Emitente (${nf['company']})', nf['issuer'] as Map<String, dynamic>),
-        gap,
-        _partySection('Destinatário', nf['recipient'] as Map<String, dynamic>),
-        gap,
-        _items(nf),
-        gap,
-        Section(
-          title: 'Totais',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _kv('Produtos', fmtMoney(nf['productsTotal'])),
-              _kv('Frete', fmtMoney(nf['freightTotal'])),
-              _kv('Base do ICMS', fmtMoney(nf['icmsBase'])),
-              _kv('ICMS', fmtMoney(nf['icmsTotal'])),
-              _kv('IPI', fmtMoney(nf['ipiTotal'])),
-              _kv('PIS', fmtMoney(nf['pisTotal'])),
-              _kv('COFINS', fmtMoney(nf['cofinsTotal'])),
-              _kv('Total da nota', fmtMoney(nf['invoiceTotal'])),
-            ],
-          ),
-        ),
-        if (installments.isNotEmpty) ...[
-          gap,
-          Section(
-            title: 'Duplicatas',
-            child: SimpleTable(columns: [col('Parcela', 'sequence'), dateCol('Vencimento', 'dueDate'), moneyCol('Valor', 'amount')], rows: installments),
-          ),
-        ],
-        gap,
-        Section(
-          title: 'Transporte e informações',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _kv('Frete', transport['mode']),
-              _kv('Transportadora', transport['carrier']),
-              _kv('Peso líquido', transport['netWeightKg'] == null ? null : '${fmtNum(transport['netWeightKg'], 3)} kg'),
-              _kv('Informações complementares', nf['additionalInfo']),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
