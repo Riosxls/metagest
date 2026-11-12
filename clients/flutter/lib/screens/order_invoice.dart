@@ -209,7 +209,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
           ),
         ),
         gap,
-        _partySection('Emitente', nf['issuer'] as Map<String, dynamic>),
+        _partySection(nf['company'] == null ? 'Emitente' : 'Emitente (${nf['company']})', nf['issuer'] as Map<String, dynamic>),
         gap,
         _partySection('Destinatário', nf['recipient'] as Map<String, dynamic>),
         gap,

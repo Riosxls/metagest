@@ -18,7 +18,8 @@ public sealed class FiscalException(int status, string message, string? field = 
 
 public sealed record SaleInvoiceOptions(string? Cfop = null, decimal Freight = 0m, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null);
 
-public sealed record OutsideInvoiceOptions(decimal UnitValue, string? Cfop = null);
+/// <param name="Company">EBT (default) or BST: the issuer of the remessa.</param>
+public sealed record OutsideInvoiceOptions(decimal UnitValue, string? Cfop = null, string? Company = null);
 
 public sealed record NfeParty(string Name, string Document, string? StateRegistration, bool IcmsContributor, string? Street, string? Number, string? Complement, string? District, string? City, string? CityIbgeCode, string Uf, string? ZipCode, string? Email, string? Phone);
 

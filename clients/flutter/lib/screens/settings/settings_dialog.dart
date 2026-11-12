@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../session.dart';
 import '../../widgets/discard_guard.dart';
 import '../backup_alert.dart';
+import '../shell.dart' show NavItem, navItems;
 import 'settings_activity.dart';
 import 'settings_admin.dart';
 import 'settings_notifications.dart';
@@ -189,42 +190,78 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
-  Widget _nav(String? selected) => ListView(
-    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-    children: [
-      for (final s in _visible.where((s) => !_hiddenFromMenu.contains(s.id))) ...[
-        // The administrator tools sit under their own heading, apart from the personal preferences above.
-        if (s.id == 'backup')
+  /// System screens (not modules) the user may open: Parâmetros dos módulos, Cadastros duplicados and, for admins, Usuários, Permissões, Auditoria.
+  List<NavItem> get _screenLinks => [
+    for (final i in navItems())
+      if (i.section == 'Sistema' && i.shownTo(widget.session)) i,
+  ];
+
+  Widget _sectionTile(_Section s, String? selected) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: ListTile(
+        key: ValueKey('settings-nav-${s.id}'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        selected: s.id == selected,
+        selectedTileColor: cs.secondaryContainer,
+        selectedColor: cs.onSecondaryContainer,
+        leading: Icon(s.icon),
+        title: Text(s.label),
+        trailing: s.id == 'backup' && _backupAlert != null
+            ? Tooltip(
+                message: _backupAlert!.title,
+                child: Icon(Icons.error, key: const ValueKey('settings-backup-badge'), size: 18, color: cs.error),
+              )
+            : null,
+        onTap: () => _select(s.id),
+      ),
+    );
+  }
+
+  /// A system screen listed here opens on the main window: the settings window closes first (after the unsaved-edit check).
+  Widget _screenTile(NavItem i) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 1),
+    child: ListTile(
+      key: ValueKey('settings-screen-${i.id}'),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      leading: Icon(i.icon),
+      title: Text(i.title),
+      trailing: const Icon(Icons.chevron_right, size: 18),
+      onTap: () => _guard(() {
+        Navigator.pop(context);
+        SettingsLinks.open?.call(i.id);
+      }),
+    ),
+  );
+
+  Widget _nav(String? selected) {
+    final menu = _visible.where((s) => !_hiddenFromMenu.contains(s.id));
+    final screens = SettingsLinks.open == null ? const <NavItem>[] : _screenLinks;
+    final adminSections = [
+      for (final s in menu)
+        if (_adminOnly.contains(s.id)) s,
+    ];
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      children: [
+        for (final s in menu)
+          if (!_adminOnly.contains(s.id)) _sectionTile(s, selected),
+        // Everything that is not personal sits under one heading: system screens first, then the administrator tools.
+        if (screens.isNotEmpty || adminSections.isNotEmpty)
           Padding(
             key: const ValueKey('settings-admin-heading'),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
             child: Text(
-              'Administração',
+              widget.session.isAdmin ? 'Administração' : 'Sistema',
               style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
             ),
           ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 1),
-          child: ListTile(
-            key: ValueKey('settings-nav-${s.id}'),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            selected: s.id == selected,
-            selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
-            selectedColor: Theme.of(context).colorScheme.onSecondaryContainer,
-            leading: Icon(s.icon),
-            title: Text(s.label),
-            trailing: s.id == 'backup' && _backupAlert != null
-                ? Tooltip(
-                    message: _backupAlert!.title,
-                    child: Icon(Icons.error, key: const ValueKey('settings-backup-badge'), size: 18, color: Theme.of(context).colorScheme.error),
-                  )
-                : null,
-            onTap: () => _select(s.id),
-          ),
-        ),
+        for (final i in screens) _screenTile(i),
+        for (final s in adminSections) _sectionTile(s, selected),
       ],
-    ],
-  );
+    );
+  }
 
   Widget _content(BuildContext context, String? selected) {
     final theme = Theme.of(context);
@@ -270,4 +307,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
       ],
     );
   }
+}
+
+/// How the settings window opens a system screen on the main window. The Shell sets [open] while it is on screen; without it the window lists no screens.
+class SettingsLinks {
+  static void Function(String id)? open;
 }

@@ -36,6 +36,7 @@ class _FiscalImport extends StatefulWidget {
 
 class _FiscalImportState extends State<_FiscalImport> {
   Map<String, dynamic>? _summary;
+  List<Map<String, dynamic>> _issuers = const [];
   Map<String, dynamic>? _result;
   ({String name, Uint8List bytes})? _file;
   String? _message;
@@ -53,6 +54,12 @@ class _FiscalImportState extends State<_FiscalImport> {
   Future<void> _loadSummary() async {
     try {
       final s = await api.get('/api/fiscal/legacy-import/summary');
+      try {
+        final all = await api.get('/api/fiscal/settings/all');
+        if (all is List) _issuers = [for (final x in all) x as Map<String, dynamic>];
+      } catch (e) {
+        debugPrint('fiscal_import: issuers not loaded: $e');
+      }
       if (mounted) setState(() => _summary = s is Map<String, dynamic> ? s : null);
     } catch (_) {
       if (mounted) setState(() => _summary = null);
@@ -97,11 +104,18 @@ class _FiscalImportState extends State<_FiscalImport> {
     }
   }
 
+  /// "emitentes: EBT preenchido, BST vazio" (one entry per issuing company; the summary alone only knows EBT).
+  String _issuerText(Map<String, dynamic> s) {
+    if (_issuers.isEmpty) return 'emitente ${s['issuerFilled'] == true ? 'preenchido' : 'vazio'}';
+    bool filled(Map<String, dynamic> x) => '${x['cnpj'] ?? ''}'.isNotEmpty && '${x['stateRegistration'] ?? ''}'.isNotEmpty && '${x['cityIbgeCode'] ?? ''}'.isNotEmpty;
+    return 'emitentes: ${[for (final x in _issuers) '${x['company']} ${filled(x) ? 'preenchido' : 'vazio'}'].join(', ')}';
+  }
+
   String _summaryText() {
     final s = _summary;
     if (s == null) return '';
     int n(String k) => (s[k] as num?)?.toInt() ?? 0;
-    return 'Agora no sistema: emitente ${s['issuerFilled'] == true ? 'preenchido' : 'vazio'} · ${n('cfops')} CFOPs · ${n('carriers')} transportadoras · ${n('taxRules')} regras de imposto · ${n('monthlyPrices')} preços mensais · próximo nº da NF ${n('nextNumber')}';
+    return 'Agora no sistema: ${_issuerText(s)} · ${n('cfops')} CFOPs · ${n('carriers')} transportadoras · ${n('taxRules')} regras de imposto · ${n('monthlyPrices')} preços mensais · próximo nº da NF (EBT) ${n('nextNumber')}';
   }
 
   int _changes(Map<String, dynamic> r) => [for (final x in (r['sections'] as List).cast<Map<String, dynamic>>()) ((x['added'] as num?) ?? 0) + ((x['updated'] as num?) ?? 0)].fold<num>(0, (a, b) => a + b).toInt();
@@ -121,7 +135,7 @@ class _FiscalImportState extends State<_FiscalImport> {
               ),
               const SizedBox(height: 8),
               Text(
-                '1. No computador do servidor rode  powershell -File scripts\\export-fiscal-data.ps1  (gera fiscal-data.json a partir dos arquivos do sistema antigo).\n2. Escolha o arquivo abaixo: o sistema mostra o que mudaria.\n3. Confira e confirme.',
+                '1. No computador do servidor rode  powershell -File scripts\\export-fiscal-data.ps1  (gera fiscal-data.json a partir dos arquivos do sistema antigo; para o BST use -Source BST e outro arquivo: o arquivo diz de qual empresa é o emitente).\n2. Escolha o arquivo abaixo: o sistema mostra o que mudaria.\n3. Confira e confirme.',
                 style: theme.textTheme.bodySmall,
               ),
               if (_summary != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(_summaryText(), key: const ValueKey('fiscal-import-summary'), style: theme.textTheme.bodySmall)),

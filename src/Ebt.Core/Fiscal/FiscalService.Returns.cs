@@ -23,7 +23,7 @@ public sealed partial class FiscalService
         if (input.Lines is null || input.Lines.Count == 0) throw FiscalException.Invalid("lines", "Pick at least one item to return");
         return await InTransaction(async () =>
         {
-            var settings = await ReadSettingsAsync(ct);
+            var settings = await ReadSettingsAsync(await db.FiscalDocuments.AsNoTracking().Where(d => d.Id == originalId).Select(d => (int?)d.IssuerId).FirstOrDefaultAsync(ct) ?? throw FiscalException.NotFound("NF"), ct);
             if (!settings.Enabled) throw FiscalException.Conflict("NF emission is disabled");
             RequireIssuer(settings);
             // Serializes returns of the same NF, so two clerks cannot return the same balance twice.

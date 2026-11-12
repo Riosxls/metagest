@@ -12,7 +12,7 @@ namespace Ebt.Api.Endpoints;
 
 public record FiscalSettingsDto(bool Enabled, SefazEnvironment Environment, string? CompanyName, string? TradeName, string? Cnpj, string? StateRegistration, int TaxRegime, string? Street, string? Number, string? Complement,
     string? District, string? City, string? CityIbgeCode, string Uf, string? ZipCode, string? Phone, int Series, int NextNumber, int CancelWindowHours,
-    string SefazMode = "", bool SefazSimulated = false); // the last two are output only (ignored on PUT)
+    string SefazMode = "", bool SefazSimulated = false, string Company = "EBT"); // the last three are output only (ignored on PUT; the company comes from the route query)
 public record CfopIn(string Code, string Description, FiscalKind Kind, bool Taxed, string IcmsCst, string IpiCst, string PisCst, string CofinsCst, decimal DefaultPisPercent, decimal DefaultCofinsPercent,
     string? IpiFramingCode, bool GeneratesInstallments, bool Active = true, string? LegalText = null);
 public record CfopOut(string Code, string Description, FiscalKind Kind, bool Taxed, string IcmsCst, string IpiCst, string PisCst, string CofinsCst, decimal DefaultPisPercent, decimal DefaultCofinsPercent,
@@ -34,9 +34,9 @@ public record FiscalDocumentOut(int Id, FiscalKind Kind, FiscalStatus Status, st
     int? DeliveryId, string? DeliveryReference, int? OutsideShipmentId, int? CustomerId, int? SupplierId, string RecipientName, string RecipientDocument, string RecipientUf, decimal ProductsTotal, decimal FreightTotal, decimal IcmsBase,
     decimal IcmsTotal, decimal IpiTotal, decimal PisTotal, decimal CofinsTotal, decimal InvoiceTotal, string? AdditionalInfo, DateTimeOffset? CancelledAt, string? CancelledBy, string? CancelReason, string? CancelProtocol, string? StatusMessage,
     IReadOnlyList<FiscalLineOut> Lines, IReadOnlyList<FiscalInstallmentOut> Installments, string? Warnings = null, bool KeyLookupRequired = false, int? ReferencedDocumentId = null, int? ReferencedNumber = null,
-    string? ReferencedAccessKey = null, IReadOnlyList<FiscalReturnRef>? Returns = null, IReadOnlyList<FiscalEventOut>? Events = null);
+    string? ReferencedAccessKey = null, IReadOnlyList<FiscalReturnRef>? Returns = null, IReadOnlyList<FiscalEventOut>? Events = null, string? IssuerCompany = null);
 public record CancelInvoiceIn(string? Reason, string? Password);
-public record InutilizeIn(int? Series, int From, int To, string? Reason, string? Password);
+public record InutilizeIn(int? Series, int From, int To, string? Reason, string? Password, string? Company = null);
 public record InutilizationOut(int Id, int Series, int FromNumber, int ToNumber, string Reason, SefazEnvironment Environment, string Protocol, bool Simulated, DateTimeOffset CreatedAt, string? CreatedBy);
 
 public sealed class FiscalExceptionHandler : IExceptionHandler
@@ -91,7 +91,7 @@ public static class FiscalEndpoints
     private static void MapLegacyImport(WebApplication app)
     {
         var g = app.MapGroup("/api/fiscal/legacy-import").WithTags("Fiscal");
-        g.MapGet("/summary", async (FiscalDataImporter importer, CancellationToken ct) => Results.Ok(await importer.SummaryAsync(ct))).RequireAuthorization(Policies.Read);
+        g.MapGet("/summary", async (string? company, FiscalDataImporter importer, CancellationToken ct) => Results.Ok(await importer.SummaryAsync(company, ct))).RequireAuthorization(Policies.Read);
         g.MapPost("/", async (IFormFile file, bool? apply, FiscalDataImporter importer, EbtDbContext db, ClaimsPrincipal user, CancellationToken ct) =>
         {
             if (file.Length is 0 or > MaxFiscalImportBytes) return Results.BadRequest(new { message = "Arquivo vazio ou maior que 20 MB", field = "file" });
@@ -128,18 +128,23 @@ public static class FiscalEndpoints
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             var who = principal.Identity?.Name;
             if (await AuthEndpoints.ReauthAsync(db, principal, i.Password, ct) is { } denied) return denied;
-            return Results.Ok(ToOut(await fiscal.InutilizeAsync(i.Series, i.From, i.To, i.Reason, who, ct)));
+            return Results.Ok(ToOut(await fiscal.InutilizeAsync(i.Series, i.From, i.To, i.Reason, who, ct, i.Company)));
         }).RequireAuthorization(FiscalPolicies.Cancel).RequireRateLimiting(Policies.AccountLimiter);
     }
 
     private static void MapSettings(WebApplication app)
     {
         var g = app.MapGroup("/api/fiscal/settings").WithTags("Fiscal");
-        g.MapGet("/", async (FiscalService svc, ISefazClient sefaz, CancellationToken ct) => ToDto(await svc.SettingsAsync(ct), sefaz)).RequireAuthorization(Policies.Read);
-        g.MapPut("/", async (FiscalSettingsDto i, EbtDbContext db, FiscalService svc, ISefazClient sefaz, System.Security.Claims.ClaimsPrincipal principal, CancellationToken ct) =>
+        g.MapGet("/", async (string? company, FiscalService svc, ISefazClient sefaz, CancellationToken ct) => ToDto(await svc.SettingsAsync(company, ct), sefaz)).RequireAuthorization(Policies.Read);
+        // Every issuing company (EBT, BST) with its data, series, numbering and whether it emits.
+        g.MapGet("/all", async (EbtDbContext db, ISefazClient sefaz, CancellationToken ct) =>
+            (await db.FiscalSettings.AsNoTracking().OrderBy(s => s.Id).ToListAsync(ct)).Select(s => ToDto(s, sefaz)).ToList()).RequireAuthorization(Policies.Read);
+        g.MapPut("/", async (string? company, FiscalSettingsDto i, EbtDbContext db, FiscalService svc, ISefazClient sefaz, System.Security.Claims.ClaimsPrincipal principal, CancellationToken ct) =>
         {
+            if (FiscalCompany.Parse(company) is null) return Results.ValidationProblem(Errors().Require(false, "company", "EBT or BST"));
+            var s = await svc.SettingsAsync(company, ct);
             var uf = i.Uf?.Trim().ToUpperInvariant() ?? "";
-            var maxNumber = await db.FiscalDocuments.Where(d => d.Series == i.Series).Select(d => (int?)d.Number).MaxAsync(ct) ?? 0;
+            var maxNumber = await db.FiscalDocuments.Where(d => d.IssuerId == s.Id && d.Series == i.Series).Select(d => (int?)d.Number).MaxAsync(ct) ?? 0;
             var errors = Errors()
                 .Require(NfeKey.UfCodes.ContainsKey(uf), "uf", "Unknown UF")
                 .Require(i.Series is > 0 and <= 999, "series", "Between 1 and 999")
@@ -155,7 +160,6 @@ public static class FiscalEndpoints
                     .Require(Digits(i.CityIbgeCode, 7), "cityIbgeCode", "Required to enable fiscal emission").Require(Digits(i.ZipCode, 8), "zipCode", "8 digits, required to enable fiscal emission");
             }
             if (errors.Count > 0) return Results.ValidationProblem(errors);
-            var s = await svc.SettingsAsync(ct);
             var oldNumber = s.NextNumber;
             s.Enabled = i.Enabled;
             s.Environment = i.Environment;
@@ -181,7 +185,7 @@ public static class FiscalEndpoints
                 db.AuditLog.Add(new AuditEntry
                 {
                     At = DateTimeOffset.UtcNow, User = principal.Identity?.Name, Entity = nameof(FiscalSettings), EntityId = s.Id.ToString(), Action = "Update",
-                    Changes = System.Text.Json.JsonSerializer.Serialize(new { NextNumber = new { from = oldNumber, to = i.NextNumber } })
+                    Changes = System.Text.Json.JsonSerializer.Serialize(new { Company = s.Company, NextNumber = new { from = oldNumber, to = i.NextNumber } })
                 });
             await db.SaveChangesAsync(ct);
             return Results.Ok(ToDto(s, sefaz));
@@ -372,7 +376,7 @@ public static class FiscalEndpoints
 
     private static async Task<FiscalDocumentOut?> Load(EbtDbContext db, int id, CancellationToken ct)
     {
-        var d = await db.FiscalDocuments.AsNoTracking().Include(x => x.Lines).Include(x => x.Installments).Include(x => x.Delivery).Include(x => x.Events).AsSplitQuery().FirstOrDefaultAsync(x => x.Id == id, ct);
+        var d = await db.FiscalDocuments.AsNoTracking().Include(x => x.Issuer).Include(x => x.Lines).Include(x => x.Installments).Include(x => x.Delivery).Include(x => x.Events).AsSplitQuery().FirstOrDefaultAsync(x => x.Id == id, ct);
         if (d is null) return null;
         var returned = d.Kind == FiscalKind.Sale ? await FiscalService.ReturnedByLineAsync(db, d.Lines.Select(l => l.Id).ToList(), ct) : [];
         var returns = d.Kind == FiscalKind.Sale
@@ -386,9 +390,9 @@ public static class FiscalEndpoints
                 l.IcmsValue, l.IpiCst, l.IpiPercent, l.IpiValue, l.PisCst, l.PisPercent, l.PisValue, l.CofinsCst, l.CofinsPercent, l.CofinsValue, returned.GetValueOrDefault(l.Id), l.ReferencedLineId)).ToList(),
             d.Installments.OrderBy(i => i.Sequence).Select(i => new FiscalInstallmentOut(i.Sequence, i.DueDate, i.Amount)).ToList(),
             d.Warnings, d.KeyLookupRequired, d.ReferencedDocumentId, referencedNumber, d.ReferencedAccessKey, returns,
-            d.Events.OrderBy(e => e.CreatedAt).Select(e => new FiscalEventOut(e.Id, e.EventType, e.Sequence, e.Text, e.Protocol, e.Simulated, e.CreatedAt, e.CreatedBy)).ToList());
+            d.Events.OrderBy(e => e.CreatedAt).Select(e => new FiscalEventOut(e.Id, e.EventType, e.Sequence, e.Text, e.Protocol, e.Simulated, e.CreatedAt, e.CreatedBy)).ToList(), d.Issuer?.Company);
     }
 
     private static FiscalSettingsDto ToDto(FiscalSettings s, ISefazClient sefaz) => new(s.Enabled, s.Environment, s.CompanyName, s.TradeName, s.Cnpj, s.StateRegistration, s.TaxRegime, s.Street, s.Number, s.Complement, s.District, s.City, s.CityIbgeCode, s.Uf,
-        s.ZipCode, s.Phone, s.Series, s.NextNumber, s.CancelWindowHours, sefaz.IsSimulated ? "Stub" : "Sp", sefaz.IsSimulated);
+        s.ZipCode, s.Phone, s.Series, s.NextNumber, s.CancelWindowHours, sefaz.IsSimulated ? "Stub" : "Sp", sefaz.IsSimulated, s.Company);
 }

@@ -49,6 +49,7 @@ class _FiscalDocumentsScreenState extends State<FiscalDocumentsScreen> {
       api: widget.session.api,
       title: 'Inutilizar numeração',
       fields: const [
+        FieldSpec('company', 'Empresa emitente', type: FieldType.choice, choices: {'EBT': 'EBT', 'BST': 'BST'}, required: true, defaultValue: 'EBT'),
         FieldSpec('from', 'Primeiro número', type: FieldType.integer, required: true, hint: 'Só números já pulados (NF rejeitada ou perdida)'),
         FieldSpec('to', 'Último número', type: FieldType.integer, required: true),
         FieldSpec('reason', 'Motivo', required: true, hint: 'Mínimo de 15 caracteres (regra da SEFAZ)'),
@@ -522,6 +523,7 @@ class _FiscalDocumentScreenState extends State<FiscalDocumentScreen> {
         ('Chave de acesso', fmt(d['accessKey'])),
         ('Protocolo', fmt(d['protocol'])),
         ('Ambiente', d['environment'] == 'Production' ? 'Produção' : 'Homologação'),
+        if (d['issuerCompany'] != null) ('Emitente', '${d['issuerCompany']}'),
         ('Emitida por', fmt(d['issuedBy'])),
         ('Informações adicionais', fmt(d['additionalInfo'])),
       ]),
@@ -531,16 +533,20 @@ class _FiscalDocumentScreenState extends State<FiscalDocumentScreen> {
 
 /// Issuer data, environment and numbering. Admin only; fiscal emission stays off until enabled here.
 class FiscalSettingsScreen extends StatefulWidget {
-  const FiscalSettingsScreen({super.key, required this.session});
+  const FiscalSettingsScreen({super.key, required this.session, this.initialCompany});
 
   final Session session;
+
+  /// EBT or BST: the issuer shown first (a link or the checklist may name one).
+  final String? initialCompany;
 
   @override
   State<FiscalSettingsScreen> createState() => _FiscalSettingsScreenState();
 }
 
 class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
-  late Future<Map<String, dynamic>> _future = _fetch();
+  late String _company = widget.initialCompany == 'BST' ? 'BST' : 'EBT';
+  late Future<_FiscalData> _future = _fetch();
 
   static const _environments = {'Homologation': 'Homologação', 'Production': 'Produção'};
 
@@ -566,16 +572,19 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
     FieldSpec('cancelWindowHours', 'Prazo para cancelar (horas)', type: FieldType.integer, required: true, hint: '0 = sem limite'),
   ];
 
-  Future<Map<String, dynamic>> _fetch() async {
-    final d = await widget.session.api.get('/api/fiscal/settings') as Map<String, dynamic>;
+  Future<_FiscalData> _fetch() async {
+    final raw = await widget.session.api.get('/api/fiscal/settings/all');
+    // One row per issuing company (EBT, BST); an older server answers with a single map.
+    final issuers = raw is List ? [for (final x in raw) x as Map<String, dynamic>] : [raw as Map<String, dynamic>];
     // The CFOP list is only informative here; a failure must not hide the settings.
+    List<dynamic>? cfops;
     try {
       final c = await widget.session.api.get('/api/fiscal/cfops');
-      d['_cfops'] = c is List ? c : const [];
+      cfops = c is List ? c : const [];
     } catch (e) {
       debugPrint('fiscal: cfops not loaded: $e');
     }
-    return d;
+    return _FiscalData(issuers, cfops);
   }
 
   Future<void> _edit(Map<String, dynamic> d) async {
@@ -585,7 +594,7 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
       title: 'Emitente e emissão',
       fields: _fields,
       initial: d,
-      submit: (b) => widget.session.api.put('/api/fiscal/settings', b),
+      submit: (b) => widget.session.api.put('/api/fiscal/settings?company=${d['company'] ?? _company}', b),
     );
     if (r != null && mounted) {
       setState(() {
@@ -599,12 +608,13 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
   });
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>>(
+  Widget build(BuildContext context) => FutureBuilder<_FiscalData>(
     future: _future,
     builder: (context, snap) {
       if (snap.hasError) return LoadError(message: friendlyError(snap.error!), onRetry: _retry);
-      final d = snap.data;
-      if (d == null) return const Center(child: CircularProgressIndicator());
+      final data = snap.data;
+      if (data == null) return const Center(child: CircularProgressIndicator());
+      final d = data.issuers.firstWhere((x) => x['company'] == _company, orElse: () => data.issuers.first);
       String has(String k) => '${d[k] ?? ''}'.trim();
       String or(String k) => has(k).isEmpty ? 'Não informado' : has(k);
       final missing = [
@@ -618,6 +628,23 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (data.issuers.length > 1) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SegmentedButton<String>(
+                  key: const ValueKey('fiscal-company'),
+                  segments: [
+                    for (final x in data.issuers)
+                      ButtonSegment(value: '${x['company']}', label: Text('${x['company']}', key: ValueKey('fiscal-company-${x['company']}')), icon: Icon(x['enabled'] == true ? Icons.check_circle_outline : Icons.circle_outlined)),
+                  ],
+                  selected: {'${d['company']}'},
+                  onSelectionChanged: (v) => setState(() => _company = v.first),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text('Cada empresa emite com o seu CNPJ, a sua série e a sua numeração. Um pedido usa o emitente do "Faturar para".', style: Theme.of(context).textTheme.bodySmall),
+              gap,
+            ],
             NextStepCard(
               title: d['enabled'] == true ? 'Emissão de NF-e ligada' : 'Emissão de NF-e desligada',
               message: d['enabled'] == true
@@ -641,7 +668,8 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
             Section(
               title: 'Emitente',
               child: InfoGrid([
-                ('Razão social', or('companyName')),
+                ('Empresa', '${d['company'] ?? 'EBT'}'),
+              ('Razão social', or('companyName')),
                 ('CNPJ', or('cnpj')),
                 ('Inscrição estadual', or('stateRegistration')),
                 (
@@ -666,17 +694,17 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
                 ('Prazo para cancelar', d['cancelWindowHours'] == 0 ? 'Sem limite' : '${d['cancelWindowHours']} h'),
               ]),
             ),
-            if (d['_cfops'] is List) ...[
+            if (data.cfops != null) ...[
               gap,
               Section(
                 title: 'CFOPs cadastrados',
-                child: (d['_cfops'] as List).isEmpty
+                child: data.cfops!.isEmpty
                     ? const Text('Nenhum CFOP cadastrado.')
                     : Column(
                         key: const ValueKey('fiscal-cfop-list'),
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          for (final c in (d['_cfops'] as List).cast<Map>())
+                          for (final c in data.cfops!.cast<Map>())
                             Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Text('${c['code']} · ${c['description']}${c['active'] == false ? ' (inativo)' : ''}')),
                         ],
                       ),
@@ -687,4 +715,12 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
       );
     },
   );
+}
+
+/// What the issuer screen shows: one row per issuing company and the CFOP list (null when it did not load).
+class _FiscalData {
+  const _FiscalData(this.issuers, this.cfops);
+
+  final List<Map<String, dynamic>> issuers;
+  final List<dynamic>? cfops;
 }

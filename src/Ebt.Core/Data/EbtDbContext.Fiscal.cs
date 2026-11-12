@@ -28,7 +28,10 @@ public partial class EbtDbContext
             e.Property(x => x.Uf).HasMaxLength(2);
             e.Property(x => x.CityIbgeCode).HasMaxLength(7);
             e.ToTable(t => t.HasCheckConstraint("ck_fiscal_settings_values", "series > 0 AND next_number > 0 AND cancel_window_hours >= 0 AND tax_regime BETWEEN 1 AND 3"));
-            e.HasData(new FiscalSettings { Id = 1 });
+            e.Property(x => x.Company).HasMaxLength(3);
+            e.HasIndex(x => x.Company).IsUnique();
+            // EBT numbers from 2581 and BST from 897 (where each company stopped in the old system); both stay off until the issuer data is complete.
+            e.HasData(new FiscalSettings { Id = 1, Company = FiscalCompany.Ebt }, new FiscalSettings { Id = 2, Company = FiscalCompany.Bst, NextNumber = 897 });
         });
         b.Entity<Cfop>(e =>
         {
@@ -82,7 +85,8 @@ public partial class EbtDbContext
         });
         b.Entity<FiscalDocument>(e =>
         {
-            e.HasIndex(x => new { x.Series, x.Number }).IsUnique();
+            e.HasIndex(x => new { x.IssuerId, x.Series, x.Number }).IsUnique();
+            e.HasOne(x => x.Issuer).WithMany().HasForeignKey(x => x.IssuerId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.AccessKey).IsUnique();
             // Two live NFs (Pending or Authorized) for one delivery are impossible; Rejected and Cancelled ones do not count.
             e.HasIndex(x => x.DeliveryId).IsUnique().HasDatabaseName("ux_fiscal_documents_live_delivery").HasFilter("delivery_id IS NOT NULL AND status IN (0, 2)");
@@ -156,7 +160,8 @@ public partial class EbtDbContext
         b.Entity<FiscalInutilization>(e =>
         {
             e.ToTable("fiscal_inutilizations", t => t.HasCheckConstraint("ck_fiscal_inutilizations_range", "from_number > 0 AND to_number >= from_number"));
-            e.HasIndex(x => new { x.Series, x.FromNumber, x.ToNumber });
+            e.HasIndex(x => new { x.IssuerId, x.Series, x.FromNumber, x.ToNumber });
+            e.HasOne<FiscalSettings>().WithMany().HasForeignKey(x => x.IssuerId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.Reason).HasMaxLength(255);
             e.Property(x => x.Protocol).HasMaxLength(20);
         });

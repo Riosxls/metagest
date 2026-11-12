@@ -71,7 +71,7 @@ public sealed partial class ProductionService
             if (order.Status == ProductionOrderStatus.Released) order.Status = ProductionOrderStatus.InProduction;
             await db.SaveChangesAsync(ct);
             // Remessa para industrialização (5901): the NF is authorized by SEFAZ before the shipment is kept; a rejection rolls the whole send back.
-            if (fiscal is not null && shipment.InvoiceNumber is null && await fiscal.EnabledAsync(ct))
+            if (fiscal is not null && shipment.InvoiceNumber is null && await fiscal.EnabledAsync(null, ct))
             {
                 var nf = await fiscal.IssueOutsideShipmentAsync(shipment, order, op, new OutsideInvoiceOptions(i.UnitValue ?? 0m, i.Cfop), user, ct);
                 shipment.InvoiceNumber = nf.Number.ToString();

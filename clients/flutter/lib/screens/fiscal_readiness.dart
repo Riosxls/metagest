@@ -9,7 +9,7 @@ enum CheckState { ok, warn, info }
 
 /// One line of the "Pronto para emitir?" checklist: what is checked, what was found and the screen that fixes it.
 class FiscalCheck {
-  const FiscalCheck(this.id, this.title, this.detail, this.state, {this.goTo});
+  const FiscalCheck(this.id, this.title, this.detail, this.state, {this.goTo, this.filter});
 
   final String id;
   final String title;
@@ -18,6 +18,9 @@ class FiscalCheck {
 
   /// Screen id that fixes it (null when nothing to do).
   final String? goTo;
+
+  /// Filter passed to that screen (the company, for the issuer screen).
+  final String? filter;
 }
 
 /// The CFOPs the sale needs: 5101 inside the state, 6101 to another state.
@@ -35,41 +38,29 @@ class FiscalReadiness {
   bool get ready => pending == 0;
 
   static Future<FiscalReadiness> fetch(ApiClient api) async {
-    final r = await Future.wait([api.get('/api/fiscal/settings'), api.get('/api/fiscal/cfops'), api.get('/api/fiscal/legacy-import/summary')]);
+    final r = await Future.wait([api.get('/api/fiscal/settings/all'), api.get('/api/fiscal/cfops'), api.get('/api/fiscal/legacy-import/summary')]);
+    final raw = r[0];
     return FiscalReadiness.from(
-      settings: r[0] as Map<String, dynamic>,
+      issuers: raw is List ? [for (final x in raw) x as Map<String, dynamic>] : [raw as Map<String, dynamic>],
       cfops: [for (final c in (r[1] as List)) (c as Map)['code'] as String],
       summary: r[2] as Map<String, dynamic>,
     );
   }
 
-  /// Pure: the same answers always give the same checklist (tests build it from maps).
-  static FiscalReadiness from({required Map<String, dynamic> settings, required List<String> cfops, required Map<String, dynamic> summary}) {
-    String has(String k) => '${settings[k] ?? ''}'.trim();
+  /// Pure: the same answers always give the same checklist (tests build it from maps). [issuers] has one row per issuing company (EBT, BST).
+  static FiscalReadiness from({required List<Map<String, dynamic>> issuers, required List<String> cfops, required Map<String, dynamic> summary}) {
     int n(String k) => (summary[k] as num?)?.toInt() ?? 0;
-    final missing = [
-      if (has('companyName').isEmpty) 'razão social',
-      if (has('cnpj').isEmpty) 'CNPJ',
-      if (has('stateRegistration').isEmpty) 'inscrição estadual',
-      if (has('street').isEmpty || has('city').isEmpty || has('cityIbgeCode').isEmpty) 'endereço completo',
-    ];
     final missingCfops = [
       for (final c in requiredSaleCfops)
         if (!cfops.contains(c)) c,
     ];
-    final simulated = settings['sefazSimulated'] != false;
-    final environment = settings['environment'] == 'Production' ? 'Produção' : 'Homologação';
-    final enabled = settings['enabled'] == true;
+    // The certificate is one per server, not per company: every issuer row says the same.
+    final simulated = issuers.every((s) => s['sefazSimulated'] != false);
     final rules = n('taxRules');
     final carrierCount = n('carriers');
+    String environmentOf(Map<String, dynamic> s) => s['environment'] == 'Production' ? 'Produção' : 'Homologação';
     return FiscalReadiness([
-      FiscalCheck(
-        'issuer',
-        'Dados do emitente',
-        missing.isEmpty ? '${has('companyName')} · CNPJ ${has('cnpj')}' : 'Falta preencher: ${missing.join(', ')}',
-        missing.isEmpty ? CheckState.ok : CheckState.warn,
-        goTo: missing.isEmpty ? null : 'fiscal-settings',
-      ),
+      for (final s in issuers) ..._issuerChecks(s),
       FiscalCheck(
         'cfops',
         'CFOPs de venda (${requiredSaleCfops.join(' e ')})',
@@ -94,23 +85,42 @@ class FiscalReadiness {
       FiscalCheck(
         'certificate',
         'Certificado digital A1',
-        simulated ? 'Ainda sem certificado: a SEFAZ é simulada e nenhuma nota vale de verdade.' : 'Conectado à SEFAZ ($environment)',
+        simulated ? 'Ainda sem certificado: a SEFAZ é simulada e nenhuma nota vale de verdade.' : 'Conectado à SEFAZ (${environmentOf(issuers.first)})',
         simulated ? CheckState.warn : CheckState.ok,
       ),
-      FiscalCheck(
-        'enabled',
-        'Emissão de NF-e',
-        enabled ? 'Ligada ($environment)' : 'Desligada: o número da NF continua sendo digitado à mão.',
-        enabled ? CheckState.ok : CheckState.info,
-        goTo: enabled ? null : 'fiscal-settings',
-      ),
-      FiscalCheck(
-        'next-number',
-        'Próximo número da NF',
-        'Série ${settings['series'] ?? 1} · próximo número ${settings['nextNumber'] ?? '—'}',
-        CheckState.info,
-      ),
     ]);
+  }
+
+  /// The two lines of one issuing company: its data, and whether it emits (with its series and next number).
+  static List<FiscalCheck> _issuerChecks(Map<String, dynamic> s) {
+    String has(String k) => '${s[k] ?? ''}'.trim();
+    final company = has('company').isEmpty ? 'EBT' : has('company');
+    final missing = [
+      if (has('companyName').isEmpty) 'razão social',
+      if (has('cnpj').isEmpty) 'CNPJ',
+      if (has('stateRegistration').isEmpty) 'inscrição estadual',
+      if (has('street').isEmpty || has('city').isEmpty || has('cityIbgeCode').isEmpty) 'endereço completo',
+    ];
+    final enabled = s['enabled'] == true;
+    final environment = s['environment'] == 'Production' ? 'Produção' : 'Homologação';
+    return [
+      FiscalCheck(
+        'issuer-$company',
+        'Dados do emitente ($company)',
+        missing.isEmpty ? '${has('companyName')} · CNPJ ${has('cnpj')}' : 'Falta preencher: ${missing.join(', ')}',
+        missing.isEmpty ? CheckState.ok : CheckState.warn,
+        goTo: missing.isEmpty ? null : 'fiscal-settings',
+        filter: company,
+      ),
+      FiscalCheck(
+        'emission-$company',
+        'Emissão de NF-e ($company)',
+        '${enabled ? 'Ligada ($environment)' : 'Desligada: o número da NF continua sendo digitado à mão'} · série ${s['series'] ?? 1} · próximo número ${s['nextNumber'] ?? '—'}',
+        enabled ? CheckState.ok : CheckState.info,
+        goTo: 'fiscal-settings',
+        filter: company,
+      ),
+    ];
   }
 }
 
@@ -153,7 +163,7 @@ class FiscalChecklist extends StatelessWidget {
               title: Text(c.title),
               subtitle: Text(c.detail),
               trailing: c.goTo != null && onNavigate != null ? const Icon(Icons.chevron_right) : null,
-              onTap: c.goTo != null && onNavigate != null ? () => onNavigate!(c.goTo!) : null,
+              onTap: c.goTo != null && onNavigate != null ? () => onNavigate!(c.goTo!, c.filter) : null,
             ),
         ],
       ),

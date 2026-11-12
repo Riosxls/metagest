@@ -1606,6 +1606,10 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("issued_by");
 
+                    b.Property<int>("IssuerId")
+                        .HasColumnType("integer")
+                        .HasColumnName("issuer_id");
+
                     b.Property<bool>("KeyLookupRequired")
                         .HasColumnType("boolean")
                         .HasColumnName("key_lookup_required");
@@ -1733,9 +1737,9 @@ namespace Ebt.Core.Data.Migrations
                     b.HasIndex("SupplierId")
                         .HasDatabaseName("ix_fiscal_documents_supplier_id");
 
-                    b.HasIndex("Series", "Number")
+                    b.HasIndex("IssuerId", "Series", "Number")
                         .IsUnique()
-                        .HasDatabaseName("ix_fiscal_documents_series_number");
+                        .HasDatabaseName("ix_fiscal_documents_issuer_id_series_number");
 
                     b.ToTable("fiscal_documents", (string)null);
                 });
@@ -2031,6 +2035,10 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("from_number");
 
+                    b.Property<int>("IssuerId")
+                        .HasColumnType("integer")
+                        .HasColumnName("issuer_id");
+
                     b.Property<string>("Protocol")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -2063,8 +2071,8 @@ namespace Ebt.Core.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_fiscal_inutilizations");
 
-                    b.HasIndex("Series", "FromNumber", "ToNumber")
-                        .HasDatabaseName("ix_fiscal_inutilizations_series_from_number_to_number");
+                    b.HasIndex("IssuerId", "Series", "FromNumber", "ToNumber")
+                        .HasDatabaseName("ix_fiscal_inutilizations_issuer_id_series_from_number_to_number");
 
                     b.ToTable("fiscal_inutilizations", null, t =>
                         {
@@ -2098,6 +2106,12 @@ namespace Ebt.Core.Data.Migrations
                         .HasMaxLength(14)
                         .HasColumnType("character varying(14)")
                         .HasColumnName("cnpj");
+
+                    b.Property<string>("Company")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("company");
 
                     b.Property<string>("CompanyName")
                         .HasColumnType("text")
@@ -2165,6 +2179,10 @@ namespace Ebt.Core.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_fiscal_settings");
 
+                    b.HasIndex("Company")
+                        .IsUnique()
+                        .HasDatabaseName("ix_fiscal_settings_company");
+
                     b.ToTable("fiscal_settings", null, t =>
                         {
                             t.HasCheckConstraint("ck_fiscal_settings_values", "series > 0 AND next_number > 0 AND cancel_window_hours >= 0 AND tax_regime BETWEEN 1 AND 3");
@@ -2175,9 +2193,22 @@ namespace Ebt.Core.Data.Migrations
                         {
                             Id = 1,
                             CancelWindowHours = 24,
+                            Company = "EBT",
                             Enabled = false,
                             Environment = 2,
                             NextNumber = 2581,
+                            Series = 1,
+                            TaxRegime = 3,
+                            Uf = "SP"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            CancelWindowHours = 24,
+                            Company = "BST",
+                            Enabled = false,
+                            Environment = 2,
+                            NextNumber = 897,
                             Series = 1,
                             TaxRegime = 3,
                             Uf = "SP"
@@ -7122,6 +7153,13 @@ namespace Ebt.Core.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_fiscal_documents_deliveries_delivery_id");
 
+                    b.HasOne("Ebt.Core.Entities.FiscalSettings", "Issuer")
+                        .WithMany()
+                        .HasForeignKey("IssuerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_fiscal_documents_fiscal_settings_issuer_id");
+
                     b.HasOne("Ebt.Core.Entities.OutsideShipment", "OutsideShipment")
                         .WithMany()
                         .HasForeignKey("OutsideShipmentId")
@@ -7149,6 +7187,8 @@ namespace Ebt.Core.Data.Migrations
                     b.Navigation("Customer");
 
                     b.Navigation("Delivery");
+
+                    b.Navigation("Issuer");
 
                     b.Navigation("OutsideShipment");
 
@@ -7217,6 +7257,16 @@ namespace Ebt.Core.Data.Migrations
                         .HasConstraintName("fk_fiscal_installments_fiscal_documents_document_id");
 
                     b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("Ebt.Core.Entities.FiscalInutilization", b =>
+                {
+                    b.HasOne("Ebt.Core.Entities.FiscalSettings", null)
+                        .WithMany()
+                        .HasForeignKey("IssuerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_fiscal_inutilizations_fiscal_settings_issuer_id");
                 });
 
             modelBuilder.Entity("Ebt.Core.Entities.GoodsReceipt", b =>

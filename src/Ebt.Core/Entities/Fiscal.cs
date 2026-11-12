@@ -7,10 +7,25 @@ public enum FiscalStatus { Authorized = 0, Cancelled = 1, Pending = 2, Rejected 
 /// <summary>NF-e tpAmb values.</summary>
 public enum SefazEnvironment { Production = 1, Homologation = 2 }
 
-/// <summary>Issuer data and numbering for NF-e. One row. Fiscal emission only runs when <see cref="Enabled"/> is set.</summary>
+/// <summary>The two companies that issue NF-e, written as in <see cref="FiscalSettings.Company"/>. A sales order picks its issuer with its "Faturar para" (<see cref="BillTo"/>).</summary>
+public static class FiscalCompany
+{
+    public const string Ebt = "EBT";
+    public const string Bst = "BST";
+    public static readonly string[] All = [Ebt, Bst];
+
+    public static string Of(BillTo billTo) => billTo == BillTo.Bts ? Bst : Ebt;
+
+    /// <summary>Normalizes a company name; null or empty means EBT. Returns null for anything else.</summary>
+    public static string? Parse(string? company) => string.IsNullOrWhiteSpace(company) ? Ebt : company.Trim().ToUpperInvariant() switch { "EBT" => Ebt, "BST" or "BTS" => Bst, _ => null };
+}
+
+/// <summary>Issuer data and numbering for NF-e. One row per issuing company (EBT, BST), each with its own CNPJ, series and numbering. Fiscal emission only runs when <see cref="Enabled"/> is set.</summary>
 public class FiscalSettings
 {
     public int Id { get; set; }
+    /// <summary>EBT or BST: which company issues with this row (unique).</summary>
+    public string Company { get; set; } = FiscalCompany.Ebt;
     public bool Enabled { get; set; }
     public SefazEnvironment Environment { get; set; } = SefazEnvironment.Homologation;
     public string? CompanyName { get; set; }
@@ -91,6 +106,9 @@ public class MonthlyPrice
 public class FiscalDocument
 {
     public int Id { get; set; }
+    /// <summary>The issuer row (EBT or BST) that numbered and signed this NF.</summary>
+    public int IssuerId { get; set; } = 1;
+    public FiscalSettings? Issuer { get; set; }
     public FiscalKind Kind { get; set; }
     public FiscalStatus Status { get; set; }
     public required string CfopCode { get; set; }
@@ -219,6 +237,7 @@ public class FiscalInstallment
 public class FiscalInutilization
 {
     public int Id { get; set; }
+    public int IssuerId { get; set; } = 1;
     public int Series { get; set; }
     public int FromNumber { get; set; }
     public int ToNumber { get; set; }

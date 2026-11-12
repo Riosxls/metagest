@@ -47,7 +47,7 @@ public sealed partial class SalesService
     /// </summary>
     private async Task<decimal> ShippedNotInvoicedAsync(int customerId, int? excludeOrderId, CancellationToken ct)
     {
-        if (!await fiscal.EnabledAsync(ct)) return 0m;
+        if (!await fiscal.AnyEnabledAsync(ct)) return 0m;
         var rows = await db.DeliveryLines.AsNoTracking()
             .Where(dl => dl.Delivery!.Order!.CustomerId == customerId && dl.Delivery.OrderId != excludeOrderId
                 && (dl.Delivery.Status == DeliveryStatus.Shipped || dl.Delivery.Status == DeliveryStatus.Delivered) && dl.Delivery.InvoiceNumber == null

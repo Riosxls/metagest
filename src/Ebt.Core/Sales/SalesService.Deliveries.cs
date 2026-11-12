@@ -75,7 +75,7 @@ public sealed partial class SalesService
             if (!certified && !canWaiveCertificate)
                 throw SalesException.Forbidden($"{d.Reference} has items without an issued quality certificate, and shipping without it needs the certificates-issue permission or a sales manager. Issue the certificates first");
             // Only someone who may emit the NF (or any shipper while emission is off) can name an NF number by hand; for others the field would skip the fiscal emission.
-            var fiscalOn = await fiscal.EnabledAsync(ct);
+            var fiscalOn = await fiscal.EnabledAsync(FiscalCompany.Of(o.BillTo), ct);
             var typedInvoice = canEmitInvoice || !fiscalOn ? Clean(i.InvoiceNumber) : null;
             var location = await ShippingLocationAsync(ct);
             var stockLines = new List<StockLine>();
@@ -165,7 +165,7 @@ public sealed partial class SalesService
             if (d.Status is not (DeliveryStatus.Shipped or DeliveryStatus.Delivered)) throw SalesException.Conflict($"Delivery is {d.Status}; ship it first");
             if (d.InvoiceNumber is not null || await db.FiscalDocuments.AnyAsync(f => f.DeliveryId == id && f.Kind == FiscalKind.Sale && f.Status == FiscalStatus.Authorized, ct))
                 throw SalesException.Conflict("This delivery already has an NF");
-            if (!await fiscal.EnabledAsync(ct)) throw SalesException.Conflict("NF emission is disabled");
+            if (!await fiscal.EnabledAsync(FiscalCompany.Of(o.BillTo), ct)) throw SalesException.Conflict("NF emission is disabled");
             var invoice = await fiscal.IssueSaleAsync(d, o, new SaleInvoiceOptions(i.Cfop, i.Freight ?? 0m, Clean(i.Carrier) ?? d.Carrier, Clean(i.VehiclePlate)?.ToUpper() ?? d.VehiclePlate, i.GrossWeightKg ?? d.GrossWeightKg), user, ct);
             d.InvoiceNumber = invoice.Number.ToString();
             if (d.StockDocumentId is { } sd && await db.StockDocuments.FirstOrDefaultAsync(x => x.Id == sd, ct) is { } doc) doc.Notes = $"{doc.Notes} · NF {invoice.Number}";

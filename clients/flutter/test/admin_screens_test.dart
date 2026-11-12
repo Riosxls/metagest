@@ -81,11 +81,22 @@ Future<(Session, List<http.Request>)> pump(WidgetTester tester, String role) asy
   return (session, log);
 }
 
-/// The administration screens live in the avatar menu, not in the sidebar.
-Future<void> open(WidgetTester tester, String title) async {
+/// The system screens are listed in Preferências (avatar menu) under Administração, not in the avatar menu nor in the sidebar.
+const _screenIds = {'Usuários': 'users', 'Permissões': 'permissions', 'Auditoria': 'audit', 'Parâmetros dos módulos': 'settings', 'Cadastros duplicados': 'duplicates'};
+
+Future<void> openPreferences(WidgetTester tester) async {
   await tester.tap(find.byTooltip('Conta'));
   await tester.pumpAndSettle();
-  await tester.tap(find.widgetWithText(PopupMenuItem<String>, title));
+  await tester.tap(find.widgetWithText(PopupMenuItem<String>, 'Preferências'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> open(WidgetTester tester, String title) async {
+  await openPreferences(tester);
+  final tile = find.byKey(ValueKey('settings-screen-${_screenIds[title]}'));
+  await tester.scrollUntilVisible(tile, 100, scrollable: find.descendant(of: find.byType(Dialog), matching: find.byType(Scrollable)).first);
+  await tester.pumpAndSettle();
+  await tester.tap(tile);
   await tester.pumpAndSettle();
 }
 
@@ -93,15 +104,20 @@ void main() {
   testWidgets('non-admin roles do not see the admin screens', (tester) async {
     for (final role in rolePermissions.keys.where((r) => r != 'Admin')) {
       await pump(tester, role);
+      // The avatar menu only has Perfil and Preferências: no system screen is listed there.
       await tester.tap(find.byTooltip('Conta'));
       await tester.pumpAndSettle();
-      for (final t in ['Usuários', 'Permissões', 'Auditoria']) {
-        expect(find.widgetWithText(PopupMenuItem<String>, t), findsNothing, reason: '$role/$t');
-      }
-      expect(find.widgetWithText(PopupMenuItem<String>, 'Parâmetros dos módulos'), findsOneWidget);
-      // Not repeated in the sidebar.
-      expect(find.widgetWithText(ListTile, 'Parâmetros dos módulos'), findsNothing);
+      expect(find.widgetWithText(PopupMenuItem<String>, 'Parâmetros dos módulos'), findsNothing, reason: role);
       await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      await openPreferences(tester);
+      expect(find.byKey(const ValueKey('settings-admin-heading')), findsOneWidget, reason: role);
+      for (final id in ['users', 'permissions', 'audit']) {
+        expect(find.byKey(ValueKey('settings-screen-$id')), findsNothing, reason: '$role/$id');
+      }
+      expect(find.byKey(const ValueKey('settings-screen-settings')), findsOneWidget, reason: role);
+      expect(find.byKey(const ValueKey('settings-screen-duplicates')), findsOneWidget, reason: role);
+      await tester.tap(find.byKey(const ValueKey('settings-close')));
       await tester.pumpAndSettle();
     }
   });

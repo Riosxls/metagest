@@ -46,7 +46,7 @@ import 'sales_common.dart' show openDelivery, openQuote, openSalesOrder;
 import 'sales_orders.dart';
 import 'sales_pipeline.dart';
 import 'sales_quotes.dart';
-import 'settings/settings_dialog.dart' show showUserSettings;
+import 'settings/settings_dialog.dart' show SettingsLinks, showUserSettings;
 import 'steel.dart';
 import 'stock_balances.dart';
 import 'stock_closing.dart';
@@ -210,7 +210,7 @@ List<NavItem> _screens() => [
   for (final spec in productionMasters) NavItem(spec.path, spec.icon, spec.title, 'PCP', (s, f, go) => EntityListScreen(session: s, spec: spec)),
   NavItem('fiscal-documents', Icons.description_outlined, 'Notas fiscais', 'Fiscal', (s, f, go) => FiscalDocumentsScreen(session: s)),
   NavItem('receivables', Icons.account_balance_wallet_outlined, 'Contas a receber', 'Fiscal', (s, f, go) => ReceivablesScreen(session: s, initialFilter: f)),
-  NavItem('fiscal-settings', Icons.receipt_outlined, 'Emitente e emissão', 'Fiscal', (s, f, go) => FiscalSettingsScreen(session: s)),
+  NavItem('fiscal-settings', Icons.receipt_outlined, 'Emitente e emissão', 'Fiscal', (s, f, go) => FiscalSettingsScreen(session: s, initialCompany: f)),
   for (final spec in fiscalMasters) NavItem(spec.path, spec.icon, spec.title, 'Fiscal', (s, f, go) => EntityListScreen(session: s, spec: spec)),
   NavItem('fiscal-import', Icons.move_down_outlined, 'Importar do sistema antigo', 'Fiscal', (s, f, go) => FiscalImportScreen(session: s), admin: true),
   NavItem('settings', Icons.tune, 'Parâmetros dos módulos', 'Sistema', (s, f, go) => SettingsScreen(session: s)),
@@ -304,6 +304,8 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     RecordTrail.top.value = null;
+    // The settings window lists the system screens (Parâmetros dos módulos, Usuários...) and opens them through this Shell.
+    SettingsLinks.open = _go;
     final start = _startLocation();
     if (start != null) {
       _current = start.id;
@@ -337,6 +339,7 @@ class _ShellState extends State<Shell> {
   @override
   void dispose() {
     _alertTimer?.cancel();
+    SettingsLinks.open = null;
     // The 30 minutes to come back count from the moment the Shell closes, not from the last navigation; a person who signed out is not remembered.
     if (widget.session.signedOutManually) {
       Shell.lastLocation[widget.session] = null;
@@ -1323,11 +1326,6 @@ class _ShellState extends State<Shell> {
             ],
             UserMenu(
               session: s,
-              adminScreens: [
-                for (final i in _items)
-                  if (i.section == 'Sistema') (id: i.id, icon: i.icon, title: i.title),
-              ],
-              onOpenScreen: _go,
             ),
             const SizedBox(width: 8),
           ],

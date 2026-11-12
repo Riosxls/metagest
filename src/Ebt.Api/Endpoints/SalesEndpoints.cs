@@ -584,7 +584,7 @@ public static class SalesEndpoints
         {
             var x = db.Deliveries.AsNoTracking();
             // pendingInvoice=true: only deliveries whose NF is still owed (nothing at all while fiscal emission is off).
-            if (pendingInvoice == true) x = await FiscalEnabled(db, ct) ? AwaitingInvoice(db, x) : x.Where(_ => false);
+            if (pendingInvoice == true) { var on = await FiscalFlags(db, ct); x = on.Any ? AwaitingInvoice(db, x, on) : x.Where(_ => false); }
             if (status is { } st) x = x.Where(d => d.Status == st);
             if (orderId is { } o) x = x.Where(d => d.OrderId == o);
             if (customerId is { } c) x = x.Where(d => d.Order!.CustomerId == c);
@@ -697,9 +697,10 @@ public static class SalesEndpoints
             var all = decided.Sum(d => d.N);
             var openOrders = orderRows.Where(o => SalesService.OpenOrder.Contains(o.Status)).ToList();
             var awaitingInvoice = 0;
-            if (await FiscalEnabled(db, ct))
+            var fiscalOnFlags = await FiscalFlags(db, ct);
+            if (fiscalOnFlags.Any)
             {
-                var owed = AwaitingInvoice(db, db.Deliveries.AsNoTracking());
+                var owed = AwaitingInvoice(db, db.Deliveries.AsNoTracking(), fiscalOnFlags);
                 if (includeTest != true) owed = owed.Where(d => d.Order!.Source != DataSource.Test);
                 if (customerId is { } cid) owed = owed.Where(d => d.Order!.CustomerId == cid);
                 awaitingInvoice = await owed.CountAsync(ct);
@@ -808,7 +809,8 @@ public static class SalesEndpoints
         var valueExIpi = d.Lines.Sum(l => SalesService.Money(l.Quantity * l.OrderLine!.UnitPrice));
         var balanceKg = Math.Round(orderLines.Sum(l => Math.Max(0, l.Quantity - upTo.GetValueOrDefault(l.Id)) * (SalesService.KgPerUnit(l, l.Product) ?? 0m)), 3);
         var balanceValue = orderLines.Sum(l => SalesService.Money(Math.Max(0, l.Quantity - upTo.GetValueOrDefault(l.Id)) * l.UnitPrice));
-        var invoice = InvoiceState(await FiscalEnabled(db, ct), d.Status, d.InvoiceNumber,
+        var invoiceBillTo = await db.SalesOrders.AsNoTracking().Where(x => x.Id == d.OrderId).Select(x => x.BillTo).FirstAsync(ct);
+        var invoice = InvoiceState((await FiscalFlags(db, ct)).For(invoiceBillTo), d.Status, d.InvoiceNumber,
             await db.FiscalDocuments.AnyAsync(f => f.DeliveryId == id && f.Kind == FiscalKind.Sale && f.Status == FiscalStatus.Authorized, ct),
             await db.FiscalDocuments.AnyAsync(f => f.DeliveryId == id && f.Kind == FiscalKind.Sale && f.Status == FiscalStatus.Pending, ct));
         var lines = d.Lines.OrderBy(l => l.OrderLine!.Sequence).Select(l => new DeliveryLineOut(l.Id, l.OrderLineId, l.OrderLine!.Sequence, l.OrderLine.ProductId, l.OrderLine.Product!.Code, l.OrderLine.Description,
@@ -818,12 +820,23 @@ public static class SalesEndpoints
             d.LotNumber, d.InvoicedValue, valueExIpi, balanceKg, balanceValue, invoice.Needs, invoice.Status, d.Order.QuoteId);
     }
 
-    private static Task<bool> FiscalEnabled(EbtDbContext db, CancellationToken ct) => db.FiscalSettings.AsNoTracking().Select(s => s.Enabled).FirstOrDefaultAsync(ct);
+    /// <summary>Which issuing companies emit NF-e: an order follows the company of its "Faturar para".</summary>
+    private readonly record struct FiscalOn(bool Ebt, bool Bst)
+    {
+        public bool Any => Ebt || Bst;
+        public bool For(BillTo billTo) => billTo == BillTo.Bts ? Bst : Ebt;
+    }
 
-    /// <summary>A delivery that left but has no NF at all (no authorized or pending sale NF, no typed NF number): the NF is still owed while emission is on.</summary>
-    private static IQueryable<Delivery> AwaitingInvoice(EbtDbContext db, IQueryable<Delivery> q) =>
-        q.Where(d => (d.Status == DeliveryStatus.Shipped || d.Status == DeliveryStatus.Delivered) && d.InvoiceNumber == null
+    private static async Task<FiscalOn> FiscalFlags(EbtDbContext db, CancellationToken ct)
+    {
+        var on = await db.FiscalSettings.AsNoTracking().Where(s => s.Enabled).Select(s => s.Company).ToListAsync(ct);
+        return new FiscalOn(on.Contains(FiscalCompany.Ebt), on.Contains(FiscalCompany.Bst));
+    }
+
+    private static IQueryable<Delivery> AwaitingInvoice(EbtDbContext db, IQueryable<Delivery> q, FiscalOn on) =>
+        q.Where(d => ((d.Order!.BillTo == BillTo.Bts && on.Bst) || (d.Order.BillTo == BillTo.Ebt && on.Ebt)) && (d.Status == DeliveryStatus.Shipped || d.Status == DeliveryStatus.Delivered) && d.InvoiceNumber == null
             && !db.FiscalDocuments.Any(f => f.DeliveryId == d.Id && f.Kind == FiscalKind.Sale && (f.Status == FiscalStatus.Authorized || f.Status == FiscalStatus.Pending)));
+
 
     /// <summary>"Authorized" (authorized NF or typed number) / "Pending" (SEFAZ outcome unknown) / "None" / "FiscalOff"; needsInvoice is true only for None on a shipped delivery while emission is on.</summary>
     private static (string Status, bool Needs) InvoiceState(bool fiscalOn, DeliveryStatus status, string? invoiceNumber, bool authorized, bool pending)
@@ -834,16 +847,16 @@ public static class SalesEndpoints
 
     private static async Task<List<DeliverySummaryOut>> DeliverySummaries(EbtDbContext db, IQueryable<Delivery> q, CancellationToken ct)
     {
-        var fiscalOn = await FiscalEnabled(db, ct);
+        var fiscalFlags = await FiscalFlags(db, ct);
         var rows = await q.Select(d => new
         {
-            d.Id, d.Number, d.Reference, d.OrderId, OrderReference = d.Order!.Reference, d.Order.CustomerId, Customer = d.Order.Customer!.Name, d.PlannedDate, d.Status, d.Packages, d.GrossWeightKg, d.InvoiceNumber, d.Carrier, d.ShippedAt, d.DeliveredAt,
+            d.Id, d.Number, d.Reference, d.OrderId, OrderReference = d.Order!.Reference, d.Order.BillTo, d.Order.CustomerId, Customer = d.Order.Customer!.Name, d.PlannedDate, d.Status, d.Packages, d.GrossWeightKg, d.InvoiceNumber, d.Carrier, d.ShippedAt, d.DeliveredAt,
             Authorized = db.FiscalDocuments.Any(f => f.DeliveryId == d.Id && f.Kind == FiscalKind.Sale && f.Status == FiscalStatus.Authorized),
             Pending = db.FiscalDocuments.Any(f => f.DeliveryId == d.Id && f.Kind == FiscalKind.Sale && f.Status == FiscalStatus.Pending)
         }).ToListAsync(ct);
         return rows.Select(r =>
         {
-            var (state, needs) = InvoiceState(fiscalOn, r.Status, r.InvoiceNumber, r.Authorized, r.Pending);
+            var (state, needs) = InvoiceState(fiscalFlags.For(r.BillTo), r.Status, r.InvoiceNumber, r.Authorized, r.Pending);
             return new DeliverySummaryOut(r.Id, r.Number, r.Reference, r.OrderId, r.OrderReference, r.CustomerId, r.Customer, r.PlannedDate, r.Status, r.Packages, r.GrossWeightKg, r.InvoiceNumber, r.Carrier, r.ShippedAt, r.DeliveredAt, needs, state);
         }).ToList();
     }

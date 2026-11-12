@@ -18,10 +18,22 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
     private static readonly string[] PisCofinsCalculated = ["01", "02"];
     private static readonly TimeSpan BrazilOffset = TimeSpan.FromHours(-3);
 
-    public async Task<FiscalSettings> SettingsAsync(CancellationToken ct = default) =>
-        await db.FiscalSettings.FirstOrDefaultAsync(ct) ?? throw new InvalidOperationException("fiscal_settings row missing");
+    /// <summary>The issuer row of a company (EBT when empty), tracked, for editing.</summary>
+    public async Task<FiscalSettings> SettingsAsync(string? company = null, CancellationToken ct = default)
+    {
+        var code = FiscalCompany.Parse(company) ?? throw FiscalException.Invalid("company", "EBT ou BST");
+        return await db.FiscalSettings.FirstOrDefaultAsync(s => s.Company == code, ct) ?? throw new InvalidOperationException($"fiscal_settings row of {code} missing");
+    }
 
-    public async Task<bool> EnabledAsync(CancellationToken ct = default) => await db.FiscalSettings.AsNoTracking().Select(s => s.Enabled).FirstOrDefaultAsync(ct);
+    /// <summary>Whether the company issues NF-e (EBT when empty).</summary>
+    public async Task<bool> EnabledAsync(string? company = null, CancellationToken ct = default)
+    {
+        var code = FiscalCompany.Parse(company) ?? FiscalCompany.Ebt;
+        return await db.FiscalSettings.AsNoTracking().Where(s => s.Company == code).Select(s => s.Enabled).FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>Whether any company issues NF-e: the question behind lists and exposure, where no single order is in view.</summary>
+    public async Task<bool> AnyEnabledAsync(CancellationToken ct = default) => await db.FiscalSettings.AsNoTracking().AnyAsync(s => s.Enabled, ct);
 
     public async Task<decimal?> MonthlyPriceAsync(int productId, int customerId, string cfop, int year, int month, CancellationToken ct = default) =>
         await db.MonthlyPrices.AsNoTracking().Where(p => p.ProductId == productId && p.CustomerId == customerId && p.CfopCode == cfop && p.Year == year && p.Month == month)
@@ -35,7 +47,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
     {
         return await InTransaction(async () =>
         {
-            var settings = await ReadSettingsAsync(ct);
+            var settings = await ReadSettingsAsync(FiscalCompany.Of(order.BillTo), ct);
             RequireIssuer(settings);
             var customer = await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == order.CustomerId, ct) ?? throw FiscalException.NotFound("Customer");
             var address = await db.CustomerAddresses.AsNoTracking().FirstOrDefaultAsync(a => a.Id == delivery.AddressId, ct) ?? throw FiscalException.NotFound("Delivery address");
@@ -115,7 +127,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
         if (opt.UnitValue <= 0) throw FiscalException.Invalid("unitValue", "Give the reference unit value of the pieces sent");
         return await InTransaction(async () =>
         {
-            var settings = await ReadSettingsAsync(ct);
+            var settings = await ReadSettingsAsync(opt.Company, ct);
             RequireIssuer(settings);
             var supplier = await db.Suppliers.AsNoTracking().Include(s => s.Addresses).FirstOrDefaultAsync(s => s.Id == shipment.SupplierId, ct) ?? throw FiscalException.NotFound("Supplier");
             var a = supplier.Addresses.Where(x => !string.IsNullOrWhiteSpace(x.Document)).OrderBy(x => x.Id).FirstOrDefault()
@@ -149,12 +161,12 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
         if (why is null || why.Length < 15) throw FiscalException.Invalid("reason", "Give the reason for the cancellation (at least 15 characters, SEFAZ rule)");
         return await InTransaction(async () =>
         {
-            var settings = await ReadSettingsAsync(ct);
             // The row stays locked until the transaction ends, so two cancellations (or a cancellation and a CC-e) never reach SEFAZ at once.
             await LockDocumentAsync(id, ct);
             var doc = await db.FiscalDocuments.FirstOrDefaultAsync(d => d.Id == id, ct) ?? throw FiscalException.NotFound("NF");
             await db.Entry(doc).ReloadAsync(ct);
             if (doc.Status != FiscalStatus.Authorized) throw FiscalException.Conflict($"NF {doc.Number} is {doc.Status}");
+            var settings = await ReadSettingsAsync(doc.IssuerId, ct);
             if (settings.CancelWindowHours > 0 && DateTimeOffset.UtcNow - doc.IssuedAt > TimeSpan.FromHours(settings.CancelWindowHours))
                 throw FiscalException.Conflict($"NF {doc.Number} was issued more than {settings.CancelWindowHours}h ago; SEFAZ no longer accepts the cancellation, issue a return NF instead");
             if (doc.Kind == FiscalKind.Sale && await db.FiscalDocuments.AnyAsync(r => r.ReferencedDocumentId == id && r.Kind == FiscalKind.Return && (r.Status == FiscalStatus.Authorized || r.Status == FiscalStatus.Pending), ct))
@@ -245,7 +257,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
     {
         await using var c = new EbtDbContext(options);
         await using var tx = await c.Database.BeginTransactionAsync(ct);
-        var s = await LockSettingsAsync(c, ct);
+        var s = await LockSettingsAsync(c, doc.IssuerId, ct);
         RequireIssuer(s);
         doc.Series = s.Series;
         doc.Number = s.NextNumber;
@@ -256,7 +268,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
         // Only the header is saved now (no links to rows the caller may hold locked); lines and links follow once SEFAZ authorizes.
         var shell = new FiscalDocument
         {
-            Kind = doc.Kind, Status = FiscalStatus.Pending, CfopCode = doc.CfopCode, Series = doc.Series, Number = doc.Number, AccessKey = doc.AccessKey, Environment = doc.Environment, Simulated = sefaz.IsSimulated, Protocol = "", IssuedAt = doc.IssuedAt,
+            IssuerId = doc.IssuerId, Kind = doc.Kind, Status = FiscalStatus.Pending, CfopCode = doc.CfopCode, Series = doc.Series, Number = doc.Number, AccessKey = doc.AccessKey, Environment = doc.Environment, Simulated = sefaz.IsSimulated, Protocol = "", IssuedAt = doc.IssuedAt,
             IssuedBy = doc.IssuedBy, CustomerId = doc.CustomerId, SupplierId = doc.SupplierId, RecipientName = doc.RecipientName, RecipientDocument = doc.RecipientDocument, RecipientUf = doc.RecipientUf,
             ProductsTotal = doc.ProductsTotal, FreightTotal = doc.FreightTotal, IcmsBase = doc.IcmsBase, IcmsTotal = doc.IcmsTotal, IpiTotal = doc.IpiTotal, PisTotal = doc.PisTotal, CofinsTotal = doc.CofinsTotal,
             InvoiceTotal = doc.InvoiceTotal, AdditionalInfo = doc.AdditionalInfo, Xml = doc.Xml, Warnings = doc.Warnings, ReferencedAccessKey = doc.ReferencedAccessKey
@@ -281,8 +293,9 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
     {
         await using var c = new EbtDbContext(options);
         await using var tx = await c.Database.BeginTransactionAsync(ct);
-        var s = await LockSettingsAsync(c, ct);
         var row = await c.FiscalDocuments.FirstAsync(d => d.Id == id, ct);
+        var s = await LockSettingsAsync(c, row.IssuerId, ct);
+        await c.Entry(row).ReloadAsync(ct);
         var release = reusable && row.Status == FiscalStatus.Pending && s.Series == row.Series && s.NextNumber == row.Number + 1;
         if (release)
         {
@@ -303,7 +316,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
     /// Gives up the numbers <paramref name="from"/>..<paramref name="to"/> for good (inutilização, SEFAZ rule: reason of at least 15 characters). Only numbers that were already
     /// issued (below <c>next_number</c>) and have no live NF are accepted: Rejected documents and holes left by a crash. Pending, Authorized and Cancelled numbers are refused.
     /// </summary>
-    public async Task<FiscalInutilization> InutilizeAsync(int? series, int from, int to, string? reason, string? user, CancellationToken ct = default)
+    public async Task<FiscalInutilization> InutilizeAsync(int? series, int from, int to, string? reason, string? user, CancellationToken ct = default, string? company = null)
     {
         var why = Clean(reason);
         if (why is null || why.Length < 15) throw FiscalException.Invalid("reason", "Give the reason (at least 15 characters, SEFAZ rule)");
@@ -311,17 +324,17 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
         if (from < 1) throw FiscalException.Invalid("from", "Must be 1 or more");
         if (to < from) throw FiscalException.Invalid("to", "Must not be smaller than the first number");
         if (to - from >= 1000) throw FiscalException.Invalid("to", "At most 1000 numbers per request");
-        var settings = await ReadSettingsAsync(ct);
+        var settings = await ReadSettingsAsync(company, ct);
         RequireIssuer(settings);
         var serie = series ?? settings.Series;
         if (serie is < 1 or > 999) throw FiscalException.Invalid("series", "Between 1 and 999");
         if (serie == settings.Series && to >= settings.NextNumber)
             throw FiscalException.Conflict($"Number {to} was not issued yet (next number is {settings.NextNumber}); only numbers already skipped can be inutilized");
 
-        var used = await db.FiscalDocuments.AsNoTracking().Where(d => d.Series == serie && d.Number >= from && d.Number <= to && d.Status != FiscalStatus.Rejected)
+        var used = await db.FiscalDocuments.AsNoTracking().Where(d => d.IssuerId == settings.Id && d.Series == serie && d.Number >= from && d.Number <= to && d.Status != FiscalStatus.Rejected)
             .OrderBy(d => d.Number).Select(d => new { d.Number, d.Status }).FirstOrDefaultAsync(ct);
         if (used is not null) throw FiscalException.Conflict($"NF {used.Number} is {used.Status}; only Rejected or missing numbers can be inutilized");
-        if (await db.FiscalInutilizations.AnyAsync(i => i.Series == serie && i.FromNumber <= to && i.ToNumber >= from, ct))
+        if (await db.FiscalInutilizations.AnyAsync(i => i.IssuerId == settings.Id && i.Series == serie && i.FromNumber <= to && i.ToNumber >= from, ct))
             throw FiscalException.Conflict("Part of this range was already inutilized");
 
         var now = DateTimeOffset.UtcNow;
@@ -332,11 +345,11 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
 
         var record = new FiscalInutilization
         {
-            Series = serie, FromNumber = from, ToNumber = to, Reason = why, Environment = settings.Environment, Protocol = verdict.Protocol ?? throw new InvalidOperationException("SEFAZ homologated the inutilização without a protocol"),
+            IssuerId = settings.Id, Series = serie, FromNumber = from, ToNumber = to, Reason = why, Environment = settings.Environment, Protocol = verdict.Protocol ?? throw new InvalidOperationException("SEFAZ homologated the inutilização without a protocol"),
             Simulated = verdict.Simulated, Xml = xml, CreatedAt = now, CreatedBy = user
         };
         db.FiscalInutilizations.Add(record);
-        foreach (var d in await db.FiscalDocuments.Where(d => d.Series == serie && d.Number >= from && d.Number <= to && d.Status == FiscalStatus.Rejected).ToListAsync(ct))
+        foreach (var d in await db.FiscalDocuments.Where(d => d.IssuerId == settings.Id && d.Series == serie && d.Number >= from && d.Number <= to && d.Status == FiscalStatus.Rejected).ToListAsync(ct))
             d.StatusMessage = Cut($"{d.StatusMessage} | Inutilizada (protocolo {record.Protocol})", 500);
         await db.SaveChangesAsync(ct);
         return record;
@@ -446,7 +459,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
         var key = NfeKey.Build(NfeKey.UfCodes[s.Uf], issuedAt.ToOffset(BrazilOffset), s.Cnpj!, s.Series, number, NfeKey.NewCodeNumber(number));
         return new FiscalDocument
         {
-            Kind = kind, Status = FiscalStatus.Pending, CfopCode = cfop.Code, Series = s.Series, Number = number, AccessKey = key, Environment = s.Environment, Protocol = "", IssuedAt = issuedAt, IssuedBy = user,
+            IssuerId = s.Id, Kind = kind, Status = FiscalStatus.Pending, CfopCode = cfop.Code, Series = s.Series, Number = number, AccessKey = key, Environment = s.Environment, Protocol = "", IssuedAt = issuedAt, IssuedBy = user,
             CustomerId = customerId, SupplierId = supplierId, RecipientName = recipient.Name, RecipientDocument = Digits(recipient.Document), RecipientUf = recipient.Uf, Xml = ""
         };
     }
@@ -554,13 +567,20 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
 
     private static string RequireNcm(Product p) => Digits(p.Ncm) is { Length: 8 } ncm ? ncm : throw FiscalException.Blocked($"Product {p.Code} has no valid 8-digit NCM");
 
-    /// <summary>Current issuer settings, neither locked nor tracked: emission needs only the issuer data, the number is taken later on its own connection.</summary>
-    private async Task<FiscalSettings> ReadSettingsAsync(CancellationToken ct) => await db.FiscalSettings.AsNoTracking().FirstAsync(ct);
-
-    private static async Task<FiscalSettings> LockSettingsAsync(EbtDbContext c, CancellationToken ct)
+    /// <summary>Issuer settings of a company (EBT when empty), neither locked nor tracked: emission needs only the issuer data, the number is taken later on its own connection.</summary>
+    private async Task<FiscalSettings> ReadSettingsAsync(string? company, CancellationToken ct)
     {
-        await c.Database.SqlQuery<int>($"SELECT id AS \"Value\" FROM fiscal_settings WHERE id = 1 FOR UPDATE").ToListAsync(ct);
-        var s = await c.FiscalSettings.FirstAsync(ct);
+        var code = FiscalCompany.Parse(company) ?? throw FiscalException.Invalid("company", "EBT ou BST");
+        return await db.FiscalSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Company == code, ct) ?? throw FiscalException.Blocked($"Fiscal settings of {code} are missing");
+    }
+
+    private async Task<FiscalSettings> ReadSettingsAsync(int issuerId, CancellationToken ct) =>
+        await db.FiscalSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Id == issuerId, ct) ?? throw FiscalException.NotFound("Issuer");
+
+    private static async Task<FiscalSettings> LockSettingsAsync(EbtDbContext c, int issuerId, CancellationToken ct)
+    {
+        await c.Database.SqlQuery<int>($"SELECT id AS \"Value\" FROM fiscal_settings WHERE id = {issuerId} FOR UPDATE").ToListAsync(ct);
+        var s = await c.FiscalSettings.FirstAsync(x => x.Id == issuerId, ct);
         await c.Entry(s).ReloadAsync(ct);
         return s;
     }

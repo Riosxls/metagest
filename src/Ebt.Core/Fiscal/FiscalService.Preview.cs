@@ -18,7 +18,7 @@ public sealed record NfPreviewTransport(string Mode, string? Carrier, decimal? N
 /// <summary>What the NF of an order would look like today, with nothing reserved, saved or sent. <see cref="Problems"/> is the checklist of what is still missing.</summary>
 public sealed record NfPreview(bool FiscalEnabled, bool Simulated, string Environment, int Series, int NextNumber, string Cfop, string? CfopDescription, NfPreviewParty Issuer, NfPreviewParty Recipient,
     IReadOnlyList<NfPreviewLine> Lines, decimal ProductsTotal, decimal FreightTotal, decimal IcmsBase, decimal IcmsTotal, decimal IpiTotal, decimal PisTotal, decimal CofinsTotal, decimal InvoiceTotal,
-    IReadOnlyList<NfPreviewInstallment> Installments, NfPreviewTransport Transport, string? AdditionalInfo, IReadOnlyList<NfProblem> Problems, bool Ready);
+    IReadOnlyList<NfPreviewInstallment> Installments, NfPreviewTransport Transport, string? AdditionalInfo, IReadOnlyList<NfProblem> Problems, bool Ready, string Company = "EBT");
 
 public sealed partial class FiscalService
 {
@@ -29,7 +29,7 @@ public sealed partial class FiscalService
     public async Task<NfPreview> PreviewSaleAsync(int orderId, CancellationToken ct = default)
     {
         var order = await db.SalesOrders.AsNoTracking().Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == orderId, ct) ?? throw FiscalException.NotFound("Sales order");
-        var s = await ReadSettingsAsync(ct);
+        var s = await ReadSettingsAsync(FiscalCompany.Of(order.BillTo), ct);
         var problems = new List<NfProblem>();
         void Add(string area, string message, string fix, bool blocking = true) => problems.Add(new NfProblem(area, message, fix, blocking));
 
@@ -148,6 +148,6 @@ public sealed partial class FiscalService
         var lines = doc.Lines.Select((l, i) => new NfPreviewLine(l.Sequence, l.Code, l.Description, l.Ncm, l.Unit, l.Quantity, l.UnitPrice, l.Total, sources[i].Price, l.IcmsCst, l.IcmsPercent, l.IcmsValue, l.IpiCst, l.IpiPercent, l.IpiValue, l.PisValue, l.CofinsValue, sources[i].Tax)).ToList();
         return new NfPreview(s.Enabled, sefaz.IsSimulated, s.Environment.ToString(), s.Series, s.NextNumber, cfop.Code, cfop.Description, issuer, recipient, lines, doc.ProductsTotal, doc.FreightTotal, doc.IcmsBase, doc.IcmsTotal,
             doc.IpiTotal, doc.PisTotal, doc.CofinsTotal, doc.InvoiceTotal, installments, new NfPreviewTransport(transport.FreightMode == 0 ? "Por conta do emitente (CIF)" : "Por conta do destinatário (FOB)", transport.Carrier, transport.NetWeightKg), info,
-            problems, problems.All(p => !p.Blocking));
+            problems, problems.All(p => !p.Blocking), s.Company);
     }
 }

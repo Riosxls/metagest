@@ -28,7 +28,8 @@ public sealed record FiscalImportSection(string Section, string Title, int Read,
 
 public sealed record FiscalImportResult(bool Applied, string? Source, IReadOnlyList<FiscalImportSection> Sections);
 
-public sealed record FiscalDataSummary(bool IssuerFilled, int Cfops, int Carriers, int TaxRules, int MonthlyPrices, int NextNumber);
+/// <param name="Company">The issuer the figures about the issuer (filled, next number) belong to.</param>
+public sealed record FiscalDataSummary(bool IssuerFilled, int Cfops, int Carriers, int TaxRules, int MonthlyPrices, int NextNumber, string Company = "EBT");
 
 /// <summary>
 /// Loads the fiscal data of the old system (issuer, missing CFOPs, carriers, tax rules by product x customer, monthly prices) from the JSON built by the export script.
@@ -42,11 +43,12 @@ public sealed class FiscalDataImporter(EbtDbContext db)
     /// <summary>CFOPs created by this same run: not saved yet in a preview, but the rules and prices that use them must count.</summary>
     private readonly HashSet<string> newCfops = [];
 
-    public async Task<FiscalDataSummary> SummaryAsync(CancellationToken ct)
+    public async Task<FiscalDataSummary> SummaryAsync(string? company, CancellationToken ct)
     {
-        var s = await db.FiscalSettings.AsNoTracking().FirstAsync(ct);
+        var code = FiscalCompany.Parse(company) ?? throw FiscalException.Invalid("company", "EBT ou BST");
+        var s = await db.FiscalSettings.AsNoTracking().FirstAsync(x => x.Company == code, ct);
         return new FiscalDataSummary(!string.IsNullOrWhiteSpace(s.Cnpj) && !string.IsNullOrWhiteSpace(s.StateRegistration) && !string.IsNullOrWhiteSpace(s.CityIbgeCode), await db.Cfops.CountAsync(ct), await db.FiscalCarriers.CountAsync(ct),
-            await db.TaxRules.CountAsync(ct), await db.MonthlyPrices.CountAsync(ct), s.NextNumber);
+            await db.TaxRules.CountAsync(ct), await db.MonthlyPrices.CountAsync(ct), s.NextNumber, code);
     }
 
     public async Task<FiscalImportResult> ImportAsync(byte[] file, bool apply, CancellationToken ct)
@@ -56,25 +58,27 @@ public sealed class FiscalDataImporter(EbtDbContext db)
         catch (JsonException) { throw FiscalException.Invalid("file", "O arquivo não é o JSON gerado por scripts/export-fiscal-data.ps1"); }
         if (bundle is null) throw FiscalException.Invalid("file", "Arquivo vazio");
 
+        var company = FiscalCompany.Parse(bundle.Source) ?? throw FiscalException.Invalid("file", "O campo \"source\" do arquivo deve ser EBT ou BST");
         var sections = new List<FiscalImportSection>
         {
-            await IssuerAsync(bundle.Issuer, ct),
+            await IssuerAsync(bundle.Issuer, company, ct),
             await CfopsAsync(bundle.Cfops ?? [], ct),
             await UfRatesAsync(bundle.UfRates ?? [], ct),
             await CarriersAsync(bundle.Carriers ?? [], ct),
-            await TaxRulesAsync(bundle.TaxRules ?? [], ct),
-            await PricesAsync(bundle.MonthlyPrices ?? [], ct)
+            company == FiscalCompany.Ebt ? await TaxRulesAsync(bundle.TaxRules ?? [], ct) : OtherCompanyOnly("taxRules", "Impostos por produto e cliente", bundle.TaxRules?.Count ?? 0),
+            company == FiscalCompany.Ebt ? await PricesAsync(bundle.MonthlyPrices ?? [], ct) : OtherCompanyOnly("monthlyPrices", "Preços mensais da NF", bundle.MonthlyPrices?.Count ?? 0)
         };
         if (apply) await db.SaveChangesAsync(ct);
         else db.ChangeTracker.Clear();
         return new FiscalImportResult(apply, bundle.Source, sections);
     }
 
-    private async Task<FiscalImportSection> IssuerAsync(BundleIssuer? i, CancellationToken ct)
+    private async Task<FiscalImportSection> IssuerAsync(BundleIssuer? i, string company, CancellationToken ct)
     {
         var notes = new List<string>();
         if (i is null) return new("issuer", "Dados do emitente", 0, 0, 0, 0, 0, ["O arquivo não traz os dados do emitente."]);
-        var s = await db.FiscalSettings.FirstAsync(ct);
+        var s = await db.FiscalSettings.FirstAsync(x => x.Company == company, ct);
+        notes.Add($"Emitente: {company}.");
         var changed = 0;
         void Fill(string label, string? current, string? incoming, Action<string> set)
         {
@@ -98,13 +102,20 @@ public sealed class FiscalDataImporter(EbtDbContext db)
         if (i.TaxRegime is >= 1 and <= 3 && s.TaxRegime != i.TaxRegime) { notes.Add($"Regime tributário do arquivo ({i.TaxRegime}) difere do atual ({s.TaxRegime}): mantido o atual."); }
         if (i.NextNumber is { } next)
         {
-            var maxIssued = await db.FiscalDocuments.Where(d => d.Series == s.Series).Select(d => (int?)d.Number).MaxAsync(ct) ?? 0;
+            var maxIssued = await db.FiscalDocuments.Where(d => d.IssuerId == s.Id && d.Series == s.Series).Select(d => (int?)d.Number).MaxAsync(ct) ?? 0;
             if (next > s.NextNumber && next > maxIssued) { s.NextNumber = next; changed++; notes.Add($"Próximo número da NF subiu para {next}."); }
             else if (next < s.NextNumber) notes.Add($"Próximo número do sistema antigo ({next}) é menor que o atual ({s.NextNumber}): mantido o atual.");
         }
         if (!s.Enabled) notes.Add("A emissão continua desligada: ligue em Fiscal > Emitente e emissão quando o certificado A1 estiver pronto.");
         return new("issuer", "Dados do emitente", 1, 0, changed > 0 ? 1 : 0, changed > 0 ? 0 : 1, 0, notes);
     }
+
+    /// <summary>
+    /// Tax rules and monthly prices are tied to customers by the legacy customer code, and that code is the one of the EBT system: the BST system numbers its customers on its own,
+    /// so the same code can be another customer. A file from another company therefore brings only the issuer, CFOPs, ICMS rates and carriers; its rules and prices wait for a customer map.
+    /// </summary>
+    private static FiscalImportSection OtherCompanyOnly(string section, string title, int read) =>
+        new(section, title, read, 0, 0, 0, read, read == 0 ? [] : ["Não importado: os códigos de cliente do arquivo são do sistema da outra empresa e poderiam apontar para o cliente errado."]);
 
     private async Task<FiscalImportSection> CfopsAsync(List<BundleCfop> rows, CancellationToken ct)
     {

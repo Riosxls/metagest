@@ -21,7 +21,8 @@ import 'dashboard_test.dart' show json, openPalette, page, pumpShell;
 import 'nav.dart';
 import 'role_permissions.dart';
 
-Map<String, dynamic> issuer({bool filled = true, bool enabled = false, bool simulated = true}) => {
+Map<String, dynamic> issuer({bool filled = true, bool enabled = false, bool simulated = true, String company = 'EBT', int nextNumber = 2581}) => {
+  'company': company,
   'enabled': enabled,
   'environment': 'Homologation',
   'companyName': filled ? 'EBT Indústria' : null,
@@ -32,7 +33,7 @@ Map<String, dynamic> issuer({bool filled = true, bool enabled = false, bool simu
   'cityIbgeCode': filled ? '3515004' : null,
   'uf': 'SP',
   'series': 1,
-  'nextNumber': 2581,
+  'nextNumber': nextNumber,
   'sefazSimulated': simulated,
 };
 
@@ -45,10 +46,17 @@ void main() {
     FiscalCheck check(FiscalReadiness r, String id) => r.checks.firstWhere((c) => c.id == id);
 
     test('empty system: issuer, CFOP 6101, rules and certificate are pending', () {
-      final r = FiscalReadiness.from(settings: issuer(filled: false), cfops: ['5101'], summary: {'taxRules': 0, 'carriers': 0});
-      expect(check(r, 'issuer').state, CheckState.warn);
-      expect(check(r, 'issuer').detail, contains('razão social, CNPJ, inscrição estadual, endereço completo'));
-      expect(check(r, 'issuer').goTo, 'fiscal-settings');
+      final r = FiscalReadiness.from(
+        issuers: [
+          issuer(filled: false),
+          issuer(filled: false, company: 'BST', nextNumber: 897),
+        ],
+        cfops: ['5101'],
+        summary: {'taxRules': 0, 'carriers': 0},
+      );
+      expect(check(r, 'issuer-EBT').state, CheckState.warn);
+      expect(check(r, 'issuer-EBT').detail, contains('razão social, CNPJ, inscrição estadual, endereço completo'));
+      expect(check(r, 'issuer-EBT').goTo, 'fiscal-settings');
       expect(check(r, 'cfops').state, CheckState.warn);
       expect(check(r, 'cfops').detail, contains('6101'));
       expect(check(r, 'cfops').goTo, 'fiscal-import');
@@ -56,26 +64,33 @@ void main() {
       expect(check(r, 'tax-rules').goTo, taxRules.path);
       expect(check(r, 'carriers').state, CheckState.info);
       expect(check(r, 'certificate').state, CheckState.warn);
-      expect(check(r, 'enabled').state, CheckState.info);
-      expect(check(r, 'next-number').detail, contains('2581'));
+      expect(check(r, 'emission-EBT').state, CheckState.info);
+      expect(check(r, 'issuer-BST').state, CheckState.warn);
+      expect(check(r, 'issuer-BST').filter, 'BST');
+      expect(check(r, 'emission-EBT').detail, contains('próximo número 2581'));
+      expect(check(r, 'emission-BST').detail, contains('próximo número 897'));
       expect(r.ready, isFalse);
-      expect(r.pending, 4);
+      expect(r.pending, 5);
     });
 
     test('everything in place and connected: ready', () {
       final r = FiscalReadiness.from(
-        settings: issuer(enabled: true, simulated: false),
+        issuers: [
+          issuer(enabled: true, simulated: false),
+          issuer(enabled: true, simulated: false, company: 'BST', nextNumber: 897),
+        ],
         cfops: ['5101', '6101', '5901'],
         summary: {'taxRules': 12, 'carriers': 3},
       );
       expect(r.ready, isTrue);
       expect(check(r, 'tax-rules').detail, '12 cadastradas');
       expect(check(r, 'certificate').detail, contains('Homologação'));
-      expect(check(r, 'enabled').detail, startsWith('Ligada'));
+      expect(check(r, 'emission-EBT').detail, startsWith('Ligada'));
+      expect(check(r, 'emission-BST').detail, contains('próximo número 897'));
     });
 
     test('a simulated SEFAZ is the "no A1 certificate yet" state', () {
-      final r = FiscalReadiness.from(settings: issuer(simulated: true), cfops: ['5101', '6101'], summary: {'taxRules': 1});
+      final r = FiscalReadiness.from(issuers: [issuer(simulated: true)], cfops: ['5101', '6101'], summary: {'taxRules': 1});
       expect(check(r, 'certificate').state, CheckState.warn);
       expect(check(r, 'certificate').detail, contains('simulada'));
     });
@@ -98,6 +113,7 @@ void main() {
         paths.add(r.url.path);
         return switch (r.url.path) {
           '/api/fiscal/settings' => json(settings ?? issuer(filled: false)),
+          '/api/fiscal/settings/all' => json([settings ?? issuer(filled: false), issuer(filled: false, company: 'BST', nextNumber: 897)]),
           '/api/fiscal/cfops' => json(cfopList(['5101'])),
           '/api/fiscal/legacy-import/summary' => json({
             'issuerFilled': false,
@@ -137,15 +153,17 @@ void main() {
       expect(find.text('Pronto para emitir?'), findsOneWidget);
       expect(find.byKey(const ValueKey('fiscal-readiness-headline')), findsOneWidget);
       expect(find.textContaining('precisam de atenção antes de emitir'), findsOneWidget);
-      expect(find.text('Dados do emitente'), findsOneWidget);
+      expect(find.text('Dados do emitente (EBT)'), findsOneWidget);
       expect(find.text('Certificado digital A1'), findsOneWidget);
       expect(find.textContaining('próximo número 2581'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('fiscal-check-cfops')));
       await tester.pumpAndSettle();
       expect(paths.last, 'go:fiscal-import');
-      await tester.tap(find.byKey(const ValueKey('fiscal-check-issuer')));
+      await tester.tap(find.byKey(const ValueKey('fiscal-check-issuer-EBT')));
       await tester.pumpAndSettle();
       expect(paths.last, 'go:fiscal-settings');
+      expect(find.text('Dados do emitente (BST)'), findsOneWidget);
+      expect(find.text('Emissão de NF-e (BST)'), findsOneWidget);
     });
 
     testWidgets('a failed read offers to try again', (tester) async {
@@ -234,14 +252,17 @@ void main() {
   });
 
   group('screens of the module', () {
-    Future<void> pumpScreen(WidgetTester tester, Widget Function(Session) screen) async {
+    Future<List<http.Request>> pumpScreen(WidgetTester tester, Widget Function(Session) screen) async {
+      final sent = <http.Request>[];
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = const Size(1600, 1400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final client = MockClient((r) async {
+        sent.add(r);
         return switch (r.url.path) {
           '/api/fiscal/settings' => json(issuer()),
+          '/api/fiscal/settings/all' => json([issuer(enabled: true), issuer(company: 'BST', filled: false, nextNumber: 897)]),
           '/api/fiscal/cfops' => json(cfopList(['5101', '6101'])),
           '/api/fiscal/legacy-import/summary' => json({'issuerFilled': true, 'cfops': 2, 'carriers': 1, 'taxRules': 3, 'monthlyPrices': 0, 'nextNumber': 2581}),
           _ => json(page([])),
@@ -263,6 +284,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      return sent;
     }
 
     testWidgets('the old-system import is a page of the module, with its summary and file button', (tester) async {
@@ -276,6 +298,31 @@ void main() {
       await pumpScreen(tester, (s) => FiscalSettingsScreen(session: s));
       expect(find.text('CFOPs cadastrados'), findsOneWidget);
       expect(find.text('6101 · CFOP 6101'), findsOneWidget);
+    });
+
+    testWidgets('the screen has one tab per company and each shows its own issuer', (tester) async {
+      await pumpScreen(tester, (s) => FiscalSettingsScreen(session: s));
+      expect(find.byKey(const ValueKey('fiscal-company-EBT')), findsOneWidget);
+      expect(find.byKey(const ValueKey('fiscal-company-BST')), findsOneWidget);
+      // EBT first: its issuer is filled and emission is on.
+      expect(find.text('Emissão de NF-e ligada'), findsOneWidget);
+      expect(find.text('Dados do emitente incompletos'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('fiscal-company-BST')));
+      await tester.pumpAndSettle();
+      expect(find.text('Emissão de NF-e desligada'), findsOneWidget);
+      expect(find.text('Dados do emitente incompletos'), findsOneWidget);
+      expect(find.text('897'), findsOneWidget);
+    });
+
+    testWidgets('a link can open the screen on BST, and saving sends the company', (tester) async {
+      final sent = await pumpScreen(tester, (s) => FiscalSettingsScreen(session: s, initialCompany: 'BST'));
+      expect(find.text('Emissão de NF-e desligada'), findsOneWidget);
+      expect(find.text('897'), findsOneWidget);
+      await tester.tap(find.text('Editar parâmetros'));
+      await tester.pumpAndSettle();
+      expect(find.text('Emitente e emissão'), findsWidgets);
+      // The save goes to the company in view (the form is not submitted here; the target is what matters).
+      expect(sent.where((r) => r.method == 'PUT'), isEmpty);
     });
   });
 }

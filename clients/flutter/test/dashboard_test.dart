@@ -266,12 +266,15 @@ void main() {
       expect(find.widgetWithText(ListTile, t), findsNothing);
     }
     expect(find.widgetWithText(ListTile, 'Painel'), findsOneWidget);
-    // Administration screens are in the avatar menu only.
+    // The system screens are in Preferências, under Administração: not in the sidebar and not in the avatar menu.
     expect(find.widgetWithText(ListTile, 'Parâmetros dos módulos'), findsNothing);
     await tester.tap(find.byTooltip('Conta'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('admin-settings')), findsOneWidget);
-    await tester.tapAt(const Offset(5, 5));
+    expect(find.byKey(const ValueKey('admin-settings')), findsNothing);
+    await tester.tap(find.text('Preferências'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settings-screen-settings')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('settings-close')));
     await tester.pumpAndSettle();
     await openModule(tester, 'Estoque');
     expect(find.widgetWithText(ListTile, 'Saldos'), findsOneWidget);
@@ -346,6 +349,8 @@ void main() {
     expect(session.remember, isFalse);
     expect(p.getBool('rememberLogin'), isFalse);
     expect(find.text('A sessão termina ao fechar o aplicativo'), findsOneWidget);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('settings-nav-admin')), 100, scrollable: find.descendant(of: find.byType(Dialog), matching: find.byType(Scrollable)).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('settings-nav-admin')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('open-data-reset')), findsOneWidget, reason: 'admins clear movement data from Configurações');
