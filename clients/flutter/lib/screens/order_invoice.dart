@@ -302,22 +302,58 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
 
   String _tax(Object? cst, Object? percent, Object? value) => 'CST $cst · ${fmtNum(percent)}% · R\$ ${fmtNum(value)}';
 
-  Widget _items(Map<String, dynamic> nf) => Section(
-    title: 'Itens da nota',
-    child: SimpleTable(
-      columns: [
-        ColumnSpec('Produto', (e) => '${e['code']} · ${fmt(e['description'])}'),
-        ColumnSpec('NCM', (e) => fmt(e['ncm'])),
-        ColumnSpec('Qtd', (e) => '${fmtNum(e['quantity'], 3)} ${e['unit']}', numeric: true),
-        ColumnSpec('Preço', (e) => 'R\$ ${fmtNum(e['unitPrice'], 4)} (${e['priceSource']})', numeric: true),
-        moneyCol('Total', 'total'),
-        ColumnSpec('ICMS', (e) => _tax(e['icmsCst'], e['icmsPercent'], e['icmsValue'])),
-        ColumnSpec('IPI', (e) => _tax(e['ipiCst'], e['ipiPercent'], e['ipiValue'])),
-        ColumnSpec('Regra de imposto', (e) => fmt(e['taxSource'])),
-      ],
-      rows: (nf['lines'] as List).cast<Map<String, dynamic>>(),
-    ),
-  );
+  /// One card per item of the NF: product on top, then quantity, price and the taxes as labelled figures that wrap with the width (a table with eight columns does not fit beside the action panel).
+  Widget _items(Map<String, dynamic> nf) {
+    final theme = Theme.of(context);
+    Widget fact(String label, String value, {double width = 150}) => SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: theme.textTheme.labelSmall),
+          const SizedBox(height: 2),
+          Text(value, style: theme.textTheme.bodyMedium),
+        ],
+      ),
+    );
+    final rows = (nf['lines'] as List).cast<Map<String, dynamic>>();
+    return Section(
+      title: 'Itens da nota',
+      child: Column(
+        children: [
+          for (final e in rows)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(border: Border.all(color: theme.colorScheme.outlineVariant), borderRadius: BorderRadius.circular(10)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Item ${e['sequence']} · ${e['code']}', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(fmt(e['description']), style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 10,
+                    children: [
+                      fact('NCM', fmt(e['ncm']), width: 90),
+                      fact('Quantidade', '${fmtNum(e['quantity'], 3)} ${e['unit']}'),
+                      fact('Preço unitário', 'R\$ ${fmtNum(e['unitPrice'], 4)}'),
+                      fact('Origem do preço', fmt(e['priceSource'])),
+                      fact('Total do item', fmtMoney(e['total'])),
+                      fact('ICMS', _tax(e['icmsCst'], e['icmsPercent'], e['icmsValue']), width: 210),
+                      fact('IPI', _tax(e['ipiCst'], e['ipiPercent'], e['ipiValue']), width: 210),
+                      fact('Regra de imposto', fmt(e['taxSource']), width: 210),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   /// A figure with its label, for the totals strip.
   Widget _metric(String label, Object? value, {bool strong = false}) {
@@ -464,6 +500,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   Widget _actionPanel(Map<String, dynamic> nf) {
     final theme = Theme.of(context);
     final on = nf['fiscalEnabled'] == true;
+    final oldServer = nf['orderLines'] == null;
     final items = (nf['orderLines'] as List? ?? const []).cast<Map<String, dynamic>>().where((l) => (l['remaining'] as num) > 0).toList();
     return Card(
       elevation: 2,
@@ -496,7 +533,16 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
                 ],
               ),
             ),
-            if (items.isEmpty) ...[
+            if (oldServer) ...[
+              const SizedBox(height: 12),
+              const NextStepCard(
+                key: ValueKey('invoice-old-server'),
+                title: 'API desatualizada',
+                message: 'O servidor ainda não tem a versão nova desta tela (quantidade pesada e emissão na saída). Atualize a API e abra a tela de novo.',
+                tone: Tone.warning,
+                icon: Icons.system_update_alt,
+              ),
+            ] else if (items.isEmpty) ...[
               const SizedBox(height: 12),
               const NextStepCard(key: ValueKey('invoice-nothing-left'), title: 'Nada a expedir', message: 'Todos os itens deste pedido já saíram.', tone: Tone.success, icon: Icons.check_circle_outline),
             ] else ...[
