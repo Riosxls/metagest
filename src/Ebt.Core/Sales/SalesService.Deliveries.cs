@@ -132,6 +132,37 @@ public sealed partial class SalesService
     }
 
     /// <summary>
+    /// The commercial team issues the NF when the truck is waiting to load, so emitting it and shipping are one act: creates the delivery for the weighed quantities and ships it (stock out, NF emitted when fiscal
+    /// emission is on). If anything fails (credit, certificate rule, SEFAZ) nothing is left behind, not even the delivery.
+    /// </summary>
+    public async Task<Delivery> DispatchAsync(int orderId, DispatchInput i, string? user, CancellationToken ct = default, bool canEmitInvoice = true, bool overrideCredit = false, bool canWaiveCertificate = false)
+    {
+        if (i.Lines is null || i.Lines.Count == 0) throw SalesException.Invalid("lines", "Pick at least one item to ship");
+        if (i.Lines.Any(l => l.Quantity <= 0)) throw SalesException.Invalid("lines", "Every quantity must be greater than zero");
+        if (i.Lines.GroupBy(l => l.OrderLineId).Any(g => g.Count() > 1)) throw SalesException.Invalid("lines", "Repeated item");
+        return await InTransaction(async () =>
+        {
+            var o = await LockOrderAsync(orderId, ct);
+            if (o.Status is not (SalesOrderStatus.Released or SalesOrderStatus.PartiallyShipped)) throw SalesException.Conflict($"Order is {o.Status}; release it to production first");
+            var progress = (await ProgressAsync([o.Id], ct))[o.Id];
+            // The delivery is planned for what is still free on each line; the weighed quantity (a little more or less) is applied when it ships.
+            var planned = new List<DeliveryLineInput>();
+            foreach (var l in i.Lines)
+            {
+                var p = progress.Lines.FirstOrDefault(x => x.LineId == l.OrderLineId) ?? throw SalesException.Invalid("lines", "Not an item of this order");
+                var free = p.Remaining - p.Planned;
+                var plan = Math.Min(l.Quantity, free);
+                if (plan > 0) planned.Add(new DeliveryLineInput(l.OrderLineId, plan));
+            }
+            if (planned.Count == 0) throw SalesException.Conflict("Nothing left to ship on these items");
+            var d = await CreateDeliveryAsync(orderId, new DeliveryInput(i.Date, i.AddressId, i.Carrier, planned, i.Notes), user, ct);
+            var final = i.Lines.Where(l => d.Lines.Any(x => x.OrderLineId == l.OrderLineId)).Select(l => new ShipLineInput(d.Lines.First(x => x.OrderLineId == l.OrderLineId).Id, l.Quantity)).ToList();
+            return await ShipAsync(d.Id, new ShipInput(i.Date, i.InvoiceNumber, i.Carrier, i.VehiclePlate, i.GrossWeightKg, i.Cfop, i.Freight, i.LotNumber, i.InvoicedValue, i.WithoutCertificate, i.OverrideCredit, final),
+                user, ct, canEmitInvoice, overrideCredit, canWaiveCertificate);
+        }, ct);
+    }
+
+    /// <summary>
     /// Replaces the planned quantities of the delivery by the weighed ones. A line may be short (the balance stays open on the order) or above what was asked, up to
     /// the overrun tolerance of the production settings; packages and the gross weight follow the new quantity.
     /// </summary>

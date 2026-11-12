@@ -39,6 +39,15 @@ public sealed record ShipLineInput(int DeliveryLineId, decimal Quantity);
 
 public sealed record ShipInput(DateOnly Date, string? InvoiceNumber = null, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null, string? Cfop = null, decimal? Freight = null, string? LotNumber = null, decimal? InvoicedValue = null, bool WithoutCertificate = false, bool OverrideCredit = false, IReadOnlyList<ShipLineInput>? Lines = null);
 
+/// <summary>One item of a load: the order line and the weighed quantity that is leaving.</summary>
+public sealed record DispatchLineInput(int OrderLineId, decimal Quantity);
+
+/// <summary>
+/// "Confirmar e emitir NF": the load is ready and the truck waits, so the delivery is created, shipped (stock out) and its NF emitted in one action. The weighed quantities are the ones that go on the NF.
+/// </summary>
+public sealed record DispatchInput(DateOnly Date, IReadOnlyList<DispatchLineInput> Lines, int? AddressId = null, string? InvoiceNumber = null, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null,
+    string? Cfop = null, decimal? Freight = null, string? LotNumber = null, decimal? InvoicedValue = null, bool WithoutCertificate = false, bool OverrideCredit = false, string? Notes = null);
+
 public sealed record RescheduleLine(int LineId, DateOnly DueDate);
 
 /// <param name="Reason">Required when a due date changes; goes into the order history.</param>

@@ -574,6 +574,13 @@ public static class SalesEndpoints
             var d = await svc.CreateDeliveryAsync(id, i, Who(user), ct);
             return Results.Created($"/api/sales/deliveries/{d.Id}", await LoadDelivery(db, d.Id, ct));
         }).RequireAuthorization(SalesPolicies.Ship);
+        // "Confirmar e emitir NF": delivery + shipment + NF in one act, with the weighed quantities.
+        g.MapPost("/{id:int}/dispatch", async (int id, DispatchInput i, EbtDbContext db, SalesService svc, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            var d = await svc.DispatchAsync(id, i, Who(user), ct, canEmitInvoice: Access.Matrix[FiscalPolicies.Emit].Any(r => user.IsInRole(r.ToString())), overrideCredit: i.OverrideCredit && IsManager(user),
+                canWaiveCertificate: IsManager(user) || Access.Matrix[CertificatePolicies.Issue].Any(r => user.IsInRole(r.ToString())));
+            return Results.Ok(await LoadDelivery(db, d.Id, ct));
+        }).RequireAuthorization(SalesPolicies.Ship);
     }
 
     private static void MapDeliveries(WebApplication app)

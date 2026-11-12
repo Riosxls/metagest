@@ -113,7 +113,23 @@ public static class FiscalEndpoints
 
     /// <summary>Dry run of the NF of a sales order (the "Nota fiscal" step of the order flow): nothing is reserved, saved or sent.</summary>
     private static void MapPreview(WebApplication app) =>
-        app.MapGet("/api/fiscal/preview/order/{id:int}", async (int id, FiscalService fiscal, CancellationToken ct) => Results.Ok(await fiscal.PreviewSaleAsync(id, ct))).WithTags("Fiscal").RequireAuthorization(Policies.Read);
+        app.MapGet("/api/fiscal/preview/order/{id:int}", async (int id, string? lines, FiscalService fiscal, CancellationToken ct) =>
+        {
+            // lines=12:38.5,13:10 (order line id : weighed quantity); without it the preview uses what is still to ship.
+            Dictionary<int, decimal>? quantities = null;
+            if (!string.IsNullOrWhiteSpace(lines))
+            {
+                quantities = [];
+                foreach (var part in lines.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    var kv = part.Split(':');
+                    if (kv.Length != 2 || !int.TryParse(kv[0], out var lineId) || !decimal.TryParse(kv[1], System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var qty))
+                        return Results.BadRequest(new { message = "Use lines=<line id>:<quantity>,<line id>:<quantity>", field = "lines" });
+                    quantities[lineId] = qty;
+                }
+            }
+            return Results.Ok(await fiscal.PreviewSaleAsync(id, ct, quantities));
+        }).WithTags("Fiscal").RequireAuthorization(Policies.Read);
 
     private static void MapInutilizations(WebApplication app)
     {

@@ -66,6 +66,9 @@ Map<String, dynamic> _preview({bool ready = true, List<Map<String, dynamic>> pro
   'additionalInfo': 'PV 9 | Pedido cliente PO-9',
   'problems': problems,
   'ready': ready,
+  'orderLines': [
+    {'orderLineId': 90, 'sequence': 10, 'code': 'TB-25', 'description': 'Tubo 25,4 x 1,5', 'unit': 'PC', 'ordered': 10, 'remaining': 10, 'quantity': 10},
+  ],
 };
 
 http.Response _json(Object? body) => http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json; charset=utf-8'});
@@ -74,7 +77,7 @@ void main() {
   testWidgets('the order in production has an Emitir nota fiscal step and a button that opens the simulation', (tester) async {
     final f = MoreFake()..order['status'] = 'Released';
     f.overrides['GET /api/fiscal/preview/order/9'] = (r) => _json(_preview());
-    await pumpMore(tester, f, (s) => SalesOrderScreen(session: s, id: 9), size: const Size(1400, 2200));
+    await pumpMore(tester, f, (s) => SalesOrderScreen(session: s, id: 9), size: const Size(1400, 4200));
     expect(find.text('Emitir nota fiscal'), findsWidgets); // the step in the path and the button
     await tapKey(tester, 'order-invoice');
     expect(f.called('GET', '/api/fiscal/preview/order/9'), isTrue);
@@ -83,6 +86,25 @@ void main() {
     expect(find.textContaining('TB-25'), findsWidgets);
     expect(find.text('Duplicatas'), findsOneWidget);
     expect(find.byKey(const ValueKey('invoice-problems')), findsNothing);
+  });
+
+  testWidgets('Confirmar e emitir NF sends the weighed quantity and opens the delivery', (tester) async {
+    final f = MoreFake()..order['status'] = 'Released';
+    f.overrides['GET /api/fiscal/preview/order/9'] = (r) => _json(_preview());
+    f.overrides['POST /api/sales/orders/9/dispatch'] = (r) => _json({'id': 15, 'invoiceNumber': '9001'});
+    await pumpMore(tester, f, (s) => SalesOrderScreen(session: s, id: 9), size: const Size(1400, 2600));
+    await tapKey(tester, 'order-invoice');
+    expect(find.byKey(const ValueKey('invoice-qty-90')), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('invoice-qty-90')), '9,5');
+    await tester.enterText(find.byKey(const ValueKey('invoice-number')), '9001'); // emission is off: the number is typed
+    await tapKey(tester, 'invoice-update');
+    expect(f.last('GET', '/api/fiscal/preview/order/9').url.queryParameters['lines'], '90:9.5');
+    await tapKey(tester, 'invoice-confirm');
+    await tester.tap(find.text('Registrar saída'));
+    await tester.pumpAndSettle();
+    final body = f.body(f.last('POST', '/api/sales/orders/9/dispatch'));
+    expect(body['invoiceNumber'], '9001');
+    expect(((body['lines'] as List).single as Map)['quantity'], 9.5);
   });
 
   testWidgets('the simulation lists what is missing and where to fix it', (tester) async {

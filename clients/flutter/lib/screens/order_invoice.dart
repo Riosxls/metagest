@@ -5,14 +5,16 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../entities.dart';
 import '../session.dart';
+import '../widgets/entity_form.dart' show confirm;
 import '../widgets/load_error.dart';
 import '../widgets/pipeline.dart';
 import '../widgets/record_list.dart';
 import '../widgets/record_skeleton.dart';
 import 'sales_common.dart';
 
-/// The "Nota Fiscal" step of an order: a dry run of the NF the order would get (same CFOP, price, tax and duplicata rules as the real emission) and the checklist of
-/// what is still missing in the registers. Nothing is numbered, saved or sent to SEFAZ from here.
+/// The "Nota Fiscal" step of an order: the preview of the NF the load would get (same CFOP, price, tax and duplicata rules as the real emission), the checklist of
+/// what is still missing in the registers, and the button that confirms it. The commercial team issues the NF when the truck waits to load, with the weighed
+/// quantities, so "Confirmar e emitir NF" creates the delivery, ships it (stock out) and emits the NF in one act; then the Certificado step follows.
 class OrderInvoiceScreen extends StatefulWidget {
   const OrderInvoiceScreen({super.key, required this.session, required this.id});
 
@@ -28,8 +30,23 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   Map<String, dynamic>? _nf;
   String? _error;
   bool _loading = false;
+  bool _sending = false;
+  final _qty = <int, TextEditingController>{};
+  final _invoiceNumber = TextEditingController();
 
   ApiClient get api => widget.session.api;
+
+  @override
+  void dispose() {
+    for (final c in _qty.values) {
+      c.dispose();
+    }
+    _invoiceNumber.dispose();
+    super.dispose();
+  }
+
+  /// `orderLineId:quantity,...` of the weighed quantities typed (0 when empty or invalid, which leaves the item out).
+  String _linesQuery() => [for (final e in _qty.entries) '${e.key}:${parseDecimal(e.value.text.trim()) ?? 0}'].join(',');
 
   @override
   void initState() {
@@ -41,12 +58,18 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     setState(() => _loading = true);
     try {
       final order = await api.get('/api/sales/orders/${widget.id}') as Map<String, dynamic>;
-      final nf = await api.get('/api/fiscal/preview/order/${widget.id}') as Map<String, dynamic>;
+      final nf = await api.get('/api/fiscal/preview/order/${widget.id}', _qty.isEmpty ? null : {'lines': _linesQuery()}) as Map<String, dynamic>;
       if (mounted) {
         setState(() {
           _order = order;
           _nf = nf;
           _error = null;
+          // The first load proposes what is still to ship; the weighed quantities typed afterwards are kept on the next loads.
+          for (final l in (nf['orderLines'] as List? ?? const []).cast<Map<String, dynamic>>()) {
+            if ((l['remaining'] as num) > 0) {
+              _qty.putIfAbsent(l['orderLineId'] as int, () => TextEditingController(text: '${l['quantity']}'.replaceAll('.', ',')));
+            }
+          }
         });
       }
     } catch (e) {
@@ -54,6 +77,115 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Creates the delivery with the weighed quantities, ships it and emits the NF (or takes the typed number when emission is off), then opens the delivery to continue with the certificate.
+  Future<void> _dispatch(Map<String, dynamic> nf) async {
+    final lines = <Map<String, dynamic>>[
+      for (final e in _qty.entries)
+        if ((parseDecimal(e.value.text.trim()) ?? 0) > 0) {'orderLineId': e.key, 'quantity': parseDecimal(e.value.text.trim())},
+    ];
+    if (lines.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Digite a quantidade pesada de pelo menos um item')));
+      return;
+    }
+    final on = nf['fiscalEnabled'] == true;
+    final typed = _invoiceNumber.text.trim();
+    if (!on && typed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A emissão fiscal está desligada: digite o número da NF emitida fora do sistema')));
+      return;
+    }
+    final total = fmtMoney(nf['invoiceTotal']);
+    final ok = await confirm(
+      context,
+      on
+          ? 'Emitir a NF ${nf['nextNumber']} (${nf['company'] ?? 'EBT'}) no valor de $total?\n\nA carga sai do estoque agora${nf['simulated'] == true ? ' (SEFAZ simulada: nada é enviado de verdade)' : ' e a nota é enviada à SEFAZ'}. Não dá para desfazer.'
+          : 'Registrar a saída da carga com a NF $typed no valor de $total?\n\nA emissão fiscal está desligada: nada é enviado à SEFAZ. A carga sai do estoque agora.',
+      confirmLabel: on ? 'Emitir NF e expedir' : 'Registrar saída',
+    );
+    if (!ok || !mounted) return;
+    setState(() => _sending = true);
+    try {
+      final d = await api.post('/api/sales/orders/${widget.id}/dispatch', {
+        'date': isoDate(DateTime.now()),
+        'lines': lines,
+        if (!on) 'invoiceNumber': typed,
+      }) as Map<String, dynamic>;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Carga expedida${d['invoiceNumber'] == null ? '' : ' com a NF ${d['invoiceNumber']}'}. Próximo passo: certificado.')));
+      await _load();
+      if (mounted) await openDelivery(context, widget.session, d['id'] as int);
+      if (mounted) await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  /// The weighed quantity of each item that still has something to ship; the preview below follows what is typed here.
+  Widget _weighing(Map<String, dynamic> nf) {
+    final items = (nf['orderLines'] as List? ?? const []).cast<Map<String, dynamic>>().where((l) => (l['remaining'] as num) > 0).toList();
+    if (items.isEmpty) {
+      return const NextStepCard(
+        key: ValueKey('invoice-nothing-left'),
+        title: 'Nada a expedir',
+        message: 'Todos os itens deste pedido já saíram.',
+        tone: Tone.success,
+        icon: Icons.check_circle_outline,
+      );
+    }
+    return Section(
+      title: 'Carga e quantidade pesada',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'A OF volta da fábrica com o produto pesado, às vezes um pouco a mais ou a menos que o pedido. Digite o peso final de cada item: a NF e a baixa do estoque usam estes valores. Deixe em 0 o item que não vai nesta carga.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          gap,
+          for (final l in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: TextField(
+                key: ValueKey('invoice-qty-${l['orderLineId']}'),
+                controller: _qty[l['orderLineId']],
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Item ${l['sequence']} · ${l['code']} (${l['unit']})',
+                  helperText: 'Pedido: ${fmtNum(l['ordered'], 3)} · falta expedir: ${fmtNum(l['remaining'], 3)}',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ),
+          if (nf['fiscalEnabled'] != true)
+            TextField(
+              key: const ValueKey('invoice-number'),
+              controller: _invoiceNumber,
+              decoration: const InputDecoration(
+                labelText: 'Número da NF (emitida fora do sistema)',
+                helperText: 'A emissão fiscal está desligada: o sistema só registra o número',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          gap,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(key: const ValueKey('invoice-update'), onPressed: _loading || _sending ? null : _load, icon: const Icon(Icons.refresh), label: const Text('Atualizar a prévia')),
+              FilledButton.icon(
+                key: const ValueKey('invoice-confirm'),
+                onPressed: _sending || nf['ready'] != true ? null : () => _dispatch(nf),
+                icon: _sending ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.receipt_long),
+                label: Text(nf['fiscalEnabled'] == true ? 'Confirmar e emitir NF' : 'Confirmar saída com NF digitada'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -184,14 +316,17 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
         gap,
         NextStepCard(
           key: const ValueKey('invoice-simulation'),
-          title: 'Simulação da nota fiscal',
-          message: 'Esta tela mostra a NF que o pedido receberia hoje. Nada é numerado, gravado nem enviado à SEFAZ. A emissão de verdade acontece na expedição.',
+          title: 'Prévia da nota fiscal',
+          message:
+              'Confira a NF abaixo. Só ao tocar em "Confirmar e emitir NF" a carga sai do estoque e a nota é emitida; depois vem o certificado e, por fim, a confirmação da entrega ao cliente.',
           tone: Tone.info,
-          icon: Icons.science_outlined,
+          icon: Icons.receipt_long_outlined,
           actions: [
             OutlinedButton.icon(key: const ValueKey('invoice-back'), onPressed: () => Navigator.maybePop(context), icon: const Icon(Icons.arrow_back), label: const Text('Voltar ao pedido')),
           ],
         ),
+        gap,
+        _weighing(nf),
         gap,
         _problems(nf),
         gap,

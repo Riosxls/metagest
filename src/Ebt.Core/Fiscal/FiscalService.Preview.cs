@@ -11,6 +11,9 @@ public sealed record NfPreviewParty(string Name, string? Document, string? State
 public sealed record NfPreviewLine(int Sequence, string Code, string Description, string? Ncm, string Unit, decimal Quantity, decimal UnitPrice, decimal Total, string PriceSource,
     string IcmsCst, decimal IcmsPercent, decimal IcmsValue, string IpiCst, decimal IpiPercent, decimal IpiValue, decimal PisValue, decimal CofinsValue, string TaxSource);
 
+/// <summary>One line of the order as the preview sees it: what was ordered, what is still to ship and the quantity this NF uses (0 = left out of this NF).</summary>
+public sealed record NfPreviewOrderLine(int OrderLineId, int Sequence, string Code, string Description, string Unit, decimal Ordered, decimal Remaining, decimal Quantity);
+
 public sealed record NfPreviewInstallment(int Sequence, DateOnly DueDate, decimal Amount);
 
 public sealed record NfPreviewTransport(string Mode, string? Carrier, decimal? NetWeightKg);
@@ -18,7 +21,7 @@ public sealed record NfPreviewTransport(string Mode, string? Carrier, decimal? N
 /// <summary>What the NF of an order would look like today, with nothing reserved, saved or sent. <see cref="Problems"/> is the checklist of what is still missing.</summary>
 public sealed record NfPreview(bool FiscalEnabled, bool Simulated, string Environment, int Series, int NextNumber, string Cfop, string? CfopDescription, NfPreviewParty Issuer, NfPreviewParty Recipient,
     IReadOnlyList<NfPreviewLine> Lines, decimal ProductsTotal, decimal FreightTotal, decimal IcmsBase, decimal IcmsTotal, decimal IpiTotal, decimal PisTotal, decimal CofinsTotal, decimal InvoiceTotal,
-    IReadOnlyList<NfPreviewInstallment> Installments, NfPreviewTransport Transport, string? AdditionalInfo, IReadOnlyList<NfProblem> Problems, bool Ready, string Company = "EBT");
+    IReadOnlyList<NfPreviewInstallment> Installments, NfPreviewTransport Transport, string? AdditionalInfo, IReadOnlyList<NfProblem> Problems, bool Ready, string Company = "EBT", IReadOnlyList<NfPreviewOrderLine>? OrderLines = null);
 
 public sealed partial class FiscalService
 {
@@ -26,7 +29,7 @@ public sealed partial class FiscalService
     /// Dry run of the sale NF of a whole order: same CFOP, price, tax and duplicata rules as the real emission, but nothing is reserved, saved or sent to SEFAZ.
     /// Every gap in the registrations comes back as a <see cref="NfProblem"/> instead of an exception, so the screen can show the full checklist at once.
     /// </summary>
-    public async Task<NfPreview> PreviewSaleAsync(int orderId, CancellationToken ct = default)
+    public async Task<NfPreview> PreviewSaleAsync(int orderId, CancellationToken ct = default, IReadOnlyDictionary<int, decimal>? quantities = null)
     {
         var order = await db.SalesOrders.AsNoTracking().Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == orderId, ct) ?? throw FiscalException.NotFound("Sales order");
         var s = await ReadSettingsAsync(FiscalCompany.Of(order.BillTo), ct);
@@ -86,6 +89,10 @@ public sealed partial class FiscalService
             Kind = FiscalKind.Sale, Status = FiscalStatus.Pending, CfopCode = cfop.Code, Series = s.Series, Number = s.NextNumber, AccessKey = "", Environment = s.Environment, Protocol = "", IssuedAt = local,
             RecipientName = customer.Name, RecipientDocument = Digits(address?.Document), RecipientUf = recipientUf ?? "", Xml = ""
         };
+        // The NF states what is about to leave: by default what is still to ship of each line, or the weighed quantities the screen sends (0 leaves a line out).
+        var shippedByLine = await db.DeliveryLines.AsNoTracking().Where(l => l.Delivery!.OrderId == orderId && (l.Delivery.Status == DeliveryStatus.Shipped || l.Delivery.Status == DeliveryStatus.Delivered))
+            .GroupBy(l => l.OrderLineId).Select(g => new { g.Key, Qty = g.Sum(x => x.Quantity) }).ToDictionaryAsync(x => x.Key, x => x.Qty, ct);
+        var orderLines = new List<NfPreviewOrderLine>();
         var sources = new List<(string Price, string Tax)>();
         var noNcm = new List<string>();
         var noPrice = new List<string>();
@@ -93,6 +100,10 @@ public sealed partial class FiscalService
         foreach (var (ol, n) in order.Lines.OrderBy(l => l.Sequence).Select((l, n) => (l, n)))
         {
             var p = products[ol.ProductId];
+            var remaining = Math.Max(0, ol.Quantity - shippedByLine.GetValueOrDefault(ol.Id));
+            var qty = quantities is null ? remaining : quantities.GetValueOrDefault(ol.Id);
+            orderLines.Add(new NfPreviewOrderLine(ol.Id, ol.Sequence, p.Code, ol.Description, p.StockUnit, ol.Quantity, remaining, Math.Max(0, qty)));
+            if (qty <= 0) continue;
             var monthly = await MonthlyPriceAsync(p.Id, customer.Id, cfop.Code, local.Year, local.Month, ct);
             var price = monthly ?? ol.UnitPrice;
             if (price <= 0) noPrice.Add(p.Code);
@@ -102,7 +113,7 @@ public sealed partial class FiscalService
             doc.Lines.Add(new FiscalDocumentLine
             {
                 Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = ol.Description, Ncm = Digits(p.Ncm), Unit = p.StockUnit,
-                Quantity = ol.Quantity, UnitPrice = price, Total = Money(ol.Quantity * price), IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
+                Quantity = qty, UnitPrice = price, Total = Money(qty * price), IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
             }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent, ufIcms));
             sources.Add((monthly is not null ? "Tabela mensal" : "Pedido", rule is not null ? (rule.CustomerId is null ? "Regra do produto" : "Regra do cliente") : ol.IcmsPercent > 0 ? $"Alíquota do pedido, CST do CFOP {cfop.Code}" : ufIcms is not null ? $"ICMS de {recipientUf}, CST do CFOP {cfop.Code}" : $"Padrão do CFOP {cfop.Code}"));
         }
@@ -148,6 +159,6 @@ public sealed partial class FiscalService
         var lines = doc.Lines.Select((l, i) => new NfPreviewLine(l.Sequence, l.Code, l.Description, l.Ncm, l.Unit, l.Quantity, l.UnitPrice, l.Total, sources[i].Price, l.IcmsCst, l.IcmsPercent, l.IcmsValue, l.IpiCst, l.IpiPercent, l.IpiValue, l.PisValue, l.CofinsValue, sources[i].Tax)).ToList();
         return new NfPreview(s.Enabled, sefaz.IsSimulated, s.Environment.ToString(), s.Series, s.NextNumber, cfop.Code, cfop.Description, issuer, recipient, lines, doc.ProductsTotal, doc.FreightTotal, doc.IcmsBase, doc.IcmsTotal,
             doc.IpiTotal, doc.PisTotal, doc.CofinsTotal, doc.InvoiceTotal, installments, new NfPreviewTransport(transport.FreightMode == 0 ? "Por conta do emitente (CIF)" : "Por conta do destinatário (FOB)", transport.Carrier, transport.NetWeightKg), info,
-            problems, problems.All(p => !p.Blocking), s.Company);
+            problems, problems.All(p => !p.Blocking), s.Company, orderLines);
     }
 }

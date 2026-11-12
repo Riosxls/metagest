@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using Ebt.Api.Endpoints;
@@ -61,6 +62,38 @@ public class FiscalPreviewTests(ApiFixture api)
         Assert.Equal(before.NextNumber, after.NextNumber);
         var list = await (await admin.GetAsync($"/api/fiscal/documents?q={Uri.EscapeDataString(nf.Recipient.Name)}")).Read<JsonElement>();
         Assert.Equal(0, list.GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task Preview_follows_the_weighed_quantities_and_dispatch_ships_with_them()
+    {
+        var admin = await api.AdminAsync();
+        await SetIssuer(admin, complete: true);
+        var (order, tube) = await NewOrderAsync(admin, "SP");
+        var shipping = await (await admin.Post("/api/stock-locations", new StockLocationIn(Code("E", 10), "Expedição", StockLocationKind.Internal))).Read<StockLocationOut>();
+        (await admin.Put("/api/sales/settings", new SalesSettingsDto(5m, 15, 0m, shipping.Id, "Validade 15 dias"))).EnsureSuccessStatusCode();
+        (await admin.Post("/api/stock/documents", new StockPost(MovementType.AdjustmentIn, Today, [new StockLine(null, tube.Id, shipping.Id, 30m, UnitCost: 5m)], "INV"))).EnsureSuccessStatusCode();
+        order = await (await admin.Post($"/api/sales/orders/{order.Id}/release", new SalesReleaseIn())).Read<SalesOrderOut>();
+        var line = order.Lines.Single();
+
+        var normal = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}")).Read<NfPreview>();
+        Assert.Equal(10m, normal.Lines.Single().Quantity); // by default: what is still to ship
+        Assert.Equal(10m, normal.OrderLines!.Single().Remaining);
+
+        var weighed = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}?lines={line.Id}:9.5")).Read<NfPreview>();
+        Assert.Equal(9.5m, weighed.Lines.Single().Quantity);
+        Assert.Equal(950m, weighed.Lines.Single().Total); // 9.5 x 100
+        Assert.Equal(400, (int)(await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}?lines=abc")).StatusCode);
+
+        // emission is off: the typed NF number is registered, the weighed quantity leaves.
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.Post($"/api/sales/orders/{order.Id}/dispatch", new DispatchInput(Today, []))).StatusCode);
+        var d = await (await admin.Post($"/api/sales/orders/{order.Id}/dispatch", new DispatchInput(Today, [new DispatchLineInput(line.Id, 9.5m)], InvoiceNumber: "9001", WithoutCertificate: true))).Read<DeliveryOut>();
+        Assert.Equal(DeliveryStatus.Shipped, d.Status);
+        Assert.Equal(9.5m, d.Lines.Single().Quantity);
+        Assert.Equal("9001", d.InvoiceNumber);
+
+        var after = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}")).Read<NfPreview>();
+        Assert.Equal(0.5m, after.OrderLines!.Single().Remaining); // the balance stays open
     }
 
     [Fact]
