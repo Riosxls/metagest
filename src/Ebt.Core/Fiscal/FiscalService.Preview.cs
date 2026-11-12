@@ -16,7 +16,7 @@ public sealed record NfPreviewOrderLine(int OrderLineId, int Sequence, string Co
 
 public sealed record NfPreviewInstallment(int Sequence, DateOnly DueDate, decimal Amount);
 
-public sealed record NfPreviewTransport(string Mode, string? Carrier, decimal? NetWeightKg);
+public sealed record NfPreviewTransport(string Mode, string? Carrier, decimal? NetWeightKg, decimal? GrossWeightKg = null, int Packages = 0, string Species = "VOLUME");
 
 /// <summary>What the NF of an order would look like today, with nothing reserved, saved or sent. <see cref="Problems"/> is the checklist of what is still missing.</summary>
 public sealed record NfPreview(bool FiscalEnabled, bool Simulated, string Environment, int Series, int NextNumber, string Cfop, string? CfopDescription, NfPreviewParty Issuer, NfPreviewParty Recipient,
@@ -112,7 +112,7 @@ public sealed partial class FiscalService
             if (rule is null && cfop.Taxed) noRule.Add(p.Code);
             doc.Lines.Add(new FiscalDocumentLine
             {
-                Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = ol.Description, Ncm = Digits(p.Ncm), Unit = p.StockUnit,
+                Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = await ItemDescriptionAsync(customer.Id, p.Id, ol.Description, ct), Ncm = Digits(p.Ncm), Unit = p.StockUnit,
                 Quantity = qty, UnitPrice = price, Total = Money(qty * price), IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
             }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent, ufIcms));
             sources.Add((monthly is not null ? "Tabela mensal" : "Pedido", rule is not null ? (rule.CustomerId is null ? "Regra do produto" : "Regra do cliente") : ol.IcmsPercent > 0 ? $"Alíquota do pedido, CST do CFOP {cfop.Code}" : ufIcms is not null ? $"ICMS de {recipientUf}, CST do CFOP {cfop.Code}" : $"Padrão do CFOP {cfop.Code}"));
@@ -136,12 +136,13 @@ public sealed partial class FiscalService
             }
             catch (FiscalException) { Add("Duplicatas", "O pedido e o cliente não têm prazo de pagamento para gerar as duplicatas.", "Pedido de venda > Prazo de pagamento"); }
         }
-        var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, null, null, 0, null, doc.Lines.Select(l => (products[l.ProductId!.Value].NetWeightKg, l.Quantity)).ToList(), ct);
+        var volumes = doc.Lines.Sum(l => products[l.ProductId!.Value].PiecesPerPackage is > 0 ? (int)Math.Ceiling(l.Quantity / products[l.ProductId!.Value].PiecesPerPackage!.Value) : 0);
+        var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, null, null, volumes, null, doc.Lines.Select(l => (products[l.ProductId!.Value].NetWeightKg, l.Quantity)).ToList(), s, ct);
         if (transport.NetWeightKg is null) Add("Transporte", "Algum produto sem peso líquido: a NF sai sem o peso (pesoL).", "Engenharia > Produtos > Peso líquido", blocking: false);
 
         var ofIds = order.Lines.Where(l => l.ProductionOrderId != null).Select(l => l.ProductionOrderId!.Value).ToList();
         var ofs = await db.ProductionOrders.AsNoTracking().Where(o => ofIds.Contains(o.Id)).Select(o => o.Reference).ToListAsync(ct);
-        var info = Join(order.Reference, ofs.Count > 0 ? string.Join(", ", ofs) : null, order.CustomerPo is { } po ? $"Pedido cliente {po}" : null, cfop.LegalText);
+        var info = Join(SaleLegalText(cfop, doc.Lines), order.CustomerPo is { } po ? $"Pedido de compra Nº: {po}" : null, order.Reference, ofs.Count > 0 ? string.Join(", ", ofs) : null);
         doc.AdditionalInfo = info;
 
         // The real check: build the NF-e XML and validate it against the official schema, so a layout problem shows here and not at the shipment.
@@ -158,7 +159,7 @@ public sealed partial class FiscalService
         var issuer = new NfPreviewParty(s.CompanyName ?? "", s.Cnpj, s.StateRegistration, $"{s.Street}, {s.Number} - {s.District}", s.City, s.Uf, s.ZipCode, s.CityIbgeCode);
         var lines = doc.Lines.Select((l, i) => new NfPreviewLine(l.Sequence, l.Code, l.Description, l.Ncm, l.Unit, l.Quantity, l.UnitPrice, l.Total, sources[i].Price, l.IcmsCst, l.IcmsPercent, l.IcmsValue, l.IpiCst, l.IpiPercent, l.IpiValue, l.PisValue, l.CofinsValue, sources[i].Tax)).ToList();
         return new NfPreview(s.Enabled, sefaz.IsSimulated, s.Environment.ToString(), s.Series, s.NextNumber, cfop.Code, cfop.Description, issuer, recipient, lines, doc.ProductsTotal, doc.FreightTotal, doc.IcmsBase, doc.IcmsTotal,
-            doc.IpiTotal, doc.PisTotal, doc.CofinsTotal, doc.InvoiceTotal, installments, new NfPreviewTransport(transport.FreightMode == 0 ? "Por conta do emitente (CIF)" : "Por conta do destinatário (FOB)", transport.Carrier, transport.NetWeightKg), info,
+            doc.IpiTotal, doc.PisTotal, doc.CofinsTotal, doc.InvoiceTotal, installments, new NfPreviewTransport(transport.FreightMode == 0 ? "Por conta do emitente (CIF)" : "Por conta do destinatário (FOB)", transport.Carrier, transport.NetWeightKg, transport.GrossWeightKg, transport.Packages, transport.Packages > 1 ? "VOLUMES" : "VOLUME"), info,
             problems, problems.All(p => !p.Blocking), s.Company, orderLines);
     }
 }

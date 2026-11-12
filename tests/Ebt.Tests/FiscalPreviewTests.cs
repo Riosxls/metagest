@@ -82,6 +82,12 @@ public class FiscalPreviewTests(ApiFixture api)
 
         var weighed = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}?lines={line.Id}:9.5")).Read<NfPreview>();
         Assert.Equal(9.5m, weighed.Lines.Single().Quantity);
+        // old-system habits: own freight (CIF) names the issuer as carrier, gross weight follows the net one, the info carries the customer PO
+        Assert.Equal("BTS", weighed.Transport.Carrier); // EBT ships with BTS (default carrier of the issuer)
+        Assert.Equal("VOLUME", weighed.Transport.Species);
+        Assert.Equal(1, weighed.Transport.Packages);
+        Assert.Equal(weighed.Transport.NetWeightKg, weighed.Transport.GrossWeightKg);
+        Assert.Contains("Pedido de compra Nº: PO-9", weighed.AdditionalInfo);
         Assert.Equal(950m, weighed.Lines.Single().Total); // 9.5 x 100
         Assert.Equal(400, (int)(await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}?lines=abc")).StatusCode);
 
@@ -94,6 +100,26 @@ public class FiscalPreviewTests(ApiFixture api)
 
         var after = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}")).Read<NfPreview>();
         Assert.Equal(0.5m, after.OrderLines!.Single().Remaining); // the balance stays open
+    }
+
+    [Fact]
+    public async Task Preview_uses_the_customers_item_description_and_the_ipi_suspension_sentence()
+    {
+        var admin = await api.AdminAsync();
+        await SetIssuer(admin, complete: true);
+        var (order, tube) = await NewOrderAsync(admin, "SP");
+
+        var plain = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}")).Read<NfPreview>();
+        Assert.DoesNotContain("IPI SUSPENSO", plain.AdditionalInfo);
+
+        // the customer's own name for the item goes on the NF (old system habit)
+        (await admin.Put($"/api/products/{tube.Id}/customers/{order.CustomerId}", new ProductCustomerIn("P-1", "TUB12,00X1,60X6000MM 20MF020116"))).EnsureSuccessStatusCode();
+        // every item with IPI CST 55 (suspended) carries the decree sentence instead of the CFOP text
+        (await admin.Post("/api/fiscal/tax-rules", new TaxRuleIn(tube.Id, order.CustomerId, "5101", "00", 18m, 0m, "55", 0m, 0.65m, 3m))).EnsureSuccessStatusCode();
+        var nf = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}")).Read<NfPreview>();
+        Assert.Equal("TUB12,00X1,60X6000MM 20MF020116", nf.Lines.Single().Description);
+        Assert.StartsWith("MERCADORIA OBJETO DE INDUSTRIALIZACAO E/OU COMERCIALIZACAO PELO DESTINATARIO. IPI SUSPENSO CONFORME DECRETO 7212/2010", nf.AdditionalInfo);
+        Assert.Contains("Pedido de compra Nº: PO-9", nf.AdditionalInfo);
     }
 
     [Fact]

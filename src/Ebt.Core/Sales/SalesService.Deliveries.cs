@@ -105,6 +105,7 @@ public sealed partial class SalesService
             d.Carrier = Clean(i.Carrier) ?? d.Carrier;
             d.VehiclePlate = Clean(i.VehiclePlate)?.ToUpper();
             d.GrossWeightKg = i.GrossWeightKg ?? d.GrossWeightKg;
+            if (i.Packages is > 0) d.Packages = i.Packages.Value; // the volumes counted at loading replace the estimate from pieces per package
             d.LotNumber = Clean(i.LotNumber) ?? d.LotNumber;
             d.InvoicedValue = i.InvoicedValue ?? d.InvoicedValue;
             // Venda (5101): stock is lowered first, then the NF is authorized; if SEFAZ rejects, the transaction rolls back and stock is untouched.
@@ -157,7 +158,7 @@ public sealed partial class SalesService
             if (planned.Count == 0) throw SalesException.Conflict("Nothing left to ship on these items");
             var d = await CreateDeliveryAsync(orderId, new DeliveryInput(i.Date, i.AddressId, i.Carrier, planned, i.Notes), user, ct);
             var final = i.Lines.Where(l => d.Lines.Any(x => x.OrderLineId == l.OrderLineId)).Select(l => new ShipLineInput(d.Lines.First(x => x.OrderLineId == l.OrderLineId).Id, l.Quantity)).ToList();
-            return await ShipAsync(d.Id, new ShipInput(i.Date, i.InvoiceNumber, i.Carrier, i.VehiclePlate, i.GrossWeightKg, i.Cfop, i.Freight, i.LotNumber, i.InvoicedValue, i.WithoutCertificate, i.OverrideCredit, final),
+            return await ShipAsync(d.Id, new ShipInput(i.Date, i.InvoiceNumber, i.Carrier, i.VehiclePlate, i.GrossWeightKg, i.Cfop, i.Freight, i.LotNumber, i.InvoicedValue, i.WithoutCertificate, i.OverrideCredit, final, i.Packages),
                 user, ct, canEmitInvoice, overrideCredit, canWaiveCertificate);
         }, ct);
     }

@@ -78,7 +78,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
                 var rule = rules.Where(r => r.ProductId == p.Id).OrderBy(r => r.CustomerId == null).FirstOrDefault();
                 doc.Lines.Add(new FiscalDocumentLine
                 {
-                    Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = ol.Description, Ncm = RequireNcm(p), Unit = p.StockUnit,
+                    Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = await ItemDescriptionAsync(customer.Id, p.Id, ol.Description, ct), Ncm = RequireNcm(p), Unit = p.StockUnit,
                     Quantity = dl.Quantity, UnitPrice = price, Total = Money(dl.Quantity * price),
                     IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
                 }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent, ufIcms));
@@ -92,14 +92,14 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
 
             var ofIds = doc.Lines.Where(l => l.ProductionOrderId != null).Select(l => l.ProductionOrderId!.Value).ToList();
             var ofs = await db.ProductionOrders.AsNoTracking().Where(o => ofIds.Contains(o.Id)).Select(o => o.Reference).ToListAsync(ct);
-            doc.AdditionalInfo = Join(order.Reference, $"Entrega ({delivery.Reference})", ofs.Count > 0 ? string.Join(", ", ofs) : null, order.CustomerPo is { } po ? $"Pedido cliente {po}" : null, delivery.Notes, cfop.LegalText);
+            doc.AdditionalInfo = Join(SaleLegalText(cfop, doc.Lines), order.CustomerPo is { } po ? $"Pedido de compra Nº: {po}" : null, order.Reference, $"Entrega ({delivery.Reference})", ofs.Count > 0 ? string.Join(", ", ofs) : null, delivery.Notes);
             if (warnings.Count > 0)
             {
                 doc.Warnings = Cut(string.Join(" | ", warnings), 500);
                 db.SalesEvents.Add(new SalesEvent { Kind = SalesRecordKind.Delivery, RecordId = delivery.Id, Action = "nf-price-warning", Note = doc.Warnings, User = user, At = DateTimeOffset.UtcNow });
             }
             var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, opt.Carrier ?? delivery.Carrier, opt.VehiclePlate ?? delivery.VehiclePlate, delivery.Packages, opt.GrossWeightKg ?? delivery.GrossWeightKg,
-                delivery.Lines.Select(l => (products[order.Lines.First(x => x.Id == l.OrderLineId).ProductId].NetWeightKg, l.Quantity)).ToList(), ct);
+                delivery.Lines.Select(l => (products[order.Lines.First(x => x.Id == l.OrderLineId).ProductId].NetWeightKg, l.Quantity)).ToList(), settings, ct);
 
             // A shipment that failed after SEFAZ authorized its NF was rolled back, but the authorized NF (committed on its own connection) stayed without a delivery.
             // Shipping again must pick that NF up, not issue a second one for the same goods.
@@ -441,11 +441,35 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
     }
 
     /// <summary>Transport group: net weight from the product weights (when every item has one), carrier data from the carrier registry when the delivery's carrier name matches an entry.</summary>
-    private async Task<NfeTransport> TransportAsync(int freightMode, string? carrierName, string? plate, int packages, decimal? grossKg, IReadOnlyList<(decimal? NetWeightKg, decimal Quantity)> items, CancellationToken ct)
+    /// <summary>
+    /// What the item is called on the NF: the customer's own description of the product when the register has one (the old system printed it, e.g. "TUB12,00X1,60X6000MM 20MF02011"), else the order line text.
+    /// </summary>
+    private async Task<string> ItemDescriptionAsync(int customerId, int productId, string fallback, CancellationToken ct)
+    {
+        var own = await db.ProductCustomers.AsNoTracking().Where(x => x.CustomerId == customerId && x.ProductId == productId && x.Active).Select(x => x.CustomerDescription).FirstOrDefaultAsync(ct);
+        return Clean(own) ?? fallback;
+    }
+
+    internal const string IpiSuspendedText = "MERCADORIA OBJETO DE INDUSTRIALIZACAO E/OU COMERCIALIZACAO PELO DESTINATARIO. IPI SUSPENSO CONFORME DECRETO 7212/2010, artigo 46 DE 15/06/2010.";
+
+    /// <summary>The sentence of the sale NF: the CFOP's own text, or the IPI-suspension one when every item leaves with IPI CST 55 (what the old NFs of those customers carry).</summary>
+    internal static string? SaleLegalText(Cfop cfop, IEnumerable<FiscalDocumentLine> lines) =>
+        cfop.Kind == FiscalKind.Sale && cfop.Code is "5101" or "6101" && lines.Any() && lines.All(l => l.IpiCst == "55") ? IpiSuspendedText : cfop.LegalText;
+
+    private async Task<NfeTransport> TransportAsync(int freightMode, string? carrierName, string? plate, int packages, decimal? grossKg, IReadOnlyList<(decimal? NetWeightKg, decimal Quantity)> items, FiscalSettings? issuer, CancellationToken ct)
     {
         decimal? net = items.Count > 0 && items.All(i => i.NetWeightKg is > 0) ? Math.Round(items.Sum(i => i.NetWeightKg!.Value * i.Quantity), 3) : null;
+        grossKg ??= net; // the old system always carried the net weight as the gross one unless typed
         if (grossKg is { } g && net is { } n && g < n) grossKg = n; // pesoB can never be below pesoL
         var name = Clean(carrierName);
+        if (packages <= 0 && items.Count > 0) packages = 1; // the old NFs always carried at least one volume
+        if (name is null && freightMode == 0) name = Clean(issuer?.DefaultCarrier);
+        // Own freight (CIF) with no carrier named: the company carries it itself, as the old system filled in (transportador = the issuer).
+        if (name is null && freightMode == 0 && issuer is { Cnpj: not null })
+        {
+            var addr = string.Join(", ", new[] { issuer.Street, issuer.Number }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            return new NfeTransport(freightMode, Clean(issuer.TradeName) ?? Clean(issuer.CompanyName), plate, packages, grossKg, net, issuer.Cnpj, issuer.StateRegistration, addr.Length > 0 ? addr : null, issuer.City, issuer.Uf, null);
+        }
         var carrier = name is null ? null : await db.FiscalCarriers.AsNoTracking().FirstOrDefaultAsync(c => c.Name.ToLower() == name.ToLower(), ct);
         return new NfeTransport(freightMode, carrier?.Name ?? name, plate, packages, grossKg, net, carrier?.Document, carrier?.StateRegistration, carrier?.Address, carrier?.City, carrier?.Uf, carrier?.VehicleUf);
     }

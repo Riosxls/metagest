@@ -602,6 +602,7 @@ class _FiscalSettingsScreenState extends State<FiscalSettingsScreen> {
     FieldSpec('series', 'Série', type: FieldType.integer, required: true),
     FieldSpec('nextNumber', 'Próximo número da NF', type: FieldType.integer, required: true),
     FieldSpec('cancelWindowHours', 'Prazo para cancelar (horas)', type: FieldType.integer, required: true, hint: '0 = sem limite'),
+    FieldSpec('defaultCarrier', 'Transportadora padrão (frete nosso)', hint: 'Nome como está em Transportadoras. Vai na NF quando o frete é CIF e nenhuma foi escolhida. Vazio = a própria empresa'),
   ];
 
   Future<_FiscalData> _fetch() async {

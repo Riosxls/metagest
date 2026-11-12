@@ -47,6 +47,9 @@ public class FiscalSettings
     /// <summary>Next NF number. Advances when a number is reserved (Pending document, committed before SEFAZ is called); a definite rejection gives it back when no later number was taken.</summary>
     public int NextNumber { get; set; } = 2581;
     public int CancelWindowHours { get; set; } = 24;
+
+    /// <summary>Name (in the carrier registry) that goes on the NF as carrier when the freight is ours (CIF) and none was chosen: EBT ships with BTS, BST with itself.</summary>
+    public string? DefaultCarrier { get; set; }
 }
 
 /// <summary>Fiscal rules of a CFOP: CSTs, legal text and what the operation triggers.</summary>

@@ -37,14 +37,15 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   /// Data of the load that goes on the NF and can be edited before confirming (sent with the dispatch; empty = the server's default).
   static const _extra = {
     'carrier': 'Transportadora',
-    'vehiclePlate': 'Placa do veículo',
+    'packages': 'Volumes (quantidade)',
     'grossWeightKg': 'Peso bruto (kg)',
+    'vehiclePlate': 'Placa do veículo',
     'freight': r'Frete na NF (R$)',
     'cfop': 'CFOP (vazio = o do endereço de entrega ou 5101)',
     'lotNumber': 'Nº do lote',
     'notes': 'Observações da entrega',
   };
-  static const _numericExtra = {'grossWeightKg', 'freight'};
+  static const _numericExtra = {'grossWeightKg', 'freight', 'packages'};
   final _extraCtl = {for (final k in _extra.keys) k: TextEditingController()};
 
   ApiClient get api => widget.session.api;
@@ -127,7 +128,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
         'lines': lines,
         if (!on) 'invoiceNumber': typed,
         for (final e in _extraCtl.entries)
-          if (e.value.text.trim().isNotEmpty) e.key: _numericExtra.contains(e.key) ? parseDecimal(e.value.text.trim()) : e.value.text.trim(),
+          if (e.value.text.trim().isNotEmpty) e.key: e.key == 'packages' ? parseDecimal(e.value.text.trim())?.toInt() : (_numericExtra.contains(e.key) ? parseDecimal(e.value.text.trim()) : e.value.text.trim()),
       }) as Map<String, dynamic>;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Carga expedida${d['invoiceNumber'] == null ? '' : ' com a NF ${d['invoiceNumber']}'}. Próximo passo: certificado.')));
@@ -428,6 +429,8 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
           _kv('Frete', transport['mode']),
           _kv('Transportadora', transport['carrier']),
           _kv('Peso líquido', transport['netWeightKg'] == null ? null : '${fmtNum(transport['netWeightKg'], 3)} kg'),
+          _kv('Peso bruto', transport['grossWeightKg'] == null ? null : '${fmtNum(transport['grossWeightKg'], 3)} kg'),
+          _kv('Volumes', (transport['packages'] ?? 0) == 0 ? null : '${transport['packages']} · ${fmt(transport['species'])}'),
         ],
       ),
     );
@@ -473,7 +476,19 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     ),
   );
 
-  Widget _extraField(String key) => SizedBox(
+  /// What the system uses when the field is left empty (the old system's habits: own freight, gross = net weight, volumes counted from the packaging).
+  String? _default(String key, Map<String, dynamic> nf) {
+    final t = nf['transport'] as Map<String, dynamic>? ?? const {};
+    return switch (key) {
+      'carrier' => t['carrier'] == null ? null : 'Vazio = ${t['carrier']}',
+      'grossWeightKg' => t['grossWeightKg'] == null ? null : 'Vazio = ${fmtNum(t['grossWeightKg'], 3)} kg (peso líquido)',
+      'packages' => (t['packages'] ?? 0) == 0 ? 'Digite quantos volumes saem (espécie: VOLUME)' : 'Vazio = ${t['packages']} (pela embalagem do produto)',
+      'vehiclePlate' => 'Opcional',
+      _ => null,
+    };
+  }
+
+  Widget _extraField(String key, Map<String, dynamic> nf) => SizedBox(
     width: key == 'notes' || key == 'cfop' || key == 'carrier' ? double.infinity : 175,
     child: TextField(
       key: ValueKey('invoice-extra-$key'),
@@ -481,7 +496,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
       keyboardType: _numericExtra.contains(key) ? const TextInputType.numberWithOptions(decimal: true) : null,
       minLines: key == 'notes' ? 2 : 1,
       maxLines: key == 'notes' ? 3 : 1,
-      decoration: InputDecoration(isDense: true, labelText: _extra[key], border: const OutlineInputBorder()),
+      decoration: InputDecoration(isDense: true, labelText: _extra[key], helperText: _default(key, nf), border: const OutlineInputBorder()),
     ),
   );
 
@@ -554,7 +569,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
               const SizedBox(height: 10),
               for (final l in items) _qtyField(l),
               _step(context, 2, 'Dados da carga'),
-              Wrap(spacing: 10, runSpacing: 10, children: [for (final k in _extra.keys) _extraField(k)]),
+              Wrap(spacing: 10, runSpacing: 10, children: [for (final k in _extra.keys) _extraField(k, nf)]),
               if (!on) ...[
                 _step(context, 3, 'Número da NF'),
                 TextField(

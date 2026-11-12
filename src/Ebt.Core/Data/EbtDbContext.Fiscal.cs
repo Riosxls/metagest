@@ -31,7 +31,7 @@ public partial class EbtDbContext
             e.Property(x => x.Company).HasMaxLength(3);
             e.HasIndex(x => x.Company).IsUnique();
             // EBT numbers from 2581 and BST from 897 (where each company stopped in the old system); both stay off until the issuer data is complete.
-            e.HasData(new FiscalSettings { Id = 1, Company = FiscalCompany.Ebt }, new FiscalSettings { Id = 2, Company = FiscalCompany.Bst, NextNumber = 897 });
+            e.HasData(new FiscalSettings { Id = 1, Company = FiscalCompany.Ebt, DefaultCarrier = "BTS" }, new FiscalSettings { Id = 2, Company = FiscalCompany.Bst, NextNumber = 897, DefaultCarrier = "BST" });
         });
         b.Entity<Cfop>(e =>
         {

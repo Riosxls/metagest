@@ -2125,6 +2125,10 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("complement");
 
+                    b.Property<string>("DefaultCarrier")
+                        .HasColumnType("text")
+                        .HasColumnName("default_carrier");
+
                     b.Property<string>("District")
                         .HasColumnType("text")
                         .HasColumnName("district");
@@ -2198,6 +2202,7 @@ namespace Ebt.Core.Data.Migrations
                             Id = 1,
                             CancelWindowHours = 24,
                             Company = "EBT",
+                            DefaultCarrier = "BTS",
                             Enabled = false,
                             Environment = 2,
                             NextNumber = 2581,
@@ -2210,6 +2215,7 @@ namespace Ebt.Core.Data.Migrations
                             Id = 2,
                             CancelWindowHours = 24,
                             Company = "BST",
+                            DefaultCarrier = "BST",
                             Enabled = false,
                             Environment = 2,
                             NextNumber = 897,

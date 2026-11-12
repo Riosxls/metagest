@@ -12,7 +12,7 @@ namespace Ebt.Api.Endpoints;
 
 public record FiscalSettingsDto(bool Enabled, SefazEnvironment Environment, string? CompanyName, string? TradeName, string? Cnpj, string? StateRegistration, int TaxRegime, string? Street, string? Number, string? Complement,
     string? District, string? City, string? CityIbgeCode, string Uf, string? ZipCode, string? Phone, int Series, int NextNumber, int CancelWindowHours,
-    string SefazMode = "", bool SefazSimulated = false, string Company = "EBT"); // the last three are output only (ignored on PUT; the company comes from the route query)
+    string SefazMode = "", bool SefazSimulated = false, string Company = "EBT", string? DefaultCarrier = null); // the last three are output only (ignored on PUT; the company comes from the route query)
 public record CfopIn(string Code, string Description, FiscalKind Kind, bool Taxed, string IcmsCst, string IpiCst, string PisCst, string CofinsCst, decimal DefaultPisPercent, decimal DefaultCofinsPercent,
     string? IpiFramingCode, bool GeneratesInstallments, bool Active = true, string? LegalText = null);
 public record CfopOut(string Code, string Description, FiscalKind Kind, bool Taxed, string IcmsCst, string IpiCst, string PisCst, string CofinsCst, decimal DefaultPisPercent, decimal DefaultCofinsPercent,
@@ -196,6 +196,7 @@ public static class FiscalEndpoints
             s.Series = i.Series;
             s.NextNumber = i.NextNumber;
             s.CancelWindowHours = i.CancelWindowHours;
+            if (i.DefaultCarrier is not null) s.DefaultCarrier = string.IsNullOrWhiteSpace(i.DefaultCarrier) ? null : i.DefaultCarrier.Trim();
             // NextNumber is hidden from the generic diff (it advances with every NF), so a manual change is logged explicitly.
             if (oldNumber != i.NextNumber)
                 db.AuditLog.Add(new AuditEntry
@@ -410,5 +411,5 @@ public static class FiscalEndpoints
     }
 
     private static FiscalSettingsDto ToDto(FiscalSettings s, ISefazClient sefaz) => new(s.Enabled, s.Environment, s.CompanyName, s.TradeName, s.Cnpj, s.StateRegistration, s.TaxRegime, s.Street, s.Number, s.Complement, s.District, s.City, s.CityIbgeCode, s.Uf,
-        s.ZipCode, s.Phone, s.Series, s.NextNumber, s.CancelWindowHours, sefaz.IsSimulated ? "Stub" : "Sp", sefaz.IsSimulated, s.Company);
+        s.ZipCode, s.Phone, s.Series, s.NextNumber, s.CancelWindowHours, sefaz.IsSimulated ? "Stub" : "Sp", sefaz.IsSimulated, s.Company, s.DefaultCarrier);
 }
