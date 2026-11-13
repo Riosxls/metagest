@@ -17,7 +17,7 @@ public sealed record RecordDuplicatesOut(IReadOnlyList<DuplicatePair> Matches, I
 
 public sealed record DuplicateListOut(IReadOnlyList<DuplicateGroup> Groups, int Pairs, int Records);
 
-/// <summary>Suspected duplicate customers, products and suppliers. Detection only: nothing is merged or changed on the records.</summary>
+/// <summary>Suspected duplicate customers, products and suppliers, with a field-by-field comparison and a way to settle them (keep one, deactivate the rest; nothing is deleted or re-pointed).</summary>
 public static class DuplicateEndpoints
 {
     private static DuplicateKind? ParseKind(string s) => s.ToLowerInvariant() switch
@@ -59,6 +59,29 @@ public static class DuplicateEndpoints
                 DuplicateService.DismissResult.SameRecord => Results.BadRequest(new { message = "Escolha dois registros diferentes", field = "b" }),
                 DuplicateService.DismissResult.NotFound => Results.NotFound(),
                 _ => Results.NoContent()
+            };
+        }).RequireAuthorization(DuplicatePolicies.Review);
+
+        // Field by field: the value each record holds, and what points at it. ?ids=1,2,3
+        g.MapGet("/{kind}/compare", async (string kind, string ids, DuplicateMergeService svc, CancellationToken ct) =>
+        {
+            if (ParseKind(kind) is not { } k) return Results.NotFound();
+            var list = ids.Split(',',StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => int.TryParse(x, out var n) ? n : 0).Where(n => n > 0).ToList();
+            if (list.Distinct().Count() < 2) return Results.BadRequest(new { message = "Escolha ao menos dois cadastros para comparar", field = "ids" });
+            return await svc.CompareAsync(k, list, ct) is { } r ? Results.Ok(r) : Results.NotFound();
+        });
+
+        // Settle a group: the chosen values go into the record that stays, the others are deactivated.
+        g.MapPost("/{kind}/resolve", async (string kind, ResolveIn input, DuplicateMergeService svc, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            if (ParseKind(kind) is not { } k) return Results.NotFound();
+            var (status, result, message) = await svc.ResolveAsync(k, input, user.Identity?.Name, ct);
+            return status switch
+            {
+                DuplicateMergeService.ResolveStatus.Done => Results.Ok(result),
+                DuplicateMergeService.ResolveStatus.NotFound => Results.NotFound(),
+                DuplicateMergeService.ResolveStatus.Conflict => Results.Conflict(new { message }),
+                _ => Results.BadRequest(new { message })
             };
         }).RequireAuthorization(DuplicatePolicies.Review);
 

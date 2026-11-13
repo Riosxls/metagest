@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../session.dart';
 import '../widgets/actions.dart';
+import '../widgets/duplicate_compare.dart';
 import '../widgets/duplicates.dart';
 import '../widgets/load_error.dart';
 import '../widgets/pipeline.dart' show Tone, toneColors;
@@ -124,12 +125,12 @@ class _DuplicateGroupsViewState extends State<DuplicateGroupsView> with Automati
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
-                'Abra os cadastros para corrigir ou excluir. Se dois cadastros estão certos como estão (por exemplo, filiais), use "Não é duplicado".',
+                'Marque "É o atual" no cadastro que fica ou use "Comparar informações" para escolher o valor certo de cada campo; os outros ficam inativos. Se dois cadastros estão certos como estão (por exemplo, filiais), use "Não é duplicado".',
                 style: theme.textTheme.bodySmall,
               ),
             ),
           for (final (i, g) in groups.indexed)
-            _GroupCard(key: ValueKey('duplicate-group-$i'), session: widget.session, kind: widget.kind, group: g, onDismiss: _dismiss),
+            _GroupCard(key: ValueKey('duplicate-group-$i'), session: widget.session, kind: widget.kind, group: g, onDismiss: _dismiss, onChanged: _load),
         ],
       ),
     );
@@ -137,25 +138,32 @@ class _DuplicateGroupsViewState extends State<DuplicateGroupsView> with Automati
 }
 
 class _GroupCard extends StatelessWidget {
-  const _GroupCard({super.key, required this.session, required this.kind, required this.group, required this.onDismiss});
+  const _GroupCard({super.key, required this.session, required this.kind, required this.group, required this.onDismiss, required this.onChanged});
 
   final Session session;
   final String kind;
   final Map<String, dynamic> group;
   final Future<void> Function(Map<String, dynamic> pair) onDismiss;
+  final Future<void> Function() onChanged;
+
+  Future<void> _compare(BuildContext context, List<int> ids, {int? keepId}) async {
+    if (await showDuplicateCompare(context, session, kind, ids, keepId: keepId)) await onChanged();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final pairs = (group['pairs'] as List).cast<Map<String, dynamic>>();
     final canReview = session.canReviewDuplicates;
+    final members = (group['members'] as List).cast<Map<String, dynamic>>();
+    final ids = [for (final m in members) m['id'] as int];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final m in (group['members'] as List).cast<Map<String, dynamic>>())
+            for (final m in members)
               InkWell(
                 key: ValueKey('duplicate-member-${m['id']}'),
                 onTap: () => openDuplicateRecord(context, session, kind, m['id'] as int),
@@ -177,8 +185,20 @@ class _GroupCard extends StatelessWidget {
                           ],
                         ),
                       ),
+                      if (canReview)
+                        TextButton(key: ValueKey('current-${m['id']}'), onPressed: () => _compare(context, ids, keepId: m['id'] as int), child: const Text('É o atual')),
                     ],
                   ),
+                ),
+              ),
+            if (canReview)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  key: ValueKey('compare-${ids.join('-')}'),
+                  onPressed: () => _compare(context, ids),
+                  icon: const Icon(Icons.compare_arrows, size: 18),
+                  label: const Text('Comparar informações'),
                 ),
               ),
             const Divider(),

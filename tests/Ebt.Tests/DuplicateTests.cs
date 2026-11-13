@@ -216,4 +216,37 @@ public class DuplicateTests(ApiFixture api)
         var products = await (await admin.GetAsync("/api/duplicates/product")).Read<DuplicateListOut>();
         Assert.NotNull(products.Groups);
     }
+
+    [Fact]
+    public async Task Compare_lists_each_field_and_resolve_keeps_one_record_with_the_chosen_values()
+    {
+        var admin = await api.AdminAsync();
+        var reader = await api.UserAsync(UserRole.Reader);
+        var sales = await api.UserAsync(UserRole.Sales);
+        var root = NewRoot();
+        var a = await Customer(admin, "Omega " + Tag(), document: Cnpj(root, 1));
+        var b = await Customer(admin, "Omega " + Tag(), trade: "Omega Fantasia", document: Cnpj(root, 1));
+
+        var compare = await (await reader.GetAsync($"/api/duplicates/customers/compare?ids={a.Id},{b.Id}")).Read<CompareOut>();
+        Assert.Equal(2, compare.Records.Count);
+        Assert.True(compare.Fields.Single(f => f.Key == "tradeName").Differs);
+        Assert.False(compare.Fields.Single(f => f.Key == "document").Differs);
+        Assert.Equal(HttpStatusCode.BadRequest, (await reader.GetAsync($"/api/duplicates/customers/compare?ids={a.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await reader.GetAsync($"/api/duplicates/customers/compare?ids={a.Id},999999999")).StatusCode);
+
+        var body = new ResolveIn(a.Id, [b.Id], new() { ["tradeName"] = b.Id }, true);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.Post("/api/duplicates/customers/resolve", body)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await sales.Post("/api/duplicates/customers/resolve", body with { Fields = new() { ["tradeName"] = 999999999 } })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await sales.Post("/api/duplicates/customers/resolve", body with { OtherIds = [a.Id] })).StatusCode);
+
+        var done = await (await sales.Post("/api/duplicates/customers/resolve", body)).Read<ResolveOut>();
+        Assert.Equal(1, done.FieldsChanged);
+        Assert.Equal(1, done.Deactivated);
+        var kept = await (await admin.GetAsync($"/api/customers/{a.Id}")).Read<CustomerOut>();
+        Assert.Equal("Omega Fantasia", kept.TradeName);
+        Assert.True(kept.Active);
+        Assert.False((await (await admin.GetAsync($"/api/customers/{b.Id}")).Read<CustomerOut>()).Active);
+        // The pair is marked, so it is not flagged again.
+        Assert.Empty((await ForRecord(admin, "customers", a.Id)).Matches);
+    }
 }

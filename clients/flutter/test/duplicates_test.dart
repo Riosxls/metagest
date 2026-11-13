@@ -181,6 +181,60 @@ void main() {
     expect(find.text('Nenhum duplicado suspeito'), findsOneWidget);
   });
 
+  testWidgets('"É o atual" opens the comparison with that record kept and sends the chosen values', (tester) async {
+    var groups = [
+      {
+        'members': [self, other],
+        'pairs': [
+          pair(self, other, 100, ['Mesmo CNPJ/CPF']),
+        ],
+        'score': 100,
+      },
+    ];
+    final posts = <Map<String, dynamic>>[];
+    final client = MockClient((r) async {
+      if (r.method == 'GET' && r.url.path == '/api/duplicates/customers') return json({'groups': groups, 'pairs': groups.length, 'records': 2 * groups.length});
+      if (r.method == 'GET' && r.url.path == '/api/duplicates/customers/compare') {
+        return json({
+          'records': [
+            {'id': 1, 'label': 'Aço Alfa Ltda', 'active': true, 'usage': [{'label': 'Pedidos de venda', 'count': 0}], 'addresses': 1},
+            {'id': 2, 'label': 'ACO ALFA S.A.', 'active': true, 'usage': [{'label': 'Pedidos de venda', 'count': 5}], 'addresses': 2},
+          ],
+          'fields': [
+            {'key': 'city', 'label': 'Cidade', 'values': {'1': 'Embu', '2': 'Embu das Artes'}, 'differs': true},
+            {'key': 'phone', 'label': 'Telefone', 'values': {'1': null, '2': '1155550000'}, 'differs': true},
+            {'key': 'uf', 'label': 'UF', 'values': {'1': 'SP', '2': 'SP'}, 'differs': false},
+          ],
+        });
+      }
+      if (r.method == 'POST' && r.url.path == '/api/duplicates/customers/resolve') {
+        posts.add(jsonDecode(r.body) as Map<String, dynamic>);
+        groups = [];
+        return json({'keepId': 1, 'fieldsChanged': 2, 'addressesMoved': 2, 'deactivated': 1});
+      }
+      return json({'groups': <Object>[], 'pairs': 0, 'records': 0});
+    });
+    await pumpApp(tester, DuplicatesScreen(session: sessionFor('SalesManager', client), initialKind: 'customers'));
+
+    await tester.tap(find.byKey(const ValueKey('current-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Comparar cadastros'), findsOneWidget);
+    expect(find.text('Embu das Artes'), findsOneWidget);
+    // UF is the same in both: hidden until asked for.
+    expect(find.text('UF'), findsNothing);
+    // Phone is empty on the kept record, so its default comes from the other one.
+    await tester.tap(find.byKey(const ValueKey('pick-city-2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('compare-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(posts.single['keepId'], 1);
+    expect(posts.single['otherIds'], [2]);
+    expect(posts.single['fields'], {'city': 2, 'phone': 2});
+    expect(posts.single['moveAddresses'], true);
+    expect(find.text('Nenhum duplicado suspeito'), findsOneWidget);
+  });
+
   testWidgets('the list screen reports a load failure with a retry', (tester) async {
     await pumpApp(tester, DuplicatesScreen(session: sessionFor('Sales', MockClient((r) async => json({'message': 'Banco indisponível'}, 500)))));
     expect(find.text('Tentar novamente'), findsOneWidget);
