@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.DependencyInjection;
 using Ebt.Api.Endpoints;
 using Ebt.Api.Infrastructure;
 using Ebt.Core.Duplicates;
@@ -263,5 +264,24 @@ public class DuplicateTests(ApiFixture api)
         var live = await Make("Ativa " + Tag(), true);
         Assert.Single((await ForRecord(admin, "customers", gone1.Id)).Matches); // only the pair with the active one
         Assert.Contains((await ForRecord(admin, "customers", live.Id)).Matches, m => m.A.Id == gone2.Id || m.B.Id == gone2.Id);
+    }
+
+    [Fact]
+    public async Task Compare_ignores_punctuation_on_document_numbers_but_not_on_names()
+    {
+        var admin = await api.AdminAsync();
+        var root = NewRoot();
+        var a = await Customer(admin, "Pontos " + Tag(), document: Cnpj(root, 1));
+        var b = await Customer(admin, "Pontos " + Tag(), document: Cnpj(root, 1));
+        using (var scope = api.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Ebt.Core.Data.EbtDbContext>();
+            (await db.Customers.FindAsync(a.Id))!.StateRegistration = "442.631.225.117";
+            (await db.Customers.FindAsync(b.Id))!.StateRegistration = "442631225117";
+            await db.SaveChangesAsync();
+        }
+        var compare = await (await admin.GetAsync($"/api/duplicates/customers/compare?ids={a.Id},{b.Id}")).Read<CompareOut>();
+        Assert.False(compare.Fields.Single(f => f.Key == "stateRegistration").Differs);
+        Assert.True(compare.Fields.Single(f => f.Key == "name").Differs);
     }
 }

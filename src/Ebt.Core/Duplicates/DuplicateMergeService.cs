@@ -88,10 +88,14 @@ public sealed class DuplicateMergeService(EbtDbContext db, DuplicateService dupl
         new("processRevision", "Revisão do processo", p => p.ProcessRevision, (p, v) => p.ProcessRevision = S(v)),
     ];
 
+    /// <summary>Fields written with punctuation that carries no meaning: "05.034.787/0001-26" and "05034787000126" are the same value.</summary>
+    private static readonly HashSet<string> DigitFields = ["document", "stateRegistration", "zipCode", "phone"];
+
     private static CompareField Build<T>(Spec<T> spec, Dictionary<int, T> rows)
     {
         var values = rows.ToDictionary(r => r.Key, r => S(spec.Get(r.Value)));
-        var differs = values.Values.Select(v => v?.ToUpperInvariant()).Distinct().Count() > 1;
+        var digits = DigitFields.Contains(spec.Key);
+        var differs = values.Values.Select(v => digits ? DuplicateService.Digits(v) : v?.ToUpperInvariant()).Select(v => string.IsNullOrEmpty(v) ? null : v).Distinct().Count() > 1;
         return new CompareField(spec.Key, spec.Label, values, differs);
     }
 
