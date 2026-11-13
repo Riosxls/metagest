@@ -106,6 +106,13 @@ class _CompareDialogState extends State<_CompareDialog> {
     }
   }
 
+  /// What the pencil starts from: the value typed before, else the value of the record chosen for the field.
+  String _initialFor(Map<String, dynamic> f) {
+    final key = f['key'] as String;
+    final chosen = _chosen[key];
+    return _custom[key] ?? (chosen == null || chosen == _typed ? _value(f, _keep!) : _value(f, chosen)) ?? '';
+  }
+
   /// The pencil: type the right value when none of the records has it. Empty text clears the field.
   Future<void> _edit(Map<String, dynamic> f, String initial) async {
     final key = f['key'] as String;
@@ -199,9 +206,21 @@ class _CompareDialogState extends State<_CompareDialog> {
                               border: Border(top: BorderSide(color: theme.dividerColor)),
                             ),
                             children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 6),
-                                child: Text('${f['label']}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text('${f['label']}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                                  ),
+                                  // One pencil per row: type the right value when none of the records has it.
+                                  IconButton(
+                                    key: ValueKey('edit-${f['key']}'),
+                                    tooltip: 'Digitar o valor correto',
+                                    visualDensity: VisualDensity.compact,
+                                    iconSize: 16,
+                                    onPressed: () => _edit(f, _initialFor(f)),
+                                    icon: const Icon(Icons.edit_outlined),
+                                  ),
+                                ],
                               ),
                               for (final r in _records) _cell(theme, f, r['id'] as int),
                               if (_custom.isNotEmpty) _typedCell(theme, f),
@@ -288,25 +307,7 @@ class _CompareDialogState extends State<_CompareDialog> {
       style: theme.textTheme.bodyMedium?.copyWith(color: v == null || v.isEmpty ? theme.colorScheme.onSurfaceVariant : null),
     );
     final key = f['key'] as String;
-    final pencil = IconButton(
-      key: ValueKey('edit-$key-$id'),
-      tooltip: 'Digitar o valor correto',
-      visualDensity: VisualDensity.compact,
-      iconSize: 16,
-      onPressed: () => _edit(f, _custom[key] ?? v ?? ''),
-      icon: const Icon(Icons.edit_outlined),
-    );
-    if (!differs) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        child: Row(
-          children: [
-            Expanded(child: text),
-            pencil,
-          ],
-        ),
-      );
-    }
+    if (!differs) return Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), child: text);
     final empty = v == null || v.isEmpty;
     return InkWell(
       key: ValueKey('pick-$key-$id'),
@@ -322,7 +323,6 @@ class _CompareDialogState extends State<_CompareDialog> {
             ),
             const SizedBox(width: 6),
             Expanded(child: text),
-            pencil,
           ],
         ),
       ),

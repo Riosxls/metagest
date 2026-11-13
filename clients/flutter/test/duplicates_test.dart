@@ -274,7 +274,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('current-1')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('edit-name-2')));
+    await tester.tap(find.byKey(const ValueKey('edit-name')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, 'Aço Alfa Indústria Ltda');
     await tester.tap(find.widgetWithText(FilledButton, 'Usar este valor'));
