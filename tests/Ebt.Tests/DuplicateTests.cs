@@ -249,4 +249,19 @@ public class DuplicateTests(ApiFixture api)
         // The pair is marked, so it is not flagged again.
         Assert.Empty((await ForRecord(admin, "customers", a.Id)).Matches);
     }
+
+    [Fact]
+    public async Task A_pair_of_two_inactive_customers_is_not_reported_but_one_inactive_with_one_active_is()
+    {
+        var admin = await api.AdminAsync();
+        var root = NewRoot();
+        async Task<CustomerOut> Make(string name, bool active) =>
+            await (await admin.Post("/api/customers", new CustomerIn(name, null, null, ConsumerType.Normal, active, Company: new CustomerCompany(Cnpj(root, 1), null, false, null, null, null, null, null, null, null, null, null, null)))).Read<CustomerOut>();
+        var gone1 = await Make("Inativa Um " + Tag(), false);
+        var gone2 = await Make("Inativa Dois " + Tag(), false);
+        Assert.Empty((await ForRecord(admin, "customers", gone1.Id)).Matches);
+        var live = await Make("Ativa " + Tag(), true);
+        Assert.Single((await ForRecord(admin, "customers", gone1.Id)).Matches); // only the pair with the active one
+        Assert.Contains((await ForRecord(admin, "customers", live.Id)).Matches, m => m.A.Id == gone2.Id || m.B.Id == gone2.Id);
+    }
 }

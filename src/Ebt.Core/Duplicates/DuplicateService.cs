@@ -25,7 +25,7 @@ public sealed record DismissedPair(int Id, DuplicateRecord Other, string? Reason
 
 /// <summary>
 /// Finds records that look like the same real-world thing: customers and suppliers by CNPJ/CPF, name and legacy code, products by code,
-/// measures and the customer's own part number. It only reports; nothing is merged. A pair marked as "not a duplicate" is never reported again.
+/// measures and the customer's own part number. It only reports; nothing is merged. A pair marked as "not a duplicate" is never reported again, and neither is a pair of two inactive records.
 /// Records flagged as Test data are left out, like in the dashboards.
 /// </summary>
 public sealed class DuplicateService(EbtDbContext db)
@@ -250,6 +250,8 @@ public sealed class DuplicateService(EbtDbContext db)
         {
             if (forId != null && lo != forId && hi != forId) continue;
             if (dismissed.Contains((lo, hi))) continue;
+            // Two inactive records (or blocked products) are already out of use: nothing to settle. One active and one inactive still counts.
+            if (!records[lo].Active && !records[hi].Active) continue;
             // The same CNPJ already says everything the root says.
             var reasons = raw.Any(r => r.Code == "document") ? raw.Where(r => r.Code != "document-root").ToList() : raw;
             var score = Score(reasons);
