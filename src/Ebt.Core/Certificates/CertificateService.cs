@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Globalization;
 using Ebt.Core.Data;
 using Ebt.Core.Entities;
@@ -32,7 +33,7 @@ public sealed class CertificateService(EbtDbContext db)
         var list = ChemicalElements.Select(e => new CertificateMeasureInput(CertificateMeasureKind.Chemical, e)).ToList();
         list.Add(new(CertificateMeasureKind.Dimensional, "Diâmetro", (p?.DiameterMm ?? p?.WidthMm)?.ToString("0.00", Pt)));
         list.Add(new(CertificateMeasureKind.Dimensional, "Espessura", p?.ThicknessMm?.ToString("0.00", Pt)));
-        list.Add(new(CertificateMeasureKind.Dimensional, "Comprimento", p?.LengthMm?.ToString("0.##", Pt)));
+        list.Add(new(CertificateMeasureKind.Dimensional, "Comprimento", p is not null && IsCoil(p) ? "Rolo" : p?.LengthMm?.ToString("0.##", Pt))); // a coil has no cut length: the sheets print "Rolo"
         list.AddRange(MechanicalTests.Select(t => new CertificateMeasureInput(CertificateMeasureKind.Mechanical, t)));
         return list;
     }
@@ -70,6 +71,12 @@ public sealed class CertificateService(EbtDbContext db)
         var link = await db.ProductCustomers.AsNoTracking().FirstOrDefaultAsync(c => c.ProductId == line.ProductId && c.CustomerId == order.CustomerId, ct);
         var deliveryQty = delivery?.Lines.FirstOrDefault(l => l.OrderLineId == line.Id)?.Quantity;
         var template = await TemplateAsync(line.ProductId, order.CustomerId, ct);
+        var borrowed = false;
+        if (template is null && product is not null)
+        {
+            template = await ClosestTemplateAsync(product, order.CustomerId, ct);
+            borrowed = template is not null;
+        }
         var quantity = i.Quantity ?? deliveryQty ?? line.Quantity;
         if (quantity <= 0) throw SalesException.Invalid("quantity", "Must be greater than zero");
 
@@ -87,7 +94,7 @@ public sealed class CertificateService(EbtDbContext db)
                 CustomerPartDescription = Clean(i.CustomerPartDescription) ?? link?.CustomerDescription, RawMaterialLot = Clean(i.RawMaterialLot) ?? template?.RawMaterialLot, Hardness = Clean(i.Hardness) ?? template?.Hardness, Finish = Clean(i.Finish) ?? template?.Finish ?? DefaultFinish, Title = Clean(i.Title) ?? template?.Title,
                 Notes = Clean(i.Notes) ?? template?.Notes, ApprovedBy = Clean(i.ApprovedBy), Status = CertificateStatus.Draft, CreatedBy = user, CreatedAt = DateTimeOffset.UtcNow
             };
-            SetMeasures(c, i.Measures ?? template?.Measures.OrderBy(m => m.Kind).ThenBy(m => m.Sequence).Select(m => new CertificateMeasureInput(m.Kind, m.Name, m.Specified, m.Found)).ToList() ?? TemplateMeasures(product));
+            SetMeasures(c, i.Measures ?? (borrowed ? BorrowedMeasures(template!, product) : template?.Measures.OrderBy(m => m.Kind).ThenBy(m => m.Sequence).Select(m => new CertificateMeasureInput(m.Kind, m.Name, m.Specified, m.Found)).ToList()) ?? TemplateMeasures(product));
             db.QualityCertificates.Add(c);
             try
             {
@@ -180,6 +187,56 @@ public sealed class CertificateService(EbtDbContext db)
             created.Add(await CreateAsync(new CertificateInput(d.OrderId, l.OrderLineId, d.Id, Quantity: l.Quantity), user, ct));
         if (created.Count == 0) throw SalesException.Conflict("Every item of this delivery already has a certificate");
         return created;
+    }
+
+    /// <summary>
+    /// A product that never had a certificate has no template; the customer's certificate of the closest product is the best starting point: the steel (chemical and mechanical specifications), the title, the finish
+    /// and the notes are the same for a tube of the same diameter, only the wall and length change. The closest = same customer, same diameter, same kind (coil or bar), nearest wall thickness. Nothing
+    /// is borrowed from another diameter, and the identity of the product (code, description, lot) and every found value stay out.
+    /// </summary>
+    public async Task<CertificateTemplate?> ClosestTemplateAsync(Product product, int customerId, CancellationToken ct = default)
+    {
+        if ((product.DiameterMm ?? product.WidthMm) is not { } d || product.ThicknessMm is not { } t) return null;
+        var candidates = await db.CertificateTemplates.AsNoTracking().Include(x => x.Measures).Include(x => x.Product).Where(x => x.CustomerId == customerId && x.ProductId != product.Id && x.Product!.Shape == product.Shape).ToListAsync(ct);
+        var best = candidates
+            .Where(x => (x.Product!.DiameterMm ?? x.Product.WidthMm) is { } cd && Math.Abs(cd - d) <= 0.01m && x.Product.ThicknessMm is not null)
+            .OrderBy(x => IsCoil(x.Product!) == IsCoil(product) ? 0 : 1).ThenBy(x => Math.Abs(x.Product!.ThicknessMm!.Value - t)).ThenByDescending(x => x.UpdatedAt)
+            .FirstOrDefault();
+        if (best is null) return null;
+        // What identifies the other product or its lot does not come along.
+        best.ProductCode = null;
+        best.Description = null;
+        best.RawMaterialLot = null;
+        return best;
+    }
+
+    /// <summary>The borrowed template as rows: chemical and mechanical as specified (no found values), dimensional from this product with the tolerance of the template's row ("12,00 ± 0,12" -> "12,06 ± 0,12").</summary>
+    private static List<CertificateMeasureInput> BorrowedMeasures(CertificateTemplate template, Product? product)
+    {
+        var own = TemplateMeasures(product);
+        var rows = new List<CertificateMeasureInput>();
+        foreach (var m in own)
+        {
+            if (m.Kind == CertificateMeasureKind.Dimensional)
+            {
+                var theirs = template.Measures.FirstOrDefault(x => x.Kind == CertificateMeasureKind.Dimensional && x.Name == m.Name)?.Specified;
+                var coilLength = m.Name == "Comprimento" && product is not null && IsCoil(product);
+                var spec = coilLength && !string.IsNullOrWhiteSpace(theirs) ? theirs : WithTolerance(m.Specified, theirs);
+                rows.Add(new(m.Kind, m.Name, spec));
+            }
+        }
+        var chemical = template.Measures.Where(x => x.Kind == CertificateMeasureKind.Chemical).OrderBy(x => x.Sequence).Select(x => new CertificateMeasureInput(x.Kind, x.Name, x.Specified)).ToList();
+        var mechanical = template.Measures.Where(x => x.Kind == CertificateMeasureKind.Mechanical).OrderBy(x => x.Sequence).Select(x => new CertificateMeasureInput(x.Kind, x.Name, x.Specified)).ToList();
+        return [.. (chemical.Count > 0 ? chemical : own.Where(m => m.Kind == CertificateMeasureKind.Chemical)), .. rows, .. (mechanical.Count > 0 ? mechanical : own.Where(m => m.Kind == CertificateMeasureKind.Mechanical))];
+    }
+
+    /// <summary>"12,06" + a template row "12,00± 0,12" -> "12,06 ± 0,12": the new nominal value with the tolerance the customer's drawing carries.</summary>
+    private static string? WithTolerance(string? nominal, string? template)
+    {
+        if (string.IsNullOrWhiteSpace(nominal)) return template;
+        var m = Regex.Match(template ?? "", @"^\s*[\d.,]+\s*(?<rest>.*)$");
+        var rest = m.Success ? m.Groups["rest"].Value.Trim() : "";
+        return rest.Length == 0 ? nominal : $"{nominal} {rest}";
     }
 
     public async Task<CertificateTemplate?> TemplateAsync(int productId, int customerId, CancellationToken ct = default) =>

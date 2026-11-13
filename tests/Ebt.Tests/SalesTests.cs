@@ -453,6 +453,39 @@ public class SalesTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task A_product_without_a_template_borrows_the_steel_and_tolerances_of_the_customers_closest_product()
+    {
+        var admin = await api.AdminAsync();
+        var s = await Arrange(admin, stock: 100m);
+        var first = await ReleasedOrder(admin, s, 10m);
+        var measures = new List<CertificateMeasureInput>
+        {
+            new(CertificateMeasureKind.Chemical, "C", "0,08 à 0,13", "0,081"),
+            new(CertificateMeasureKind.Chemical, "Mn", "0,30 à 0,60", "0,350"),
+            new(CertificateMeasureKind.Dimensional, "Diâmetro", "25,40± 0,15", "25,40 à 25,48"),
+            new(CertificateMeasureKind.Dimensional, "Espessura", "1,50 ± 0,12", "1,50 à 1,50"),
+            new(CertificateMeasureKind.Mechanical, "LR", "300 Mpa Min", "440 Mpa"),
+        };
+        var one = await (await admin.Post("/api/sales/certificates", new CertificateInput(first.Id, Title: "CERTIFICADO DE QUALIDADE", Notes: "Obs fixa", RawMaterialLot: "700261", Measures: measures))).Read<CertificateOut>();
+        (await admin.Post($"/api/sales/certificates/{one.Id}/issue", new object())).EnsureSuccessStatusCode();
+
+        // same customer, same diameter, a slightly different wall: no template of its own
+        var near = await (await admin.Post("/api/products", new ProductIn(Code("N"), "Tubo near", ProductKind.Part, TubeShape.Circular, 25.4m, null, null, 1.56m, 1000m, null, null, "73063010", "PC", 50, false, null, null))).Read<ProductOut>();
+        (await admin.Post("/api/sales/price-list", new PriceListIn(near.Id, null, 100m, 5m, 18m, Today.AddDays(-1), null))).EnsureSuccessStatusCode();
+        var order = await (await admin.Post("/api/sales/orders", new SalesOrderIn(s.Customer.Id, s.Address.Id, [new SalesLineInput(near.Id, 4m)], "PO-2", s.Term.Id))).Read<SalesOrderOut>();
+        var draft = await (await admin.Post("/api/sales/certificates", new CertificateInput(order.Id))).Read<CertificateOut>();
+
+        Assert.Equal("CERTIFICADO DE QUALIDADE", draft.Title);
+        Assert.Equal("Obs fixa", draft.Notes);
+        Assert.Null(draft.RawMaterialLot); // the lot belongs to the other product
+        Assert.Equal("0,08 à 0,13", draft.Measures.First(m => m.Name == "C").Specified); // the steel
+        Assert.Equal("300 Mpa Min", draft.Measures.First(m => m.Name == "LR").Specified);
+        Assert.Equal("25,40 ± 0,15", draft.Measures.First(m => m.Name == "Diâmetro").Specified); // this product's nominal value with the tolerance of the customer's drawing
+        Assert.Equal("1,56 ± 0,12", draft.Measures.First(m => m.Name == "Espessura").Specified);
+        Assert.All(draft.Measures, m => Assert.True(string.IsNullOrEmpty(m.Found))); // nothing found is carried over
+    }
+
+    [Fact]
     public async Task Issued_certificate_teaches_the_next_one_of_the_same_customer_and_product()
     {
         var admin = await api.AdminAsync();

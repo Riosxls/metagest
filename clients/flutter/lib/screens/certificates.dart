@@ -643,15 +643,17 @@ class _CertificateEditorScreenState extends State<CertificateEditorScreen> {
     }
   }
 
-  Widget _text(String key, String label, {double width = 240, bool number = false, int lines = 1, String? hint}) => SizedBox(
-    width: width,
-    child: TextField(
+  Widget _text(String key, String label, {double width = 240, bool number = false, int lines = 1, String? hint, bool fill = false}) => LayoutBuilder(
+    builder: (context, box) => SizedBox(
+      width: fill && box.maxWidth.isFinite ? box.maxWidth : width,
+      child: TextField(
       key: ValueKey('cert-$key'),
       controller: _fields[key],
       maxLines: lines,
       keyboardType: number ? const TextInputType.numberWithOptions(decimal: true) : null,
       textInputAction: lines > 1 ? TextInputAction.newline : TextInputAction.next,
       decoration: InputDecoration(labelText: label, hintText: hint, border: const OutlineInputBorder(), isDense: true),
+    ),
     ),
   );
 
@@ -728,7 +730,7 @@ class _CertificateEditorScreenState extends State<CertificateEditorScreen> {
   );
 
   /// Below this width of the card the value fields drop under the name, each with its own label, instead of squeezing into three slivers.
-  static const _stackBelow = 600.0;
+  static const _stackBelow = 440.0;
 
   Widget _tableHeaders(List<String> headers, ColorScheme scheme, TextStyle? label) => LayoutBuilder(
     builder: (context, box) => box.maxWidth < _stackBelow
@@ -802,8 +804,8 @@ class _CertificateEditorScreenState extends State<CertificateEditorScreen> {
           return Row(
             children: [
               SizedBox(
-                width: 92,
-                // The name is cut at 92 px: the tooltip carries the whole of it.
+                width: 78,
+                // The name is cut at 78 px: the tooltip carries the whole of it.
                 child: Tooltip(
                   message: name,
                   child: Text(name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
@@ -955,9 +957,9 @@ class _CertificateEditorScreenState extends State<CertificateEditorScreen> {
       spacing: 12,
       runSpacing: 12,
       children: [
-        _text('description', 'Descrição *', width: 360),
+        _text('description', 'Descrição *', width: 400),
         _text('customerPartNumber', 'Código do cliente', width: 200),
-        _text('customerPartDescription', 'Descrição do cliente', width: 300),
+        _text('customerPartDescription', 'Descrição do cliente', width: 420),
         _text('rawMaterialLot', 'Lote MP', width: 180),
         _text('hardness', 'Dureza', width: 160, hint: 'ex.: 66 HRB'),
         _text('finish', 'Acabamento superficial', width: 420),
@@ -979,7 +981,7 @@ class _CertificateEditorScreenState extends State<CertificateEditorScreen> {
             onChanged: (v) => setState(() => _title = (v == null || v.isEmpty) ? null : v),
           ),
         ),
-        _text('notes', 'Observações', width: 700, lines: 3),
+        _text('notes', 'Observações', width: 700, lines: 3, fill: true),
         SizedBox(
           width: 700,
           child: Wrap(
@@ -1059,7 +1061,22 @@ class _CertificateEditorScreenState extends State<CertificateEditorScreen> {
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Semantics(liveRegion: true, child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Container(
+                    key: const ValueKey('cert-error'),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.errorContainer, borderRadius: BorderRadius.circular(10)),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.error_outline, size: 20, color: Theme.of(context).colorScheme.onErrorContainer),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer))),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             _certificateSection(),
             gap,
