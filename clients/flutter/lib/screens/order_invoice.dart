@@ -37,7 +37,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   /// Data of the load that goes on the NF and can be edited before confirming (sent with the dispatch; empty = the server's default).
   static const _extra = {
     'carrier': 'Transportadora',
-    'packages': 'Volumes',
+    'packages': 'Volumes *',
     'grossWeightKg': 'Peso bruto (kg)',
     'vehiclePlate': 'Placa',
     'freight': r'Frete na NF (R$)',
@@ -45,6 +45,9 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     'lotNumber': 'Nº do lote',
     'notes': 'Observações da entrega',
   };
+    /// Always typed (Quantidade pesada and Volumes); the rest keeps its default and sits in the collapsed block.
+  static const _usual = ['packages', 'notes'];
+  static const _rare = ['carrier', 'grossWeightKg', 'vehiclePlate', 'freight', 'cfop', 'lotNumber'];
   static const _numericExtra = {'grossWeightKg', 'freight', 'packages'};
   final _extraCtl = {for (final k in _extra.keys) k: TextEditingController()};
 
@@ -105,8 +108,17 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
       for (final e in _qty.entries)
         if ((parseDecimal(e.value.text.trim()) ?? 0) > 0) {'orderLineId': e.key, 'quantity': parseDecimal(e.value.text.trim())},
     ];
+    if (_qty.values.any((c) => c.text.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Digite a quantidade pesada de cada item (0 deixa o item fora da carga)')));
+      return;
+    }
     if (lines.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Digite a quantidade pesada de pelo menos um item')));
+      return;
+    }
+    final volumes = parseDecimal(_extraCtl['packages']!.text.trim())?.toInt() ?? 0;
+    if (volumes <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Digite a quantidade de volumes da carga')));
       return;
     }
     final on = nf['fiscalEnabled'] == true;
@@ -474,7 +486,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         isDense: true,
-        labelText: 'Item ${l['sequence']} · ${l['code']} (${l['unit']})',
+        labelText: 'Quantidade pesada * · item ${l['sequence']} · ${l['code']} (${l['unit']})',
         helperText: 'Pedido ${fmtNum(l['ordered'], 3)} · falta expedir ${fmtNum(l['remaining'], 3)}',
         border: const OutlineInputBorder(),
       ),
@@ -487,7 +499,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     return switch (key) {
       'carrier' => t['carrier'] == null ? null : 'Padrão: ${t['carrier']}',
       'grossWeightKg' => t['grossWeightKg'] == null ? null : 'Padrão: ${fmtNum(t['grossWeightKg'], 3)} kg (o líquido)',
-      'packages' => 'Padrão: ${(t['packages'] ?? 0) == 0 ? 1 : t['packages']}',
+      'packages' => 'Obrigatório: quantos volumes saem (${(t['packages'] ?? 0) > 1 ? 'VOLUMES' : 'VOLUME'})',
       'cfop' => 'Padrão: o do endereço de entrega ou 5101',
       'freight' => 'Só se o frete for cobrado na NF',
       'vehiclePlate' => 'Opcional (vai em branco)',
@@ -576,7 +588,18 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
               const SizedBox(height: 10),
               for (final l in items) _qtyField(l),
               _step(context, 2, 'Dados da carga'),
-              Wrap(spacing: 10, runSpacing: 10, children: [for (final k in _extra.keys) _extraField(k, nf)]),
+              Wrap(spacing: 10, runSpacing: 10, children: [for (final k in _usual) _extraField(k, nf)]),
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  key: const ValueKey('invoice-rare'),
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(bottom: 8),
+                  title: Text('Outros dados (quase nunca mudam)', style: theme.textTheme.bodyMedium),
+                  subtitle: Text('Transportadora, peso bruto, placa, frete, CFOP e lote seguem o padrão', style: theme.textTheme.bodySmall),
+                  children: [Wrap(spacing: 10, runSpacing: 10, children: [for (final k in _rare) _extraField(k, nf)])],
+                ),
+              ),
               if (!on) ...[
                 _step(context, 3, 'Número da NF'),
                 TextField(

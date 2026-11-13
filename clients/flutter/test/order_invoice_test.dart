@@ -99,11 +99,16 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('invoice-number')), '9001'); // emission is off: the number is typed
     await tapKey(tester, 'invoice-update');
     expect(f.last('GET', '/api/fiscal/preview/order/9').url.queryParameters['lines'], '90:9.5');
+    await tapKey(tester, 'invoice-confirm'); // volumes are required: nothing is sent without them
+    expect(f.called('POST', '/api/sales/orders/9/dispatch'), isFalse);
+    expect(find.text('Digite a quantidade de volumes da carga'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('invoice-extra-packages')), '2');
     await tapKey(tester, 'invoice-confirm');
     await tester.tap(find.text('Registrar saída'));
     await tester.pumpAndSettle();
     final body = f.body(f.last('POST', '/api/sales/orders/9/dispatch'));
     expect(body['invoiceNumber'], '9001');
+    expect(body['packages'], 2);
     expect(((body['lines'] as List).single as Map)['quantity'], 9.5);
   });
 
