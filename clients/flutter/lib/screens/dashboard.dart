@@ -100,7 +100,8 @@ class DashAlert {
   final void Function()? onTap;
 
   /// Registers still to be completed (not something late): amber, after the urgent ones.
-  bool get pending => const {'Produtos bloqueados', 'Produtos sem roteiro', 'Clientes: cadastro incompleto p/ NF', 'Entregas com certificado pendente'}.contains(label);
+  bool get pending =>
+      const {'Produtos bloqueados', 'Produtos sem roteiro', 'Clientes: cadastro incompleto p/ NF', 'Entregas com certificado pendente'}.contains(label);
 }
 
 List<DashAlert> buildAlerts(
@@ -205,8 +206,24 @@ List<DashAlert> buildAlerts(
         DeliveriesScreen.pendingCertificateFilter,
         to('deliveries', DeliveriesScreen.pendingCertificateFilter),
       ),
-      DashAlert('Comercial', Icons.task_alt, 'Entregas expedidas aguardando confirmação', commercial.shippedAwaiting, 'deliveries', 'Shipped', to('deliveries', 'Shipped')),
-      DashAlert('Comercial', Icons.account_balance_wallet_outlined, 'Duplicatas vencidas', commercial.overdueReceivables, 'receivables', 'overdue', to('receivables', 'overdue')),
+      DashAlert(
+        'Comercial',
+        Icons.task_alt,
+        'Entregas expedidas aguardando confirmação',
+        commercial.shippedAwaiting,
+        'deliveries',
+        'Shipped',
+        to('deliveries', 'Shipped'),
+      ),
+      DashAlert(
+        'Comercial',
+        Icons.account_balance_wallet_outlined,
+        'Duplicatas vencidas',
+        commercial.overdueReceivables,
+        'receivables',
+        'overdue',
+        to('receivables', 'overdue'),
+      ),
       DashAlert(
         'Comercial',
         Icons.error_outline,
@@ -223,7 +240,15 @@ List<DashAlert> buildAlerts(
           total: commercial.fiscalProblems.length,
         ),
       ),
-      DashAlert('Comercial', Icons.gavel_outlined, 'Orçamentos a autorizar', commercial.k('pendingApprovals').toInt(), 'sales-quotes', null, to('sales-quotes')),
+      DashAlert(
+        'Comercial',
+        Icons.gavel_outlined,
+        'Orçamentos a autorizar',
+        commercial.k('pendingApprovals').toInt(),
+        'sales-quotes',
+        null,
+        to('sales-quotes'),
+      ),
       DashAlert(
         'Comercial',
         Icons.draw_outlined,
@@ -322,15 +347,7 @@ List<DashAlert> buildAlerts(
     ],
     if (stock != null) ...[
       DashAlert('Estoque', Icons.verified_outlined, 'Lotes em quarentena', stock.quarantine, 'lots', 'Quarantine', to('lots', 'Quarantine')),
-      DashAlert(
-        'Estoque',
-        Icons.trending_down,
-        'Materiais abaixo do estoque mínimo',
-        stock.lowStock.length,
-        'low-stock',
-        null,
-        to('low-stock'),
-      ),
+      DashAlert('Estoque', Icons.trending_down, 'Materiais abaixo do estoque mínimo', stock.lowStock.length, 'low-stock', null, to('low-stock')),
       DashAlert('Estoque', Icons.content_cut, 'Aço aguardando retorno do slitter', stock.steelPending, 'steel', null, to('steel')),
     ],
     if (eng != null) ...[
@@ -497,10 +514,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (minutes == _armedMinutes) return;
     _armedMinutes = minutes;
     _timer?.cancel();
-    _timer = minutes > 0 ? Timer.periodic(Duration(minutes: minutes), (_) {
-      // A screen kept alive behind another one does not poll.
-      if (mounted && TickerMode.valuesOf(context).enabled) _refresh();
-    }) : null;
+    _timer = minutes > 0
+        ? Timer.periodic(Duration(minutes: minutes), (_) {
+            // A screen kept alive behind another one does not poll.
+            if (mounted && TickerMode.valuesOf(context).enabled) _refresh();
+          })
+        : null;
   }
 
   @override
@@ -511,11 +530,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<List<Object?>> _combine() =>
-      Future.wait<Object?>([_eng, _stock, _purchasing, _production, _commercial].map((f) => f.then<Object?>((v) => v, onError: (Object e) {
-        debugPrint('dashboard: section failed: $e');
-        return null;
-      })));
+  Future<List<Object?>> _combine() => Future.wait<Object?>(
+    [_eng, _stock, _purchasing, _production, _commercial].map(
+      (f) => f.then<Object?>(
+        (v) => v,
+        onError: (Object e) {
+          debugPrint('dashboard: section failed: $e');
+          return null;
+        },
+      ),
+    ),
+  );
 
   List<DashAlert> _alerts(List<Object?> d) => buildAlerts(
     context,
@@ -628,17 +653,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 if (!_stepsCollapsed) const SizedBox(height: 8),
                 if (!_stepsCollapsed)
                   for (final s in steps)
-                  ListTile(
-                    key: ValueKey('step-${s.$2}'),
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(s.$3 ? Icons.check_circle : Icons.radio_button_unchecked, color: s.$3 ? cs.primary : cs.onSurfaceVariant),
-                    title: Text(
-                      s.$1,
-                      style: s.$3 ? TextStyle(decoration: TextDecoration.lineThrough, color: cs.onSurfaceVariant) : null,
+                    ListTile(
+                      key: ValueKey('step-${s.$2}'),
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(s.$3 ? Icons.check_circle : Icons.radio_button_unchecked, color: s.$3 ? cs.primary : cs.onSurfaceVariant),
+                      title: Text(
+                        s.$1,
+                        style: s.$3 ? TextStyle(decoration: TextDecoration.lineThrough, color: cs.onSurfaceVariant) : null,
+                      ),
+                      trailing: s.$3 || widget.onNavigate == null ? null : FilledButton.tonal(onPressed: _go(s.$4), child: const Text('Abrir')),
                     ),
-                    trailing: s.$3 || widget.onNavigate == null ? null : FilledButton.tonal(onPressed: _go(s.$4), child: const Text('Abrir')),
-                  ),
               ],
             ),
           ),
@@ -691,7 +716,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final perRow = box.maxWidth >= 1000 ? math.min(3, blocks.length) : 1;
           if (perRow <= 1) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: blocks);
           final width = (box.maxWidth - gap * (perRow - 1)) / perRow - 0.01;
-          return Wrap(spacing: gap, runSpacing: 0, children: [for (final b in blocks) SizedBox(width: width, child: b)]);
+          return Wrap(
+            spacing: gap,
+            runSpacing: 0,
+            children: [for (final b in blocks) SizedBox(width: width, child: b)],
+          );
         },
       ),
     ];
@@ -715,7 +744,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 shape: const Border(),
                 collapsedShape: const Border(),
                 childrenPadding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
-                children: [DashGrid(items: [for (final a in legacy) tile(a)])],
+                children: [
+                  DashGrid(items: [for (final a in legacy) tile(a)]),
+                ],
               ),
             ),
           ),
@@ -781,22 +812,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 future: _backup,
                 builder: (context, b) => b.data != null
                     ? const SizedBox.shrink()
-                    : const DashNotice(
-                        icon: Icons.check_circle_outline,
-                        title: 'Nada pendente',
-                        subtitle: 'Nenhum alerta nas áreas que você acompanha agora.',
-                      ),
+                    : const DashNotice(icon: Icons.check_circle_outline, title: 'Nada pendente', subtitle: 'Nenhum alerta nas áreas que você acompanha agora.'),
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (failedNotice != null) ...[failedNotice, const SizedBox(height: AppSpacing.md)],
                   if (fresh.isEmpty)
-                    const DashNotice(
-                      icon: Icons.check_circle_outline,
-                      title: 'Nada novo pendente',
-                      subtitle: 'Só restam as pendências antigas abaixo.',
-                    ),
+                    const DashNotice(icon: Icons.check_circle_outline, title: 'Nada novo pendente', subtitle: 'Só restam as pendências antigas abaixo.'),
                   _alertGroups(alerts),
                 ],
               );
@@ -880,20 +903,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
               while (cols > 2 && count % cols == 1) {
                 cols--;
               }
-              final width = (c.maxWidth - gap * (cols - 1)) / cols - 0.01;
-              return Wrap(
-                spacing: gap,
-                runSpacing: gap,
+              final modules = modulesFor(widget.session.role);
+              // Rows of equal-height cards: each row is as tall as its tallest card, an unfinished last row keeps the column width.
+              return Column(
                 children: [
-                  for (final m in modulesFor(widget.session.role))
-                    SizedBox(
-                      width: width,
-                      child: ModuleCard(
-                        module: m,
-                        lines: _summary(m.section, data),
-                        loading: data == null,
-                        attention: alerts.where((a) => a.module == m.section && !a.muted).fold<int>(0, (n, a) => n + a.count),
-                        onTap: _go(m.id),
+                  for (var start = 0; start < modules.length; start += cols)
+                    Padding(
+                      padding: EdgeInsets.only(top: start == 0 ? 0 : gap),
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (var i = start; i < start + cols; i++) ...[
+                              if (i > start) const SizedBox(width: gap),
+                              Expanded(
+                                child: i >= modules.length
+                                    ? const SizedBox.shrink()
+                                    : ModuleCard(
+                                        module: modules[i],
+                                        lines: _summary(modules[i].section, data),
+                                        loading: data == null,
+                                        attention: alerts.where((a) => a.module == modules[i].section && !a.muted).fold<int>(0, (n, a) => n + a.count),
+                                        onTap: _go(modules[i].id),
+                                      ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
                 ],
@@ -991,26 +1027,62 @@ class ModuleCard extends StatelessWidget {
                     CircleAvatar(backgroundColor: cs.primaryContainer, foregroundColor: cs.onPrimaryContainer, child: Icon(module.icon)),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(module.section, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // One line, never cut in two: a long name shrinks a little instead of breaking ("Comerci / al").
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(module.section, maxLines: 1, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+                          ),
+                          const SizedBox(height: 2),
+                          // The state sits under the name, so the title keeps the whole width and every card has the same header.
+                          if (attention > 0)
+                            Row(
+                              key: ValueKey('module-pending-${module.section}'),
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    status,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                              ],
+                            )
+                          else if (!loading && lines != null)
+                            Row(
+                              children: [
+                                Icon(Icons.check_circle_outline, size: 16, color: cs.onSurfaceVariant),
+                                const SizedBox(width: 6),
+                                Flexible(child: Text('Nada pendente', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelLarge?.copyWith(color: cs.onSurfaceVariant))),
+                              ],
+                            )
+                          else
+                            Text(status, style: theme.textTheme.labelLarge?.copyWith(color: cs.onSurfaceVariant)),
+                        ],
+                      ),
                     ),
-                    if (attention > 0)
-                      Tooltip(
-                        message: status,
-                        child: Container(
-                          key: ValueKey('module-pending-${module.section}'),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                          decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(999)),
-                          child: Text(status, style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
-                        ),
-                      )
-                    else if (!loading && lines != null)
-                      Tooltip(message: 'Nada pendente', child: Icon(Icons.check_circle_outline, size: 20, color: cs.primary)),
-                    const SizedBox(width: 4),
                     Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(module.blurb, style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                const SizedBox(height: 12),
+                // Two lines are always reserved, so the figures below start at the same height in every card of a row.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight:
+                        MediaQuery.textScalerOf(context).scale((theme.textTheme.bodyMedium?.fontSize ?? 14) * (theme.textTheme.bodyMedium?.height ?? 1.4)) * 2,
+                  ),
+                  child: Text(module.blurb, style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                ),
                 const SizedBox(height: 12),
                 if (loading)
                   const LinearProgressIndicator()
