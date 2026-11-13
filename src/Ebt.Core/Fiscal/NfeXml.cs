@@ -92,7 +92,7 @@ public static class NfeXml
                 : null,
             Digits(transport.VehiclePlate, letters: true) is { Length: > 0 } plate ? E("veicTransp", E("placa", plate), E("UF", vehicleUf)) : null,
             transport.Packages > 0 || transport.NetWeightKg is not null || transport.GrossWeightKg is not null
-                ? E("vol", transport.Packages > 0 ? E("qVol", transport.Packages.ToString(Inv)) : null, transport.Packages > 0 ? E("esp", transport.Packages > 1 ? "VOLUMES" : "VOLUME") : null, transport.NetWeightKg is { } net ? E("pesoL", net.ToString("0.000", Inv)) : null,
+                ? E("vol", transport.Packages > 0 ? E("qVol", transport.Packages.ToString(Inv)) : null, transport.Packages > 0 ? E("esp", string.IsNullOrWhiteSpace(transport.Species) ? (transport.Packages > 1 ? "VOLUMES" : "VOLUME") : Cut(transport.Species, 60)) : null, OptE("marca", Cut(transport.PackageBrand, 60)), OptE("nVol", Cut(transport.PackageNumber, 60)), transport.NetWeightKg is { } net ? E("pesoL", net.ToString("0.000", Inv)) : null,
                     transport.GrossWeightKg is { } kg ? E("pesoB", kg.ToString("0.000", Inv)) : null)
                 : null);
 

@@ -93,14 +93,14 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
             CalculateTaxes(doc, cfop, customerIcmsContributor: recipient.IcmsContributor);
             doc.Installments = cfop.GeneratesInstallments ? await InstallmentsAsync(order, customer, doc.InvoiceTotal, local, ct) : [];
 
-            doc.AdditionalInfo = SaleInfoText(SaleLegalText(cfop, doc.Lines), order.CustomerPo, delivery.Notes);
+            doc.AdditionalInfo = SaleInfoText(SaleLegalText(cfop, doc.Lines), order.CustomerPo, delivery.Notes, customer.PoPhrase);
             if (warnings.Count > 0)
             {
                 doc.Warnings = Cut(string.Join(" | ", warnings), 500);
                 db.SalesEvents.Add(new SalesEvent { Kind = SalesRecordKind.Delivery, RecordId = delivery.Id, Action = "nf-price-warning", Note = doc.Warnings, User = user, At = DateTimeOffset.UtcNow });
             }
             var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, opt.Carrier ?? delivery.Carrier, opt.VehiclePlate ?? delivery.VehiclePlate, delivery.Packages, opt.GrossWeightKg ?? delivery.GrossWeightKg,
-                delivery.Lines.Select(l => { var ol = order.Lines.First(x => x.Id == l.OrderLineId); return (SalesService.KgPerUnit(ol, products[ol.ProductId]), l.Quantity); }).ToList(), settings, ct);
+                delivery.Lines.Select(l => { var ol = order.Lines.First(x => x.Id == l.OrderLineId); return (SalesService.KgPerUnit(ol, products[ol.ProductId]), l.Quantity); }).ToList(), settings, ct, opt.Package);
 
             // A shipment that failed after SEFAZ authorized its NF was rolled back, but the authorized NF (committed on its own connection) stayed without a delivery.
             // Shipping again must pick that NF up, not issue a second one for the same goods.
@@ -144,14 +144,17 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
             doc.OutsideShipmentId = shipment.Id;
             doc.Lines.Add(new FiscalDocumentLine
             {
-                Sequence = 10, ProductId = product.Id, ProductionOrderId = order.Id, Code = product.Code, Description = $"{Clean(operation.Description)?.ToUpperInvariant() ?? "INDUSTRIALIZACAO"} - APLICADO EM {product.Code}",
+                Sequence = 10, ProductId = product.Id, ProductionOrderId = order.Id, Code = product.Code, Description = $"{Clean(operation.Description)?.ToUpperInvariant() ?? "INDUSTRIALIZACAO"} - APLICADO NO {Clean(product.Name)?.ToUpperInvariant() ?? product.Code} - COD.{product.Code}",
                 Ncm = RequireNcm(product), Unit = product.StockUnit, Quantity = shipment.Quantity, UnitPrice = opt.UnitValue, Total = Money(shipment.Quantity * opt.UnitValue),
                 IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
             }.WithRates(cfop, null, 0m, 0m));
             doc.ProductsTotal = doc.Lines.Sum(l => l.Total);
             CalculateTaxes(doc, cfop, customerIcmsContributor: false);
-            doc.AdditionalInfo = Join(order.Reference, $"Operação {operation.Sequence}", shipment.Notes, cfop.LegalText);
-            return await AuthorizeAndSaveAsync(settings, doc, cfop, recipient, new NfeTransport(9, null, null, 0, null), interstate, ct);
+            // As the old papers: the sentence of the operation, then what was typed ("DECAPAR E OLEAR", "REFERENTE NF 247449."); no internal OF numbers.
+            doc.AdditionalInfo = SaleInfoText(cfop.LegalText, null, shipment.Notes);
+            // The goods leave on our own truck: the issuer's default carrier, one volume, gross weight = net weight (the quantity in kg).
+            var transport = await TransportAsync(0, null, null, 1, null, [(product.StockUnit.Equals("KG", StringComparison.OrdinalIgnoreCase) ? 1m : product.NetWeightKg, shipment.Quantity)], settings, ct);
+            return await AuthorizeAndSaveAsync(settings, doc, cfop, recipient, transport, interstate, ct);
         }, ct);
     }
 
@@ -448,7 +451,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
     private async Task<string> ItemDescriptionAsync(int customerId, int productId, string fallback, CancellationToken ct)
     {
         var own = await db.ProductCustomers.AsNoTracking().Where(x => x.CustomerId == customerId && x.ProductId == productId && x.Active).Select(x => x.CustomerDescription).FirstOrDefaultAsync(ct);
-        return Clean(own) ?? fallback;
+        return (Clean(own) ?? fallback).TrimEnd() + " - -"; // the old paper always ended an item's name with the two empty complement fields
     }
 
     internal const string IpiSuspendedText = "MERCADORIA OBJETO DE INDUSTRIALIZACAO E/OU COMERCIALIZACAO PELO DESTINATARIO. IPI SUSPENSO CONFORME DECRETO 7212/2010, artigo 46 DE 15/06/2010.";
@@ -457,7 +460,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
     internal static string? SaleLegalText(Cfop cfop, IEnumerable<FiscalDocumentLine> lines) =>
         cfop.Kind == FiscalKind.Sale && cfop.Code is "5101" or "6101" && lines.Any() && lines.All(l => l.IpiCst == "55") ? IpiSuspendedText : cfop.LegalText;
 
-    private async Task<NfeTransport> TransportAsync(int freightMode, string? carrierName, string? plate, int packages, decimal? grossKg, IReadOnlyList<(decimal? NetWeightKg, decimal Quantity)> items, FiscalSettings? issuer, CancellationToken ct)
+    private async Task<NfeTransport> TransportAsync(int freightMode, string? carrierName, string? plate, int packages, decimal? grossKg, IReadOnlyList<(decimal? NetWeightKg, decimal Quantity)> items, FiscalSettings? issuer, CancellationToken ct, PackageInfo? pack = null)
     {
         decimal? net = items.Count > 0 && items.All(i => i.NetWeightKg is > 0) ? Math.Round(items.Sum(i => i.NetWeightKg!.Value * i.Quantity), 3) : null;
         grossKg ??= net; // the old system always carried the net weight as the gross one unless typed
@@ -469,10 +472,10 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
         if (name is null && freightMode == 0 && issuer is { Cnpj: not null })
         {
             var addr = string.Join(", ", new[] { issuer.Street, issuer.Number }.Where(x => !string.IsNullOrWhiteSpace(x)));
-            return new NfeTransport(freightMode, Clean(issuer.TradeName) ?? Clean(issuer.CompanyName), plate, packages, grossKg, net, issuer.Cnpj, issuer.StateRegistration, addr.Length > 0 ? addr : null, issuer.City, issuer.Uf, null);
+            return new NfeTransport(freightMode, Clean(issuer.TradeName) ?? Clean(issuer.CompanyName), plate, packages, grossKg, net, issuer.Cnpj, issuer.StateRegistration, addr.Length > 0 ? addr : null, issuer.City, issuer.Uf, null, Clean(pack?.Species), Clean(pack?.Number), Clean(pack?.Brand));
         }
         var carrier = name is null ? null : await db.FiscalCarriers.AsNoTracking().FirstOrDefaultAsync(c => c.Name.ToLower() == name.ToLower(), ct);
-        return new NfeTransport(freightMode, carrier?.Name ?? name, plate, packages, grossKg, net, carrier?.Document, carrier?.StateRegistration, carrier?.Address, carrier?.City, carrier?.Uf, carrier?.VehicleUf);
+        return new NfeTransport(freightMode, carrier?.Name ?? name, plate, packages, grossKg, net, carrier?.Document, carrier?.StateRegistration, carrier?.Address, carrier?.City, carrier?.Uf, carrier?.VehicleUf, Clean(pack?.Species), Clean(pack?.Number), Clean(pack?.Brand));
     }
 
     private static ReconcileResult Result(FiscalDocument d, string outcome, string message, FiscalStatus status, bool unlinked = false) =>
@@ -545,7 +548,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
         if (days.Count == 0) throw FiscalException.Blocked($"{order.Reference} has no payment term to build the duplicatas; set one on the order or the customer");
         var start = DateOnly.FromDateTime(issuedLocal.DateTime);
         var each = Math.Round(total / days.Count, 2, MidpointRounding.AwayFromZero);
-        return days.Select((d, n) => new FiscalInstallment { Sequence = n + 1, DueDate = start.AddDays(d), Amount = n == days.Count - 1 ? total - each * (days.Count - 1) : each }).ToList();
+        return days.Select((d, n) => new FiscalInstallment { Sequence = n + 1, DueDate = start.AddDays(d), Amount = n == 0 ? total - each * (days.Count - 1) : each }).ToList();
     }
 
     private async Task<Cfop> CfopAsync(string code, FiscalKind kind, CancellationToken ct)
@@ -636,13 +639,20 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
     }
 
     private static string Cut(string s, int max) => s.Length <= max ? s : s[..max];
+    /// <summary>The customer's purchase order as its NFs word it: its own phrase (with {po}) or the usual "PEDIDO DE COMPRA N: 123". Customers ask for different wordings; the old NFs show about six.</summary>
+    internal static string PoSentence(string? phrase, string po)
+    {
+        var p = string.IsNullOrWhiteSpace(phrase) || !phrase.Contains("{po}") ? "PEDIDO DE COMPRA N: {po}" : phrase.Trim();
+        return p.Replace("{po}", po.Trim());
+    }
+
     /// <summary>The text of a sale NF as the old system printed it: the sentence of the operation, then the customer's purchase order, then what was typed; plain sentences, no separators.</summary>
-    internal static string SaleInfoText(string? legal, string? customerPo, string? notes)
+    internal static string SaleInfoText(string? legal, string? customerPo, string? notes, string? poPhrase = null)
     {
         static string Sentence(string s) => s.Trim().TrimEnd('.') + ".";
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(legal)) parts.Add(Sentence(legal));
-        if (!string.IsNullOrWhiteSpace(customerPo)) parts.Add($"NUMERO DO PEDIDO DE COMPRAS {customerPo.Trim()}.");
+        if (!string.IsNullOrWhiteSpace(customerPo)) parts.Add(PoSentence(poPhrase, customerPo));
         if (!string.IsNullOrWhiteSpace(notes)) parts.Add(notes.Trim());
         return string.Join(" ", parts);
     }

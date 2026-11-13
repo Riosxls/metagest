@@ -26,7 +26,7 @@ public sealed record NfPreviewInstallment(int Sequence, DateOnly DueDate, decima
 public sealed record NfPreviewTransport(string Mode, string? Carrier, decimal? NetWeightKg, decimal? GrossWeightKg = null, int Packages = 0, string Species = "VOLUME", string? VehiclePlate = null, int FreightMode = 0, string? CarrierDocument = null, string? CarrierIe = null, string? CarrierAddress = null, string? CarrierCity = null, string? CarrierUf = null);
 
 /// <summary>What the person typed in "Saída da carga" that changes the NF: the preview follows it live (empty = the default).</summary>
-public sealed record PreviewOverrides(string? Cfop = null, decimal? Freight = null, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null, int? Packages = null, string? Notes = null);
+public sealed record PreviewOverrides(string? Cfop = null, decimal? Freight = null, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null, int? Packages = null, string? Notes = null, string? PackageSpecies = null, string? PackageNumber = null, string? PackageBrand = null);
 
 /// <summary>What the NF of an order would look like today, with nothing reserved, saved or sent. <see cref="Problems"/> is the checklist of what is still missing.</summary>
 public sealed record NfPreview(bool FiscalEnabled, bool Simulated, string Environment, int Series, int NextNumber, string Cfop, string? CfopDescription, NfPreviewParty Issuer, NfPreviewParty Recipient,
@@ -183,10 +183,10 @@ public sealed partial class FiscalService
             catch (FiscalException) { Add("Duplicatas", "O pedido e o cliente não têm prazo de pagamento para gerar as duplicatas.", "Pedido de venda > Prazo de pagamento"); }
         }
         var volumes = doc.Lines.Sum(l => products[l.ProductId!.Value].PiecesPerPackage is > 0 ? (int)Math.Ceiling(l.Quantity / products[l.ProductId!.Value].PiecesPerPackage!.Value) : 0);
-        var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, typed?.Carrier, typed?.VehiclePlate, typed?.Packages ?? volumes, typed?.GrossWeightKg, weights, s, ct);
+        var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, typed?.Carrier, typed?.VehiclePlate, typed?.Packages ?? volumes, typed?.GrossWeightKg, weights, s, ct, new PackageInfo(typed?.PackageSpecies, typed?.PackageNumber, typed?.PackageBrand));
         if (transport.NetWeightKg is null) Add("Transporte", "Algum produto sem peso líquido: a NF sai sem o peso (pesoL).", "Engenharia > Produtos > Peso líquido", blocking: false);
 
-        var info = SaleInfoText(SaleLegalText(cfop, doc.Lines), order.CustomerPo, Clean(typed?.Notes));
+        var info = SaleInfoText(SaleLegalText(cfop, doc.Lines), order.CustomerPo, Clean(typed?.Notes), customer.PoPhrase);
         doc.AdditionalInfo = info;
 
         // The real check: build the NF-e XML and validate it against the official schema, so a layout problem shows here and not at the shipment.
@@ -203,7 +203,7 @@ public sealed partial class FiscalService
         var issuer = new NfPreviewParty(s.CompanyName ?? "", s.Cnpj, s.StateRegistration, $"{s.Street}, {s.Number} - {s.District}", s.City, s.Uf, s.ZipCode, s.CityIbgeCode, s.Street, s.Number, s.District, s.Phone);
         var lines = doc.Lines.Select((l, i) => new NfPreviewLine(l.Sequence, l.Code, l.Description, l.Ncm, l.Unit, l.Quantity, l.UnitPrice, l.Total, sources[i].Price, l.IcmsCst, l.IcmsPercent, l.IcmsValue, l.IpiCst, l.IpiPercent, l.IpiValue, l.PisValue, l.CofinsValue, sources[i].Tax)).ToList();
         return new NfPreview(s.Enabled, sefaz.IsSimulated, s.Environment.ToString(), s.Series, s.NextNumber, cfop.Code, cfop.Description, issuer, recipient, lines, doc.ProductsTotal, doc.FreightTotal, doc.IcmsBase, doc.IcmsTotal,
-            doc.IpiTotal, doc.PisTotal, doc.CofinsTotal, doc.InvoiceTotal, installments, new NfPreviewTransport(transport.FreightMode == 0 ? "Por conta do emitente (CIF)" : "Por conta do destinatário (FOB)", transport.Carrier, transport.NetWeightKg, transport.GrossWeightKg, transport.Packages, transport.Packages > 1 ? "VOLUMES" : "VOLUME", transport.VehiclePlate, transport.FreightMode, transport.CarrierDocument, transport.CarrierStateRegistration, transport.CarrierAddress, transport.CarrierCity, transport.CarrierUf), info,
+            doc.IpiTotal, doc.PisTotal, doc.CofinsTotal, doc.InvoiceTotal, installments, new NfPreviewTransport(transport.FreightMode == 0 ? "Por conta do emitente (CIF)" : "Por conta do destinatário (FOB)", transport.Carrier, transport.NetWeightKg, transport.GrossWeightKg, transport.Packages, Clean(typed?.PackageSpecies) ?? (transport.Packages > 1 ? "VOLUMES" : "VOLUME"), transport.VehiclePlate, transport.FreightMode, transport.CarrierDocument, transport.CarrierStateRegistration, transport.CarrierAddress, transport.CarrierCity, transport.CarrierUf), info,
             problems, problems.All(p => !p.Blocking), s.Company, orderLines);
     }
 }

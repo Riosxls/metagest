@@ -37,7 +37,7 @@ public sealed record EmitInvoiceInput(string? Cfop = null, decimal? Freight = nu
 /// <summary>The weighed quantity of one delivery line, typed when the load is ready to leave (the OF comes back from the plant with the final weight).</summary>
 public sealed record ShipLineInput(int DeliveryLineId, decimal Quantity);
 
-public sealed record ShipInput(DateOnly Date, string? InvoiceNumber = null, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null, string? Cfop = null, decimal? Freight = null, string? LotNumber = null, decimal? InvoicedValue = null, bool WithoutCertificate = false, bool OverrideCredit = false, IReadOnlyList<ShipLineInput>? Lines = null, int? Packages = null);
+public sealed record ShipInput(DateOnly Date, string? InvoiceNumber = null, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null, string? Cfop = null, decimal? Freight = null, string? LotNumber = null, decimal? InvoicedValue = null, bool WithoutCertificate = false, bool OverrideCredit = false, IReadOnlyList<ShipLineInput>? Lines = null, int? Packages = null, string? PackageSpecies = null, string? PackageNumber = null, string? PackageBrand = null);
 
 /// <summary>One item of a load: the order line and the weighed quantity that is leaving.</summary>
 public sealed record DispatchLineInput(int OrderLineId, decimal Quantity);
@@ -46,7 +46,7 @@ public sealed record DispatchLineInput(int OrderLineId, decimal Quantity);
 /// "Confirmar e emitir NF": the load is ready and the truck waits, so the delivery is created, shipped (stock out) and its NF emitted in one action. The weighed quantities are the ones that go on the NF.
 /// </summary>
 public sealed record DispatchInput(DateOnly Date, IReadOnlyList<DispatchLineInput> Lines, int? AddressId = null, string? InvoiceNumber = null, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null,
-    string? Cfop = null, decimal? Freight = null, string? LotNumber = null, decimal? InvoicedValue = null, bool WithoutCertificate = false, bool OverrideCredit = false, string? Notes = null, int? Packages = null);
+    string? Cfop = null, decimal? Freight = null, string? LotNumber = null, decimal? InvoicedValue = null, bool WithoutCertificate = false, bool OverrideCredit = false, string? Notes = null, int? Packages = null, string? PackageSpecies = null, string? PackageNumber = null, string? PackageBrand = null);
 
 public sealed record RescheduleLine(int LineId, DateOnly DueDate);
 

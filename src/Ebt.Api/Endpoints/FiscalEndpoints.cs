@@ -114,7 +114,7 @@ public static class FiscalEndpoints
 
     /// <summary>Dry run of the NF of a sales order (the "Nota fiscal" step of the order flow): nothing is reserved, saved or sent.</summary>
     private static void MapPreview(WebApplication app) =>
-        app.MapGet("/api/fiscal/preview/order/{id:int}", async (int id, string? lines, string? carrier, string? plate, decimal? gross, int? packages, decimal? freight, string? cfop, string? notes, FiscalService fiscal, CancellationToken ct) =>
+        app.MapGet("/api/fiscal/preview/order/{id:int}", async (int id, string? lines, string? carrier, string? plate, decimal? gross, int? packages, decimal? freight, string? cfop, string? notes, string? species, string? number, string? brand, FiscalService fiscal, CancellationToken ct) =>
         {
             // lines=12:38.5,13:10 (order line id : weighed quantity); without it the preview uses what is still to ship.
             Dictionary<int, decimal>? quantities = null;
@@ -130,7 +130,7 @@ public static class FiscalEndpoints
                 }
             }
             // carrier, plate, gross, packages, freight, cfop, notes: what is typed in "Saída da carga", so the preview follows it live.
-            return Results.Ok(await fiscal.PreviewSaleAsync(id, ct, quantities, new PreviewOverrides(cfop, freight, carrier, plate, gross, packages, notes)));
+            return Results.Ok(await fiscal.PreviewSaleAsync(id, ct, quantities, new PreviewOverrides(cfop, freight, carrier, plate, gross, packages, notes, species, number, brand)));
         }).WithTags("Fiscal").RequireAuthorization(Policies.Read);
 
     /// <summary>Customers whose register keeps an NF from being issued (missing IBGE code, CEP, IE...): the app shows a badge on them and in the notifications.</summary>

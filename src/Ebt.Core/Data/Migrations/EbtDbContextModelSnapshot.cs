@@ -886,6 +886,10 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("phone");
 
+                    b.Property<string>("PoPhrase")
+                        .HasColumnType("text")
+                        .HasColumnName("po_phrase");
+
                     b.Property<bool>("RequireCertificateBeforeShip")
                         .HasColumnType("boolean")
                         .HasColumnName("require_certificate_before_ship");

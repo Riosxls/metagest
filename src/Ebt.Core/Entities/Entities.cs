@@ -17,6 +17,8 @@ public class Customer : IHasSource
     public string? TradeName { get; set; }
     /// <summary>Razão social, as the NF must name the recipient (the old system's customer name). Empty: the display name is used.</summary>
     public string? LegalName { get; set; }
+    /// <summary>How this customer's NFs word its purchase order, with {po} for the number ("PEDIDO DE COMPRA N: {po}", "NUMERO DO PEDIDO {po}"...). Empty: the usual wording.</summary>
+    public string? PoPhrase { get; set; }
     public ConsumerType ConsumerType { get; set; }
     public bool Active { get; set; } = true;
     // Company (fiscal/contact) data; independent from the delivery addresses.

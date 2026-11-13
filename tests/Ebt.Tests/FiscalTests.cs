@@ -173,7 +173,7 @@ public class FiscalTests(ApiFixture api)
             Assert.Equal(0m, nf.IcmsTotal + nf.IpiTotal + nf.PisTotal + nf.CofinsTotal);
             Assert.Equal(24m, nf.InvoiceTotal);
             Assert.Empty(nf.Installments);
-            Assert.Contains("art. 43 do Decreto 7.212/10", nf.AdditionalInfo);
+            Assert.Contains("IPI - SUSPENSO ART. 43, INC.VI E VII DEC.7212/10", nf.AdditionalInfo);
             var xml = await (await admin.GetAsync($"/api/fiscal/documents/{nf.Id}/xml")).Content.ReadAsStringAsync();
             Assert.Contains("<cEnq>108</cEnq>", xml);
             Assert.Contains("<IPINT><CST>55</CST></IPINT>", xml);

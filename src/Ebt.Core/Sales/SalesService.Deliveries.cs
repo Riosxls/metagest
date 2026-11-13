@@ -120,7 +120,7 @@ public sealed partial class SalesService
             await RefreshOrderStatusAsync(o, $"{d.Reference} expedida", user, ct);
             if (willIssue)
             {
-                var invoice = await fiscal.IssueSaleAsync(d, o, new SaleInvoiceOptions(i.Cfop, i.Freight ?? 0m, Clean(i.Carrier), Clean(i.VehiclePlate)?.ToUpper(), i.GrossWeightKg), user, ct);
+                var invoice = await fiscal.IssueSaleAsync(d, o, new SaleInvoiceOptions(i.Cfop, i.Freight ?? 0m, Clean(i.Carrier), Clean(i.VehiclePlate)?.ToUpper(), i.GrossWeightKg, new PackageInfo(i.PackageSpecies, i.PackageNumber, i.PackageBrand)), user, ct);
                 d.InvoiceNumber = invoice.Number.ToString();
                 await FillCertificateInvoiceAsync(d, ct);
                 doc.Notes = $"{doc.Notes} · NF {invoice.Number}";
@@ -158,7 +158,7 @@ public sealed partial class SalesService
             if (planned.Count == 0) throw SalesException.Conflict("Nothing left to ship on these items");
             var d = await CreateDeliveryAsync(orderId, new DeliveryInput(i.Date, i.AddressId, i.Carrier, planned, i.Notes), user, ct);
             var final = i.Lines.Where(l => d.Lines.Any(x => x.OrderLineId == l.OrderLineId)).Select(l => new ShipLineInput(d.Lines.First(x => x.OrderLineId == l.OrderLineId).Id, l.Quantity)).ToList();
-            return await ShipAsync(d.Id, new ShipInput(i.Date, i.InvoiceNumber, i.Carrier, i.VehiclePlate, i.GrossWeightKg, i.Cfop, i.Freight, i.LotNumber, i.InvoicedValue, i.WithoutCertificate, i.OverrideCredit, final, i.Packages),
+            return await ShipAsync(d.Id, new ShipInput(i.Date, i.InvoiceNumber, i.Carrier, i.VehiclePlate, i.GrossWeightKg, i.Cfop, i.Freight, i.LotNumber, i.InvoicedValue, i.WithoutCertificate, i.OverrideCredit, final, i.Packages, i.PackageSpecies, i.PackageNumber, i.PackageBrand),
                 user, ct, canEmitInvoice, overrideCredit, canWaiveCertificate);
         }, ct);
     }

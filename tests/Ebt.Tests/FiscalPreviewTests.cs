@@ -30,14 +30,14 @@ public class FiscalPreviewTests(ApiFixture api)
         return await (await admin.Put("/api/fiscal/settings", next)).Read<FiscalSettingsDto>();
     }
 
-    private async Task<(SalesOrderOut Order, ProductOut Product)> NewOrderAsync(HttpClient admin, string uf, string? ncm = "73063010", decimal icms = 18m)
+    private async Task<(SalesOrderOut Order, ProductOut Product)> NewOrderAsync(HttpClient admin, string uf, string? ncm = "73063010", decimal icms = 18m, decimal quantity = 10m, string days = "28")
     {
         var customer = await (await admin.Post("/api/customers", new CustomerIn("Cliente " + Code("C"), null, null, ConsumerType.Normal))).Read<CustomerOut>();
         var address = await (await admin.Post($"/api/customers/{customer.Id}/addresses", new CustomerAddressIn("26133636000103", uf, null, "148061942112", true, "Av. Brasil", "100", null, "Centro", "Embu", "3515004", "06800000", null, "Edilto", "compras@cliente.com", null))).Read<CustomerAddressOut>();
         var tube = await (await admin.Post("/api/products", Tube(Code("T"), ncm))).Read<ProductOut>();
-        var term = await (await admin.Post("/api/sales/payment-terms", new PaymentTermIn(Code("P", 8), "28 DDL", "28", 1_000_000m))).Read<PaymentTermOut>();
+        var term = await (await admin.Post("/api/sales/payment-terms", new PaymentTermIn(Code("P", 8), days + " DDL", days, 1_000_000m))).Read<PaymentTermOut>();
         (await admin.Post("/api/sales/price-list", new PriceListIn(tube.Id, null, 100m, 5m, icms, Today.AddDays(-1), null))).EnsureSuccessStatusCode();
-        var order = await (await admin.Post("/api/sales/orders", new SalesOrderIn(customer.Id, address.Id, [new SalesLineInput(tube.Id, 10m)], "PO-9", term.Id))).Read<SalesOrderOut>();
+        var order = await (await admin.Post("/api/sales/orders", new SalesOrderIn(customer.Id, address.Id, [new SalesLineInput(tube.Id, quantity)], "PO-9", term.Id))).Read<SalesOrderOut>();
         return (order, tube);
     }
 
@@ -88,7 +88,7 @@ public class FiscalPreviewTests(ApiFixture api)
         Assert.Equal("VOLUME", weighed.Transport.Species);
         Assert.Equal(1, weighed.Transport.Packages);
         Assert.Equal(weighed.Transport.NetWeightKg, weighed.Transport.GrossWeightKg);
-        Assert.Contains("NUMERO DO PEDIDO DE COMPRAS PO-9.", weighed.AdditionalInfo);
+        Assert.Contains("PEDIDO DE COMPRA N: PO-9", weighed.AdditionalInfo);
         Assert.Equal(950m, weighed.Lines.Single().Total); // 9.5 x 100
         Assert.Equal(400, (int)(await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}?lines=abc")).StatusCode);
 
@@ -126,9 +126,31 @@ public class FiscalPreviewTests(ApiFixture api)
         // every item with IPI CST 55 (suspended) carries the decree sentence instead of the CFOP text
         (await admin.Post("/api/fiscal/tax-rules", new TaxRuleIn(tube.Id, order.CustomerId, "5101", "00", 18m, 0m, "55", 0m, 0.65m, 3m))).EnsureSuccessStatusCode();
         var nf = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}")).Read<NfPreview>();
-        Assert.Equal("TUB12,00X1,60X6000MM 20MF020116", nf.Lines.Single().Description);
+        Assert.Equal("TUB12,00X1,60X6000MM 20MF020116 - -", nf.Lines.Single().Description); // the old paper ends every item name with the two empty complements
         Assert.StartsWith("MERCADORIA OBJETO DE INDUSTRIALIZACAO E/OU COMERCIALIZACAO PELO DESTINATARIO. IPI SUSPENSO CONFORME DECRETO 7212/2010", nf.AdditionalInfo);
-        Assert.Contains("NUMERO DO PEDIDO DE COMPRAS PO-9.", nf.AdditionalInfo);
+        Assert.Contains("PEDIDO DE COMPRA N: PO-9", nf.AdditionalInfo);
+    }
+
+    [Fact]
+    public async Task Duplicatas_put_the_rounding_difference_on_the_first_one_and_the_customers_own_po_phrase_is_used()
+    {
+        var admin = await api.AdminAsync();
+        await SetIssuer(admin, complete: true);
+        // 3.33 kg x 100 = 333.00 + 5% IPI = 349.65: two duplicatas, 174.825 each -> 174.83 and the first one takes the difference (the old paper did the same)
+        var (order, _) = await NewOrderAsync(admin, "SP", quantity: 3.33m, days: "28/35");
+        var nf = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}")).Read<NfPreview>();
+        Assert.Equal(349.65m, nf.InvoiceTotal);
+        Assert.Equal([174.82m, 174.83m], nf.Installments.Select(i => i.Amount).ToArray());
+
+        Assert.Contains("PEDIDO DE COMPRA N: PO-9", nf.AdditionalInfo);
+        var customer = await (await admin.GetAsync($"/api/customers/{order.CustomerId}")).Read<CustomerOut>();
+        (await admin.Put($"/api/customers/{customer.Id}", new CustomerIn(customer.Name, null, null, ConsumerType.Normal, true, null, null, null, null, "NUMERO DO PEDIDO {po}"))).EnsureSuccessStatusCode();
+        var worded = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}")).Read<NfPreview>();
+        Assert.Contains("NUMERO DO PEDIDO PO-9", worded.AdditionalInfo);
+
+        // species typed at loading ("PALET") replaces VOLUME(S)
+        var typed = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}?packages=3&species=PALET")).Read<NfPreview>();
+        Assert.Equal("PALET", typed.Transport.Species);
     }
 
     [Fact]

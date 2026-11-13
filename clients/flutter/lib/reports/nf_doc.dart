@@ -165,6 +165,7 @@ Future<Uint8List> buildPreviewNfPdf(Map<String, dynamic> pv, {String number = ''
   String caps(Object? v) => _s(v).toUpperCase().replaceAllMapped(RegExp('[ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ]'), (m) => 'AAAAAEEEEIIIIOOOOOUUUUC'['ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ'.indexOf(m[0]!)]);
   String phone(Object? v) {
     final d = _s(v).replaceAll(RegExp(r'\D'), '');
+    if (d.length == 8) return '${d.substring(0, 4)}-${d.substring(4)}'; // some customers were registered without the area code
     return d.length == 10 ? '(${d.substring(0, 2)})${d.substring(2, 6)}-${d.substring(6)}' : (d.length == 11 ? '(${d.substring(0, 2)})${d.substring(2, 7)}-${d.substring(7)}' : d);
   }
   String zip(Object? v) {

@@ -16,7 +16,10 @@ public sealed class FiscalException(int status, string message, string? field = 
     public static FiscalException Rejected(string status, string message) => new(422, $"SEFAZ rejected the NF ({status}): {message}");
 }
 
-public sealed record SaleInvoiceOptions(string? Cfop = null, decimal Freight = 0m, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null);
+public sealed record SaleInvoiceOptions(string? Cfop = null, decimal Freight = 0m, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null, PackageInfo? Package = null);
+
+/// <summary>Species, number and brand of the volumes, as typed at loading ("PALET", "6 UNIDADE"); the species defaults to VOLUME / VOLUMES.</summary>
+public sealed record PackageInfo(string? Species = null, string? Number = null, string? Brand = null);
 
 /// <param name="Company">EBT (default) or BST: the issuer of the remessa.</param>
 public sealed record OutsideInvoiceOptions(decimal UnitValue, string? Cfop = null, string? Company = null);
@@ -28,7 +31,7 @@ public sealed record NfeParty(string Name, string Document, string? StateRegistr
 /// <param name="CarrierDocument">CNPJ/CPF of the carrier, from the carrier registry when the delivery's carrier name matches.</param>
 /// <param name="VehicleUf">UF of the plate; falls back to the carrier UF, never to the issuer's.</param>
 public sealed record NfeTransport(int FreightMode, string? Carrier, string? VehiclePlate, int Packages, decimal? GrossWeightKg, decimal? NetWeightKg = null, string? CarrierDocument = null, string? CarrierStateRegistration = null,
-    string? CarrierAddress = null, string? CarrierCity = null, string? CarrierUf = null, string? VehicleUf = null);
+    string? CarrierAddress = null, string? CarrierCity = null, string? CarrierUf = null, string? VehicleUf = null, string? Species = null, string? PackageNumber = null, string? PackageBrand = null);
 
 public sealed record ReturnLineInput(int ItemId, decimal Quantity);
 

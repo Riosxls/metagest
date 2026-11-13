@@ -47,11 +47,18 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     'freight': r'Frete na NF (R$)',
     'cfop': 'CFOP',
     'lotNumber': 'Nº do lote',
+    'species': 'Espécie dos volumes',
+    'packageNumber': 'Numeração dos volumes',
+    'packageBrand': 'Marca dos volumes',
     'notes': 'Observações da entrega',
   };
     /// Always typed (Quantidade pesada and Volumes); the rest keeps its default and sits in the collapsed block.
   static const _usual = ['packages', 'notes'];
-  static const _rare = ['carrier', 'grossWeightKg', 'vehiclePlate', 'freight', 'cfop', 'lotNumber'];
+  static const _rare = ['carrier', 'grossWeightKg', 'vehiclePlate', 'freight', 'cfop', 'lotNumber', 'species', 'packageNumber', 'packageBrand'];
+
+  /// The names the dispatch and the preview use for what the form calls differently.
+  static const _bodyKey = {'species': 'packageSpecies'};
+  static const _queryKey = {'species': 'species', 'packageNumber': 'number', 'packageBrand': 'brand'};
   static const _numericExtra = {'grossWeightKg', 'freight', 'packages'};
   late final _extraCtl = {for (final k in _extra.keys) k: TextEditingController()..addListener(_typed)};
 
@@ -82,6 +89,9 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     if (t('vehiclePlate').isNotEmpty) q['plate'] = t('vehiclePlate');
     if (t('cfop').isNotEmpty) q['cfop'] = t('cfop');
     if (t('notes').isNotEmpty) q['notes'] = t('notes');
+    for (final k in _queryKey.keys) {
+      if (t(k).isNotEmpty) q[_queryKey[k]!] = t(k);
+    }
     final gross = parseDecimal(t('grossWeightKg')), freight = parseDecimal(t('freight')), packages = parseDecimal(t('packages'));
     if (gross != null) q['gross'] = '$gross';
     if (freight != null) q['freight'] = '$freight';
@@ -181,7 +191,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
         'lines': lines,
         if (!on) 'invoiceNumber': typed,
         for (final e in _extraCtl.entries)
-          if (e.value.text.trim().isNotEmpty) e.key: e.key == 'packages' ? parseDecimal(e.value.text.trim())?.toInt() : (_numericExtra.contains(e.key) ? parseDecimal(e.value.text.trim()) : e.value.text.trim()),
+          if (e.value.text.trim().isNotEmpty) (_bodyKey[e.key] ?? e.key): e.key == 'packages' ? parseDecimal(e.value.text.trim())?.toInt() : (_numericExtra.contains(e.key) ? parseDecimal(e.value.text.trim()) : e.value.text.trim()),
       }) as Map<String, dynamic>;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Carga expedida${d['invoiceNumber'] == null ? '' : ' com a NF ${d['invoiceNumber']}'}. Próximo passo: certificado.')));
@@ -542,6 +552,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
       'cfop' => 'Padrão: o do endereço de entrega ou 5101',
       'freight' => 'Só se o frete for cobrado na NF',
       'vehiclePlate' => 'Opcional (vai em branco)',
+      'species' => 'Padrão: VOLUME (VOLUMES se mais de um). Ex.: PALET, CACAMBA',
       _ => null,
     };
   }
