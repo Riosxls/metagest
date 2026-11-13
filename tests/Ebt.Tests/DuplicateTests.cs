@@ -284,4 +284,18 @@ public class DuplicateTests(ApiFixture api)
         Assert.False(compare.Fields.Single(f => f.Key == "stateRegistration").Differs);
         Assert.True(compare.Fields.Single(f => f.Key == "name").Differs);
     }
+
+    [Fact]
+    public async Task Resolve_takes_a_typed_value_when_no_record_has_the_right_one()
+    {
+        var admin = await api.AdminAsync();
+        var root = NewRoot();
+        var a = await Customer(admin, "Digitado " + Tag(), document: Cnpj(root, 1));
+        var b = await Customer(admin, "Digitado " + Tag(), document: Cnpj(root, 1));
+        var typed = "Nome Correto " + Tag();
+        var body = new ResolveIn(a.Id, [b.Id], new() { ["name"] = b.Id }, false, new() { ["name"] = typed });
+        var done = await (await admin.Post("/api/duplicates/customers/resolve", body)).Read<ResolveOut>();
+        Assert.Equal(1, done.FieldsChanged);
+        Assert.Equal(typed, (await (await admin.GetAsync($"/api/customers/{a.Id}")).Read<CustomerOut>()).Name);
+    }
 }

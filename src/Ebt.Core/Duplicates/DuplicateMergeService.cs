@@ -18,8 +18,9 @@ public sealed record CompareOut(IReadOnlyList<CompareRecord> Records, IReadOnlyL
 /// <param name="KeepId">The record that stays.</param>
 /// <param name="OtherIds">The duplicates that are deactivated.</param>
 /// <param name="Fields">Field key -> id of the record whose value goes into the kept one. A field not listed keeps its value.</param>
+/// <param name="Custom">Field key -> a value typed by the user (none of the records had the right one). It wins over <c>Fields</c> for that key.</param>
 /// <param name="MoveAddresses">Customers and suppliers: addresses of the duplicates move to the kept record.</param>
-public sealed record ResolveIn(int KeepId, IReadOnlyList<int> OtherIds, Dictionary<string, int>? Fields, bool MoveAddresses);
+public sealed record ResolveIn(int KeepId, IReadOnlyList<int> OtherIds, Dictionary<string, int>? Fields, bool MoveAddresses, Dictionary<string, string?>? Custom = null);
 
 public sealed record ResolveOut(int KeepId, int FieldsChanged, int AddressesMoved, int Deactivated);
 
@@ -163,7 +164,7 @@ public sealed class DuplicateMergeService(EbtDbContext db, DuplicateService dupl
                 {
                     var rows = await db.Customers.Where(c => all.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
                     if (rows.Count != all.Count) return (ResolveStatus.NotFound, null, null);
-                    changed = Apply(CustomerSpecs, rows, input.KeepId, fields);
+                    changed = Apply(CustomerSpecs, rows, input.KeepId, fields, input.Custom);
                     foreach (var o in others) rows[o].Active = false;
                     if (input.MoveAddresses)
                     {
@@ -181,7 +182,7 @@ public sealed class DuplicateMergeService(EbtDbContext db, DuplicateService dupl
                 {
                     var rows = await db.Suppliers.Where(s => all.Contains(s.Id)).ToDictionaryAsync(s => s.Id, ct);
                     if (rows.Count != all.Count) return (ResolveStatus.NotFound, null, null);
-                    changed = Apply(SupplierSpecs, rows, input.KeepId, fields);
+                    changed = Apply(SupplierSpecs, rows, input.KeepId, fields, input.Custom);
                     foreach (var o in others) rows[o].Active = false;
                     if (input.MoveAddresses)
                     {
@@ -199,7 +200,7 @@ public sealed class DuplicateMergeService(EbtDbContext db, DuplicateService dupl
                 {
                     var rows = await db.Products.Where(p => all.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
                     if (rows.Count != all.Count) return (ResolveStatus.NotFound, null, null);
-                    changed = Apply(ProductSpecs, rows, input.KeepId, fields);
+                    changed = Apply(ProductSpecs, rows, input.KeepId, fields, input.Custom);
                     foreach (var o in others) rows[o].Blocked = true;
                     break;
                 }
@@ -216,13 +217,22 @@ public sealed class DuplicateMergeService(EbtDbContext db, DuplicateService dupl
         return (ResolveStatus.Done, new ResolveOut(input.KeepId, changed, moved, others.Count), null);
     }
 
-    private static int Apply<T>(Spec<T>[] specs, Dictionary<int, T> rows, int keepId, Dictionary<string, int> fields)
+    private static int Apply<T>(Spec<T>[] specs, Dictionary<int, T> rows, int keepId, Dictionary<string, int> fields, Dictionary<string, string?>? custom)
     {
         var changed = 0;
+        foreach (var (key, typed) in custom ?? [])
+        {
+            var spec = specs.FirstOrDefault(s => s.Key == key);
+            if (spec is null) continue;
+            var value = DigitFields.Contains(key) ? S(DuplicateService.Digits(typed)) : S(typed);
+            if (value == S(spec.Get(rows[keepId]))) continue;
+            spec.Set(rows[keepId], value);
+            changed++;
+        }
         foreach (var (key, source) in fields)
         {
             var spec = specs.FirstOrDefault(s => s.Key == key);
-            if (spec is null || source == keepId) continue;
+            if (spec is null || source == keepId || (custom?.ContainsKey(key) ?? false)) continue;
             var value = S(spec.Get(rows[source]));
             if (value == S(spec.Get(rows[keepId]))) continue;
             spec.Set(rows[keepId], value);

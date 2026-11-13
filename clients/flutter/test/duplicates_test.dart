@@ -235,6 +235,59 @@ void main() {
     expect(find.text('Nenhum duplicado suspeito'), findsOneWidget);
   });
 
+  testWidgets('the pencil types a value when no record has the right one and sends it as custom', (tester) async {
+    final posts = <Map<String, dynamic>>[];
+    final client = MockClient((r) async {
+      if (r.method == 'GET' && r.url.path == '/api/duplicates/customers') {
+        return json({
+          'groups': [
+            {
+              'members': [self, other],
+              'pairs': [
+                pair(self, other, 100, ['Mesmo CNPJ/CPF']),
+              ],
+              'score': 100,
+            },
+          ],
+          'pairs': 1,
+          'records': 2,
+        });
+      }
+      if (r.method == 'GET' && r.url.path == '/api/duplicates/customers/compare') {
+        return json({
+          'records': [
+            {'id': 1, 'label': 'A', 'active': true, 'usage': [], 'addresses': 1},
+            {'id': 2, 'label': 'B', 'active': true, 'usage': [], 'addresses': 1},
+          ],
+          'fields': [
+            {'key': 'name', 'label': 'Nome', 'values': {'1': 'ACO ALFA', '2': 'AÇO ALFA LTDA'}, 'differs': true},
+          ],
+        });
+      }
+      if (r.method == 'POST' && r.url.path == '/api/duplicates/customers/resolve') {
+        posts.add(jsonDecode(r.body) as Map<String, dynamic>);
+        return json({'keepId': 1, 'fieldsChanged': 1, 'addressesMoved': 0, 'deactivated': 1});
+      }
+      return json({'groups': <Object>[], 'pairs': 0, 'records': 0});
+    });
+    await pumpApp(tester, DuplicatesScreen(session: sessionFor('SalesManager', client), initialKind: 'customers'));
+    await tester.tap(find.byKey(const ValueKey('current-1')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('edit-name-2')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Aço Alfa Indústria Ltda');
+    await tester.tap(find.widgetWithText(FilledButton, 'Usar este valor'));
+    await tester.pumpAndSettle();
+    expect(find.text('Valor digitado'), findsOneWidget);
+    expect(find.text('Aço Alfa Indústria Ltda'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('compare-confirm')));
+    await tester.pumpAndSettle();
+    expect(posts.single['custom'], {'name': 'Aço Alfa Indústria Ltda'});
+    expect(posts.single['fields'], isEmpty);
+  });
+
   testWidgets('the list screen reports a load failure with a retry', (tester) async {
     await pumpApp(tester, DuplicatesScreen(session: sessionFor('Sales', MockClient((r) async => json({'message': 'Banco indisponível'}, 500)))));
     expect(find.text('Tentar novamente'), findsOneWidget);

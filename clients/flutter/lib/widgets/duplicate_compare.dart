@@ -34,6 +34,10 @@ class _CompareDialogState extends State<_CompareDialog> {
   List<Map<String, dynamic>> _records = const [];
   List<Map<String, dynamic>> _fields = const [];
   final _chosen = <String, int>{};
+
+  /// Values typed by the user because no record had the right one (field key -> text). Their field is chosen as [_typed].
+  final _custom = <String, String>{};
+  static const _typed = -1;
   int? _keep;
   bool _moveAddresses = true;
   bool _showEqual = false;
@@ -97,6 +101,20 @@ class _CompareDialogState extends State<_CompareDialog> {
         _chosen[f['key'] as String] = src;
       }
     }
+    for (final k in _custom.keys) {
+      _chosen[k] = _typed;
+    }
+  }
+
+  /// The pencil: type the right value when none of the records has it. Empty text clears the field.
+  Future<void> _edit(Map<String, dynamic> f, String initial) async {
+    final key = f['key'] as String;
+    final text = await promptText(context, title: '${f['label']}', label: 'Valor correto', initial: initial, confirmLabel: 'Usar este valor');
+    if (text == null || !mounted) return;
+    setState(() {
+      _custom[key] = text.trim();
+      _chosen[key] = _typed;
+    });
   }
 
   Future<void> _save() async {
@@ -111,7 +129,14 @@ class _CompareDialogState extends State<_CompareDialog> {
           for (final i in widget.ids)
             if (i != _keep) i,
         ],
-        'fields': _chosen,
+        'fields': {
+          for (final e in _chosen.entries)
+            if (e.value != _typed) e.key: e.value,
+        },
+        'custom': {
+          for (final e in _custom.entries)
+            if (_chosen[e.key] == _typed) e.key: e.value,
+        },
         'moveAddresses': _moveAddresses,
       });
       if (mounted) Navigator.pop(context, true);
@@ -151,10 +176,23 @@ class _CompareDialogState extends State<_CompareDialog> {
                     ),
                     const SizedBox(height: 12),
                     Table(
-                      columnWidths: {0: const FixedColumnWidth(170), for (var i = 1; i <= _records.length; i++) i: const FlexColumnWidth()},
+                      columnWidths: {
+                        0: const FixedColumnWidth(150),
+                        for (var i = 1; i <= _records.length + (_custom.isEmpty ? 0 : 1); i++) i: const FlexColumnWidth(),
+                      },
                       defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                       children: [
-                        TableRow(children: [const SizedBox.shrink(), for (final r in _records) _header(theme, r)]),
+                        TableRow(
+                          children: [
+                            const SizedBox.shrink(),
+                            for (final r in _records) _header(theme, r),
+                            if (_custom.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                child: Text('Valor digitado', style: theme.textTheme.titleSmall),
+                              ),
+                          ],
+                        ),
                         for (final f in shown)
                           TableRow(
                             decoration: BoxDecoration(
@@ -166,6 +204,7 @@ class _CompareDialogState extends State<_CompareDialog> {
                                 child: Text('${f['label']}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
                               ),
                               for (final r in _records) _cell(theme, f, r['id'] as int),
+                              if (_custom.isNotEmpty) _typedCell(theme, f),
                             ],
                           ),
                       ],
@@ -248,8 +287,26 @@ class _CompareDialogState extends State<_CompareDialog> {
       _shown(f['key'] as String, v),
       style: theme.textTheme.bodyMedium?.copyWith(color: v == null || v.isEmpty ? theme.colorScheme.onSurfaceVariant : null),
     );
-    if (!differs) return Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), child: text);
     final key = f['key'] as String;
+    final pencil = IconButton(
+      key: ValueKey('edit-$key-$id'),
+      tooltip: 'Digitar o valor correto',
+      visualDensity: VisualDensity.compact,
+      iconSize: 16,
+      onPressed: () => _edit(f, _custom[key] ?? v ?? ''),
+      icon: const Icon(Icons.edit_outlined),
+    );
+    if (!differs) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: Row(
+          children: [
+            Expanded(child: text),
+            pencil,
+          ],
+        ),
+      );
+    }
     final empty = v == null || v.isEmpty;
     return InkWell(
       key: ValueKey('pick-$key-$id'),
@@ -265,6 +322,48 @@ class _CompareDialogState extends State<_CompareDialog> {
             ),
             const SizedBox(width: 6),
             Expanded(child: text),
+            pencil,
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The extra column: the value the user typed for the field, chosen as soon as it is typed, with the pencil to change it and a cross to drop it.
+  Widget _typedCell(ThemeData theme, Map<String, dynamic> f) {
+    final key = f['key'] as String;
+    final value = _custom[key];
+    if (value == null) return const SizedBox.shrink();
+    return InkWell(
+      key: ValueKey('pick-$key-typed'),
+      onTap: () => setState(() => _chosen[key] = _typed),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Row(
+          children: [
+            Icon(_chosen[key] == _typed ? Icons.radio_button_checked : Icons.radio_button_unchecked, size: 18, color: theme.colorScheme.primary),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(_shown(key, value), style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              iconSize: 16,
+              tooltip: 'Alterar',
+              onPressed: () => _edit(f, value),
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
+              key: ValueKey('clear-$key'),
+              visualDensity: VisualDensity.compact,
+              iconSize: 16,
+              tooltip: 'Descartar o valor digitado',
+              onPressed: () => setState(() {
+                _custom.remove(key);
+                _applyDefaults();
+              }),
+              icon: const Icon(Icons.close),
+            ),
           ],
         ),
       ),
