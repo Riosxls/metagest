@@ -108,7 +108,7 @@ public sealed partial class FiscalService
             var p = products[ol.ProductId];
             var remaining = Math.Max(0, ol.Quantity - shippedByLine.GetValueOrDefault(ol.Id));
             var qty = quantities is null ? remaining : quantities.GetValueOrDefault(ol.Id);
-            orderLines.Add(new NfPreviewOrderLine(ol.Id, ol.Sequence, p.Code, ol.Description, p.StockUnit, ol.Quantity, remaining, Math.Max(0, qty)));
+            orderLines.Add(new NfPreviewOrderLine(ol.Id, ol.Sequence, p.Code, ol.Description, ol.SaleUnit ?? ol.Unit, ol.Quantity, remaining, Math.Max(0, qty)));
             if (qty <= 0) continue;
             weights.Add((SalesService.KgPerUnit(ol, p), qty));
             var monthly = await MonthlyPriceAsync(p.Id, customer.Id, cfop.Code, local.Year, local.Month, ct);
@@ -119,7 +119,7 @@ public sealed partial class FiscalService
             if (rule is null && cfop.Taxed) noRule.Add(p.Code);
             doc.Lines.Add(new FiscalDocumentLine
             {
-                Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = await ItemDescriptionAsync(customer.Id, p.Id, ol.Description, ct), Ncm = Digits(p.Ncm), Unit = p.StockUnit,
+                Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = await ItemDescriptionAsync(customer.Id, p.Id, ol.Description, ct), Ncm = Digits(p.Ncm), Unit = ol.SaleUnit ?? ol.Unit,
                 Quantity = qty, UnitPrice = price, Total = Money(qty * price), IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
             }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent, ufIcms));
             sources.Add((monthly is not null ? "Tabela mensal" : "Pedido", rule is not null ? (rule.CustomerId is null ? "Regra do produto" : "Regra do cliente") : ol.IcmsPercent > 0 ? $"Alíquota do pedido, CST do CFOP {cfop.Code}" : ufIcms is not null ? $"ICMS de {recipientUf}, CST do CFOP {cfop.Code}" : $"Padrão do CFOP {cfop.Code}"));

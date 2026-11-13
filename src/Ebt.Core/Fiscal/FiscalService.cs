@@ -79,7 +79,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
                 var rule = rules.Where(r => r.ProductId == p.Id).OrderBy(r => r.CustomerId == null).FirstOrDefault();
                 doc.Lines.Add(new FiscalDocumentLine
                 {
-                    Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = await ItemDescriptionAsync(customer.Id, p.Id, ol.Description, ct), Ncm = RequireNcm(p), Unit = p.StockUnit,
+                    Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = await ItemDescriptionAsync(customer.Id, p.Id, ol.Description, ct), Ncm = RequireNcm(p), Unit = ol.SaleUnit ?? ol.Unit,
                     Quantity = dl.Quantity, UnitPrice = price, Total = Money(dl.Quantity * price),
                     IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
                 }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent, ufIcms));

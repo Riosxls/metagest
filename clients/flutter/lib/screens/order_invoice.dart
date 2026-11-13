@@ -210,7 +210,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
       Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 8, 24), children: _preview(o, nf))),
       SizedBox(
         width: 440,
-        child: ListView(padding: const EdgeInsets.fromLTRB(8, 16, 16, 24), children: [_actionPanel(nf)]),
+        child: ListView(padding: const EdgeInsets.fromLTRB(8, 16, 16, 24), children: [_actionPanel(o, nf)]),
       ),
     ],
   );
@@ -218,7 +218,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   Widget _narrowBody(Map<String, dynamic> o, Map<String, dynamic> nf) {
     final preview = _preview(o, nf);
     // Phones and narrow windows: the header and the checklist first, then the action panel, then the rest of the NF.
-    return ListView(padding: const EdgeInsets.all(16), children: [...preview.take(3), _actionPanel(nf), gap, ...preview.skip(3)]);
+    return ListView(padding: const EdgeInsets.all(16), children: [...preview.take(3), _actionPanel(o, nf), gap, ...preview.skip(3)]);
   }
 
   // ---- left: the NF -----------------------------------------------------------------------------------------------------------------------------------------
@@ -558,7 +558,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   );
 
   /// Everything the person does before the truck leaves, in order: what is weighed, the load data, the total to be invoiced and the confirmation.
-  Widget _actionPanel(Map<String, dynamic> nf) {
+  Widget _actionPanel(Map<String, dynamic> o, Map<String, dynamic> nf) {
     final theme = Theme.of(context);
     final on = nf['fiscalEnabled'] == true;
     final oldServer = nf['orderLines'] == null;
@@ -578,6 +578,16 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
                 _chip(nf['ready'] == true ? 'Pronta' : 'Pendências', tone: nf['ready'] == true ? Tone.success : Tone.danger, icon: nf['ready'] == true ? Icons.check : Icons.error_outline),
               ],
             ),
+            if (o['ready'] != true && ['Released', 'PartiallyShipped'].contains(o['status'])) ...[
+              const SizedBox(height: 12),
+              const NextStepCard(
+                key: ValueKey('invoice-not-ready'),
+                title: 'A OF ainda não foi concluída',
+                message: 'A NF sai quando o produto já voltou da fábrica e foi pesado. Confirme se a carga está mesmo pronta antes de emitir.',
+                tone: Tone.warning,
+                icon: Icons.precision_manufacturing_outlined,
+              ),
+            ],
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(14),
