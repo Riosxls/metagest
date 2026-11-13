@@ -112,6 +112,8 @@ public class FiscalDocument
     /// <summary>The issuer row (EBT or BST) that numbered and signed this NF.</summary>
     public int IssuerId { get; set; } = 1;
     public FiscalSettings? Issuer { get; set; }
+    /// <summary>Reference of the delivery this NF was issued for (hidden: it used to be printed in the NF text). Lets a shipment retry find an NF authorized by SEFAZ whose link to the delivery was lost.</summary>
+    public string? DeliveryMarker { get; set; }
     public FiscalKind Kind { get; set; }
     public FiscalStatus Status { get; set; }
     public required string CfopCode { get; set; }

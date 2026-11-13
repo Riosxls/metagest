@@ -17,6 +17,22 @@ const _issuerCity = 'CEP 02883-070 - Sao Paulo, Sp - Fone (11)4241-4436';
 const _issuerIe = '124491149119';
 const _issuerCnpj = '51.440.317/0001-80';
 
+/// The company on top of the paper. The papers printed for NFs issued outside the system keep the BST data; the simulation takes it from the issuer register.
+class _Issuer {
+  const _Issuer({required this.name, required this.address, required this.city, required this.ie, required this.cnpj, this.brand = '', this.tagline = ''});
+
+  final String name, address, city, ie, cnpj, brand, tagline;
+}
+
+const _bstIssuer = _Issuer(name: _issuerName, address: _issuerAddress, city: _issuerCity, ie: _issuerIe, cnpj: _issuerCnpj, brand: 'BSTTUBOS', tagline: 'PERFILADOS E TREFILADOS DE PRECISÃO');
+
+/// The transporter block of the paper (the old system printed the issuer itself when the freight is ours).
+class _Carrier {
+  const _Carrier({required this.name, this.document = '', this.ie = '', this.address = '', this.city = '', this.uf = '', this.plate = '', this.mode = '0 - Rem. (CIF)'});
+
+  final String name, document, ie, address, city, uf, plate, mode;
+}
+
 const _venda = 'VENDA DE MERCADORIA';
 const _remessa = 'REMESSA PARA INDUSTRIALIZACAO';
 
@@ -34,14 +50,18 @@ class NfFiscal {
 }
 
 class _Item {
-  const _Item({required this.code, required this.description, required this.ncm, required this.cst, required this.cfop, required this.unit, required this.qty, required this.unitPrice, this.icms = 0, this.ipi = 0});
+  const _Item({required this.code, required this.description, required this.ncm, required this.cst, required this.cfop, required this.unit, required this.qty, required this.unitPrice, this.icms = 0, this.ipi = 0, this.totalValue, this.baseValue, this.icmsAmount, this.ipiAmount});
 
   final String code, description, ncm, cst, cfop, unit;
   final num qty, unitPrice, icms, ipi;
 
-  num get total => qty * unitPrice;
-  num get icmsValue => cst == '000' ? total * icms / 100 : 0;
-  num get ipiValue => cst == '000' ? total * ipi / 100 : 0;
+  /// Figures already calculated by the server (the simulation); without them they come from the rates (the papers of NFs issued outside).
+  final num? totalValue, baseValue, icmsAmount, ipiAmount;
+
+  num get total => totalValue ?? qty * unitPrice;
+  num get base => baseValue ?? (cst == '000' ? total : 0);
+  num get icmsValue => icmsAmount ?? (cst == '000' ? total * icms / 100 : 0);
+  num get ipiValue => ipiAmount ?? (cst == '000' ? total * ipi / 100 : 0);
 }
 
 class _Party {
@@ -51,9 +71,13 @@ class _Party {
 }
 
 class _Nf {
-  const _Nf({required this.nature, required this.fiscal, required this.party, required this.items, required this.weight, required this.info, this.installments = const [], this.volumes = 1});
+  const _Nf({required this.nature, required this.fiscal, required this.party, required this.items, required this.weight, required this.info, this.installments = const [], this.volumes = 1, this.issuer = _bstIssuer, this.carrier, this.species = 'VOLUME', this.netWeight, this.freight = 0, this.invoiceTotal, this.watermark = '', this.docTitle = ''});
 
-  final String nature, info;
+  final String nature, info, species, watermark, docTitle;
+  final _Issuer issuer;
+  final _Carrier? carrier;
+  final num? netWeight, invoiceTotal;
+  final num freight;
   final NfFiscal fiscal;
   final _Party party;
   final List<_Item> items;
@@ -124,6 +148,82 @@ Future<Uint8List> buildSaleNfPdf(ApiClient api, Map<String, dynamic> delivery, N
     volumes: _n(delivery['packages']).toInt() == 0 ? 1 : _n(delivery['packages']).toInt(),
     installments: _installments(terms, total, DateTime.now()),
     info: 'MERCADORIA OBJETO DE COMERCIALIZACAO E/OU INDUSTRIALIZACAO PELO DESTINATARIO.${po.isEmpty ? '' : ' PEDIDO $po.'} ENTREGA ${_s(delivery['reference'])}.',
+  );
+  return _render(nf);
+}
+
+/// DANFE of the NF as the preview shows it (issuer, parties, items with their taxes, duplicatas, carrier, volumes, text), marked SIMULAÇÃO: to print and compare with what the old system issues.
+Future<Uint8List> buildPreviewNfPdf(Map<String, dynamic> pv, {String number = ''}) async {
+  final issuer = pv['issuer'] as Map<String, dynamic>;
+  final rec = pv['recipient'] as Map<String, dynamic>;
+  final tr = pv['transport'] as Map<String, dynamic>;
+  final company = _s(pv['company']);
+  String tc(String t) => t.isEmpty ? '' : t.split(' ').map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1).toLowerCase()).join(' ');
+  final items = [
+    for (final l in (pv['lines'] as List).cast<Map<String, dynamic>>())
+      _Item(
+        code: _s(l['code']),
+        description: _s(l['description']),
+        ncm: _s(l['ncm']),
+        cst: '0${_s(l['icmsCst'])}',
+        cfop: _s(pv['cfop']),
+        unit: _s(l['unit']),
+        qty: _n(l['quantity']),
+        unitPrice: _n(l['unitPrice']),
+        icms: _n(l['icmsPercent']),
+        ipi: _n(l['ipiPercent']),
+        totalValue: _n(l['total']),
+        baseValue: _n(l['icmsValue']) > 0 ? _n(l['total']) : 0,
+        icmsAmount: _n(l['icmsValue']),
+        ipiAmount: _n(l['ipiValue']),
+      ),
+  ];
+  final installments = [
+    for (final i in (pv['installments'] as List).cast<Map<String, dynamic>>()) (fmtDay(i['dueDate']), _s(i['sequence']).padLeft(3, '0'), _n(i['amount'])),
+  ];
+  final pkgs = _n(tr['packages']).toInt();
+  final nf = _Nf(
+    nature: _s(pv['cfopDescription']).toUpperCase(),
+    fiscal: NfFiscal(number: number.isEmpty ? _s(pv['nextNumber']) : number, series: _s(pv['series']).padLeft(3, '0'), protocol: ''),
+    party: _Party(
+      name: _s(rec['name']),
+      document: fmtDocument(rec['document']),
+      ie: _s(rec['stateRegistration']),
+      address: _s(rec['address']),
+      zip: _s(rec['zipCode']),
+      city: _s(rec['city']),
+      uf: _s(rec['uf']),
+    ),
+    items: items,
+    weight: _n(tr['grossWeightKg']),
+    netWeight: _n(tr['netWeightKg']),
+    volumes: pkgs == 0 ? 1 : pkgs,
+    species: _s(tr['species']).isEmpty ? 'VOLUME' : _s(tr['species']),
+    installments: installments,
+    info: _s(pv['additionalInfo']),
+    freight: _n(pv['freightTotal']),
+    invoiceTotal: _n(pv['invoiceTotal']),
+    issuer: _Issuer(
+      name: tc(_s(issuer['name'])),
+      address: _s(issuer['address']),
+      city: 'CEP ${_s(issuer['zipCode'])} - ${tc(_s(issuer['city']))}, ${_s(issuer['uf'])}',
+      ie: _s(issuer['stateRegistration']),
+      cnpj: fmtDocument(issuer['document']),
+      brand: company == 'BST' ? 'BSTTUBOS' : company,
+      tagline: company == 'BST' ? 'PERFILADOS E TREFILADOS DE PRECISÃO' : '',
+    ),
+    carrier: _Carrier(
+      name: _s(tr['carrier']),
+      document: fmtDocument(tr['carrierDocument']),
+      ie: _s(tr['carrierIe']),
+      address: _s(tr['carrierAddress']),
+      city: _s(tr['carrierCity']),
+      uf: _s(tr['carrierUf']),
+      plate: _s(tr['vehiclePlate']),
+      mode: _n(tr['freightMode']) == 0 ? '0 - Rem. (CIF)' : '1 - Dest. (FOB)',
+    ),
+    watermark: 'SIMULAÇÃO — SEM VALOR FISCAL',
+    docTitle: 'Simulação NF ${_s(pv['nextNumber'])}',
   );
   return _render(nf);
 }
@@ -211,7 +311,7 @@ pw.Widget _title(String t) => pw.Padding(
 
 Future<Uint8List> _render(_Nf nf) async {
   final doc = pw.Document(
-    title: 'NF ${nf.fiscal.number}',
+    title: nf.docTitle.isEmpty ? 'NF ${nf.fiscal.number}' : nf.docTitle,
     theme: await pdfTheme(italicAsRegular: true),
   );
   final now = DateTime.now();
@@ -219,7 +319,9 @@ Future<Uint8List> _render(_Nf nf) async {
   final numberText = f.number.isEmpty ? '' : f.number.replaceAll(RegExp(r'\D'), '').padLeft(9, '0').replaceAllMapped(RegExp(r'(\d{3})(\d{3})(\d{3})'), (m) => '${m[1]}.${m[2]}.${m[3]}');
   final products = nf.items.fold<num>(0, (a, i) => a + i.total);
   final ipi = nf.items.fold<num>(0, (a, i) => a + i.ipiValue);
-  final base = nf.items.where((i) => i.cst == '000').fold<num>(0, (a, i) => a + i.total);
+  final base = nf.items.fold<num>(0, (a, i) => a + i.base);
+  final iss = nf.issuer;
+  final car = nf.carrier ?? const _Carrier(name: 'BST', document: _issuerCnpj, ie: _issuerIe, address: 'RUA ANTONIO DA SILVA LEITE,175 ANEXO 2', city: 'SAO PAULO', uf: 'SP');
   final icms = nf.items.fold<num>(0, (a, i) => a + i.icmsValue);
   final taxed = base > 0;
   final p = nf.party;
@@ -242,7 +344,7 @@ Future<Uint8List> _render(_Nf nf) async {
     pw.Page(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.fromLTRB(22, 20, 22, 20),
-      build: (_) => pw.Column(
+      build: (_) => _watermarked(nf.watermark, pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         children: [
           _row([
@@ -251,7 +353,7 @@ Future<Uint8List> _render(_Nf nf) async {
               child: pw.Container(
                 padding: const pw.EdgeInsets.all(3),
                 decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.4)),
-                child: pw.Text('Recebemos de $_issuerName os produtos constantes na nota fiscal indicada ao lado', style: _val(8)),
+                child: pw.Text('Recebemos de ${iss.name} os produtos constantes na nota fiscal indicada ao lado', style: _val(8)),
               ),
             ),
             pw.Container(
@@ -280,12 +382,12 @@ Future<Uint8List> _render(_Nf nf) async {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   mainAxisAlignment: pw.MainAxisAlignment.center,
                   children: [
-                    pw.Text('BSTTUBOS', style: _val(20, true)),
-                    pw.Text('PERFILADOS E TREFILADOS DE PRECISÃO', style: _val(6, true)),
+                    if (iss.brand.isNotEmpty) pw.Text(iss.brand, style: _val(20, true)),
+                    if (iss.tagline.isNotEmpty) pw.Text(iss.tagline, style: _val(6, true)),
                     pw.SizedBox(height: 4),
-                    pw.Text(_issuerName, style: _val(9, true)),
-                    pw.Text(_issuerAddress, style: _val(6.5)),
-                    pw.Text(_issuerCity, style: _val(6.5)),
+                    pw.Text(iss.name, style: _val(9, true)),
+                    pw.Text(iss.address, style: _val(6.5)),
+                    pw.Text(iss.city, style: _val(6.5)),
                   ],
                 ),
               ),
@@ -330,7 +432,7 @@ Future<Uint8List> _render(_Nf nf) async {
             ),
           ], height: 104),
           _row([_cell('NATUREZA DA OPERAÇÃO', nf.nature, flex: 5, size: 10), _cell('PROTOCOLO DE AUTORIZAÇÃO DE USO', f.protocol.isEmpty ? '' : '${f.protocol}  ${_date(now)}', flex: 5, bold: true)]),
-          _row([_cell('INSCRIÇÃO ESTADUAL', _issuerIe, flex: 3), _cell('INSCR. DO SUBST. TRIBUT.', '', flex: 3), _cell('CNPJ', _issuerCnpj, flex: 4, bold: true)]),
+          _row([_cell('INSCRIÇÃO ESTADUAL', iss.ie, flex: 3), _cell('INSCR. DO SUBST. TRIBUT.', '', flex: 3), _cell('CNPJ', iss.cnpj, flex: 4, bold: true)]),
           _title('DESTINATÁRIO / REMETENTE'),
           _row([_cell('NOME / RAZÃO SOCIAL', p.name, flex: 6, size: 9), _cell('CNPJ / CPF', p.document, flex: 3), _cell('DATA DE EMISSÃO', _date(now), flex: 2, bold: true)]),
           _row([_cell('ENDEREÇO', p.address, flex: 6), _cell('BAIRRO / DISTRITO', p.district, flex: 3), _cell('CEP', p.zip, flex: 2), _cell('DATA DE ENTRADA / SAÍDA', _date(now), flex: 2)]),
@@ -366,35 +468,35 @@ Future<Uint8List> _render(_Nf nf) async {
             _cell('VALOR TOTAL DOS PRODUTOS', _money(products), right: true),
           ]),
           _row([
-            _cell('VALOR DO FRETE', '', right: true),
+            _cell('VALOR DO FRETE', nf.freight > 0 ? _money(nf.freight) : '', right: true),
             _cell('VALOR DO SEGURO', '', right: true),
             _cell('DESCONTO', '', right: true),
             _cell('OUTRAS DESPESAS ACESSÓRIAS', '', right: true),
             _cell('VALOR TOTAL DO IPI', ipi > 0 ? _money(ipi) : '', right: true),
-            _cell('VALOR TOTAL DA NOTA', _money(products + ipi), right: true, bold: true, size: 10, fill: PdfColors.grey300),
+            _cell('VALOR TOTAL DA NOTA', _money(nf.invoiceTotal ?? products + ipi), right: true, bold: true, size: 10, fill: PdfColors.grey300),
           ]),
           _title('TRANSPORTADOR / VOLUMES TRANSPORTADOS'),
           _row([
-            _cell('NOME / RAZÃO SOCIAL', 'BST', flex: 5),
-            _cell('FRETE POR CONTA', '0 - Rem. (CIF)', flex: 2),
+            _cell('NOME / RAZÃO SOCIAL', car.name, flex: 5),
+            _cell('FRETE POR CONTA', car.mode, flex: 2),
             _cell('CÓDIGO ANTT', '', flex: 2),
-            _cell('PLACA DO VEÍCULO', '', flex: 2),
+            _cell('PLACA DO VEÍCULO', car.plate, flex: 2),
             _cell('UF', '', flex: 1),
-            _cell('CNPJ / CPF', _issuerCnpj, flex: 3),
+            _cell('CNPJ / CPF', car.document, flex: 3),
           ]),
           _row([
-            _cell('ENDEREÇO', 'RUA ANTONIO DA SILVA LEITE,175 ANEXO 2', flex: 6),
-            _cell('MUNICÍPIO', 'SAO PAULO', flex: 3),
-            _cell('UF', 'SP', flex: 1),
-            _cell('INSCRIÇÃO ESTADUAL', _issuerIe, flex: 3),
+            _cell('ENDEREÇO', car.address, flex: 6),
+            _cell('MUNICÍPIO', car.city, flex: 3),
+            _cell('UF', car.uf, flex: 1),
+            _cell('INSCRIÇÃO ESTADUAL', car.ie, flex: 3),
           ]),
           _row([
             _cell('QUANTIDADE', '${nf.volumes}', flex: 2, right: true),
-            _cell('ESPÉCIE', 'VOLUME', flex: 2),
+            _cell('ESPÉCIE', nf.species, flex: 2),
             _cell('MARCA', '', flex: 2),
             _cell('NÚMERO', '', flex: 3),
             _cell('PESO BRUTO', nf.weight > 0 ? _qtd(nf.weight, 3) : '', flex: 3, right: true),
-            _cell('PESO LÍQUIDO', nf.weight > 0 ? _qtd(nf.weight, 3) : '', flex: 3, right: true),
+            _cell('PESO LÍQUIDO', (nf.netWeight ?? nf.weight) > 0 ? _qtd(nf.netWeight ?? nf.weight, 3) : '', flex: 3, right: true),
           ], height: 28),
           _title('DADOS DOS PRODUTOS / SERVIÇOS'),
           pw.Container(
@@ -417,10 +519,10 @@ Future<Uint8List> _render(_Nf nf) async {
                       item(_qtd(i.qty, 4), w[6], right: true),
                       item(i.unitPrice == 0 ? '' : _money(i.unitPrice), w[7], right: true),
                       item(i.total == 0 ? '' : _money(i.total), w[8], right: true),
-                      item(i.cst == '000' ? _money(i.total) : '', w[9], right: true),
-                      item(i.cst == '000' ? _money(i.icmsValue) : '', w[10], right: true),
-                      item(i.cst == '000' ? _money(i.icms) : '', w[11], right: true),
-                      item(i.cst == '000' ? _money(i.ipi) : '', w[12], right: true),
+                      item(i.base > 0 ? _money(i.base) : '', w[9], right: true),
+                      item(i.base > 0 ? _money(i.icmsValue) : '', w[10], right: true),
+                      item(i.base > 0 ? _money(i.icms) : '', w[11], right: true),
+                      item(i.ipiValue > 0 ? _money(i.ipi) : '', w[12], right: true),
                     ],
                   ),
               ],
@@ -439,11 +541,25 @@ Future<Uint8List> _render(_Nf nf) async {
             ),
           ),
         ],
-      ),
+      )),
     ),
   );
   return savePdf(doc);
 }
+
+/// A faint diagonal text over the page ("SIMULAÇÃO"), so a printed preview can never be taken for a real NF.
+pw.Widget _watermarked(String text, pw.Widget page) => text.isEmpty
+    ? page
+    : pw.Stack(
+        children: [
+          page,
+          pw.Positioned.fill(
+            child: pw.Center(
+              child: pw.Transform.rotate(angle: 0.6, child: pw.Opacity(opacity: 0.16, child: pw.Text(text, style: const pw.TextStyle(fontSize: 54, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)))),
+            ),
+          ),
+        ],
+      );
 
 pw.Widget _cellBox(String label, String value, {bool bold = false, double size = 8}) => pw.Container(
   padding: const pw.EdgeInsets.fromLTRB(3, 1, 3, 2),

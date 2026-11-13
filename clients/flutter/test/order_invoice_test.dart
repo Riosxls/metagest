@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:ebt_engenharia/api.dart';
+import 'package:ebt_engenharia/reports/nf_doc.dart';
 import 'package:ebt_engenharia/screens/fiscal_import.dart';
 import 'package:ebt_engenharia/screens/sales_common.dart';
 import 'package:ebt_engenharia/screens/sales_orders.dart';
@@ -136,6 +137,24 @@ void main() {
     final q = f.last('GET', '/api/fiscal/preview/order/9').url.queryParameters;
     expect(q['packages'], '3');
     expect(f.log.where((r) => r.url.path == '/api/fiscal/preview/order/9').length, before + 1);
+  });
+
+  testWidgets('Simular emissão builds the DANFE preview and offers the certificate step', (tester) async {
+    final f = MoreFake()..order['status'] = 'Released';
+    f.overrides['GET /api/fiscal/preview/order/9'] = (r) => _json(_preview());
+    await pumpMore(tester, f, (s) => SalesOrderScreen(session: s, id: 9), size: const Size(1400, 2600));
+    await tapKey(tester, 'order-invoice');
+    await tester.tap(find.byKey(const ValueKey('invoice-simulate')));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 3))); // the PDF is built for real
+    await tester.pumpAndSettle();
+    expect(find.text('Ir para o certificado'), findsOneWidget);
+    expect(f.called('POST', '/api/sales/orders/9/dispatch'), isFalse); // a simulation saves nothing
+  });
+
+  test('the simulated DANFE is built from the preview data', () async {
+    final bytes = await buildPreviewNfPdf(_preview());
+    expect(bytes.length, greaterThan(1000));
+    expect(String.fromCharCodes(bytes.take(4)), '%PDF');
   });
 
   testWidgets('the simulation lists what is missing and where to fix it', (tester) async {

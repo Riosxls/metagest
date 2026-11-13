@@ -17,7 +17,7 @@ public sealed record NfPreviewOrderLine(int OrderLineId, int Sequence, string Co
 
 public sealed record NfPreviewInstallment(int Sequence, DateOnly DueDate, decimal Amount);
 
-public sealed record NfPreviewTransport(string Mode, string? Carrier, decimal? NetWeightKg, decimal? GrossWeightKg = null, int Packages = 0, string Species = "VOLUME", string? VehiclePlate = null);
+public sealed record NfPreviewTransport(string Mode, string? Carrier, decimal? NetWeightKg, decimal? GrossWeightKg = null, int Packages = 0, string Species = "VOLUME", string? VehiclePlate = null, int FreightMode = 0, string? CarrierDocument = null, string? CarrierIe = null, string? CarrierAddress = null, string? CarrierCity = null, string? CarrierUf = null);
 
 /// <summary>What the person typed in "Saída da carga" that changes the NF: the preview follows it live (empty = the default).</summary>
 public sealed record PreviewOverrides(string? Cfop = null, decimal? Freight = null, string? Carrier = null, string? VehiclePlate = null, decimal? GrossWeightKg = null, int? Packages = null, string? Notes = null);
@@ -148,9 +148,7 @@ public sealed partial class FiscalService
         var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, typed?.Carrier, typed?.VehiclePlate, typed?.Packages ?? volumes, typed?.GrossWeightKg, weights, s, ct);
         if (transport.NetWeightKg is null) Add("Transporte", "Algum produto sem peso líquido: a NF sai sem o peso (pesoL).", "Engenharia > Produtos > Peso líquido", blocking: false);
 
-        var ofIds = order.Lines.Where(l => l.ProductionOrderId != null).Select(l => l.ProductionOrderId!.Value).ToList();
-        var ofs = await db.ProductionOrders.AsNoTracking().Where(o => ofIds.Contains(o.Id)).Select(o => o.Reference).ToListAsync(ct);
-        var info = Join(SaleLegalText(cfop, doc.Lines), order.CustomerPo is { } po ? $"Pedido de compra Nº: {po}" : null, order.Reference, ofs.Count > 0 ? string.Join(", ", ofs) : null, Clean(typed?.Notes));
+        var info = Join(SaleLegalText(cfop, doc.Lines), order.CustomerPo is { } po ? $"Pedido de compra Nº: {po}" : null, Clean(typed?.Notes));
         doc.AdditionalInfo = info;
 
         // The real check: build the NF-e XML and validate it against the official schema, so a layout problem shows here and not at the shipment.
@@ -167,7 +165,7 @@ public sealed partial class FiscalService
         var issuer = new NfPreviewParty(s.CompanyName ?? "", s.Cnpj, s.StateRegistration, $"{s.Street}, {s.Number} - {s.District}", s.City, s.Uf, s.ZipCode, s.CityIbgeCode);
         var lines = doc.Lines.Select((l, i) => new NfPreviewLine(l.Sequence, l.Code, l.Description, l.Ncm, l.Unit, l.Quantity, l.UnitPrice, l.Total, sources[i].Price, l.IcmsCst, l.IcmsPercent, l.IcmsValue, l.IpiCst, l.IpiPercent, l.IpiValue, l.PisValue, l.CofinsValue, sources[i].Tax)).ToList();
         return new NfPreview(s.Enabled, sefaz.IsSimulated, s.Environment.ToString(), s.Series, s.NextNumber, cfop.Code, cfop.Description, issuer, recipient, lines, doc.ProductsTotal, doc.FreightTotal, doc.IcmsBase, doc.IcmsTotal,
-            doc.IpiTotal, doc.PisTotal, doc.CofinsTotal, doc.InvoiceTotal, installments, new NfPreviewTransport(transport.FreightMode == 0 ? "Por conta do emitente (CIF)" : "Por conta do destinatário (FOB)", transport.Carrier, transport.NetWeightKg, transport.GrossWeightKg, transport.Packages, transport.Packages > 1 ? "VOLUMES" : "VOLUME", transport.VehiclePlate), info,
+            doc.IpiTotal, doc.PisTotal, doc.CofinsTotal, doc.InvoiceTotal, installments, new NfPreviewTransport(transport.FreightMode == 0 ? "Por conta do emitente (CIF)" : "Por conta do destinatário (FOB)", transport.Carrier, transport.NetWeightKg, transport.GrossWeightKg, transport.Packages, transport.Packages > 1 ? "VOLUMES" : "VOLUME", transport.VehiclePlate, transport.FreightMode, transport.CarrierDocument, transport.CarrierStateRegistration, transport.CarrierAddress, transport.CarrierCity, transport.CarrierUf), info,
             problems, problems.All(p => !p.Blocking), s.Company, orderLines);
     }
 }

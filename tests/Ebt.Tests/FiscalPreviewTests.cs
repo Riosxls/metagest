@@ -82,6 +82,7 @@ public class FiscalPreviewTests(ApiFixture api)
 
         var weighed = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}?lines={line.Id}:9.5")).Read<NfPreview>();
         Assert.Equal(9.5m, weighed.Lines.Single().Quantity);
+        Assert.DoesNotContain(order.Reference, weighed.AdditionalInfo ?? ""); // the internal PV and OF numbers are not printed on the NF
         // old-system habits: own freight (CIF) names the issuer as carrier, gross weight follows the net one, the info carries the customer PO
         Assert.Equal("BTS", weighed.Transport.Carrier); // EBT ships with BTS (default carrier of the issuer)
         Assert.Equal("VOLUME", weighed.Transport.Species);

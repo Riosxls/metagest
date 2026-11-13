@@ -1573,6 +1573,10 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("delivery_id");
 
+                    b.Property<string>("DeliveryMarker")
+                        .HasColumnType("text")
+                        .HasColumnName("delivery_marker");
+
                     b.Property<int>("Environment")
                         .HasColumnType("integer")
                         .HasColumnName("environment");

@@ -66,6 +66,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
 
             var doc = NewDocument(settings, cfop, FiscalKind.Sale, issuedAt, user, recipient, customerId: customer.Id, supplierId: null);
             doc.DeliveryId = delivery.Id;
+            doc.DeliveryMarker = delivery.Reference;
             var warnings = new List<string>();
             foreach (var (dl, n) in delivery.Lines.Select((dl, n) => (dl, n)))
             {
@@ -91,9 +92,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
             CalculateTaxes(doc, cfop, customerIcmsContributor: recipient.IcmsContributor);
             doc.Installments = cfop.GeneratesInstallments ? await InstallmentsAsync(order, customer, doc.InvoiceTotal, local, ct) : [];
 
-            var ofIds = doc.Lines.Where(l => l.ProductionOrderId != null).Select(l => l.ProductionOrderId!.Value).ToList();
-            var ofs = await db.ProductionOrders.AsNoTracking().Where(o => ofIds.Contains(o.Id)).Select(o => o.Reference).ToListAsync(ct);
-            doc.AdditionalInfo = Join(SaleLegalText(cfop, doc.Lines), order.CustomerPo is { } po ? $"Pedido de compra Nº: {po}" : null, order.Reference, $"Entrega ({delivery.Reference})", ofs.Count > 0 ? string.Join(", ", ofs) : null, delivery.Notes);
+            doc.AdditionalInfo = Join(SaleLegalText(cfop, doc.Lines), order.CustomerPo is { } po ? $"Pedido de compra Nº: {po}" : null, delivery.Notes);
             if (warnings.Count > 0)
             {
                 doc.Warnings = Cut(string.Join(" | ", warnings), 500);
@@ -104,9 +103,9 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
 
             // A shipment that failed after SEFAZ authorized its NF was rolled back, but the authorized NF (committed on its own connection) stayed without a delivery.
             // Shipping again must pick that NF up, not issue a second one for the same goods.
-            var marker = $"({delivery.Reference})";
+            var marker = delivery.Reference;
             var orphan = await db.FiscalDocuments.FirstOrDefaultAsync(f => f.Kind == FiscalKind.Sale && f.Status == FiscalStatus.Authorized && f.DeliveryId == null
-                && f.CustomerId == customer.Id && f.AdditionalInfo != null && f.AdditionalInfo.Contains(marker), ct);
+                && f.CustomerId == customer.Id && f.DeliveryMarker == marker, ct);
             if (orphan is not null)
             {
                 if (orphan.InvoiceTotal != doc.InvoiceTotal)

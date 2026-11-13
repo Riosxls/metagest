@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../entities.dart';
+import '../reports/nf_doc.dart' show buildPreviewNfPdf;
 import '../session.dart';
 import '../widgets/entity_form.dart' show confirm;
 import '../widgets/load_error.dart';
 import '../widgets/pipeline.dart';
+import '../widgets/print_panel.dart' show printPdf;
 import '../widgets/record_list.dart';
 import '../widgets/record_skeleton.dart';
+import 'certificates.dart' show newCertificate;
 import 'sales_common.dart';
 
 /// The "Nota Fiscal" step of an order: the preview of the NF the load would get (same CFOP, price, tax and duplicata rules as the real emission), the checklist of
@@ -126,6 +129,15 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Prints the NF as the preview shows it (marked SIMULAÇÃO, nothing is saved, numbered or sent) and moves on to the certificate, the next step of the flow.
+  Future<void> _simulate(Map<String, dynamic> nf) async {
+    await printPdf(context, 'Simulação NF ${nf['nextNumber']}', () => buildPreviewNfPdf(nf, number: _invoiceNumber.text.trim()));
+    if (!mounted || _order == null) return;
+    final go = await confirm(context, 'Simulação concluída: nada foi gravado, numerado nem enviado.\n\nIr para o certificado de qualidade, a próxima etapa?', confirmLabel: 'Ir para o certificado', cancelLabel: 'Ficar aqui');
+    if (!go || !mounted) return;
+    if (await newCertificate(context, widget.session, _order!) && mounted) unawaited(_load());
   }
 
   /// Creates the delivery with the weighed quantities, ships it and emits the NF (or takes the typed number when emission is off), then opens the delivery to continue with the certificate.
@@ -660,6 +672,13 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
               ),
               if (nf['ready'] != true)
                 Padding(padding: const EdgeInsets.only(top: 6), child: Text('Resolva as pendências do checklist para liberar a emissão.', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error))),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                key: const ValueKey('invoice-simulate'),
+                onPressed: _sending ? null : () => _simulate(nf),
+                icon: const Icon(Icons.print_outlined),
+                label: const Text('Simular emissão e imprimir'),
+              ),
               const SizedBox(height: 8),
               OutlinedButton.icon(key: const ValueKey('invoice-update'), onPressed: _loading || _sending ? null : _load, icon: const Icon(Icons.refresh), label: const Text('Atualizar a prévia')),
             ],
