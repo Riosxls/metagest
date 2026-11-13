@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../api.dart';
 import '../entities.dart';
+import '../widgets/fiscal_problems.dart';
 
 Map<String, int> _intMap(Object? m) => {for (final e in ((m as Map?) ?? const {}).entries) '${e.key}': (e.value as num).toInt()};
 List<Map<String, dynamic>> _rows(Object? l) => ((l as List?) ?? const []).cast<Map<String, dynamic>>();
@@ -141,6 +142,7 @@ class CommercialDashboard {
     this.pendingCertificate = 0,
     this.shippedAwaiting = 0,
     this.overdueReceivables = 0,
+    this.fiscalProblems = const [],
   });
 
   final Map<String, dynamic> kpis;
@@ -158,6 +160,9 @@ class CommercialDashboard {
 
   /// Duplicatas past their due date with a balance.
   final int overdueReceivables;
+
+  /// Customers whose register keeps an NF from being issued (see `fetchFiscalProblems`).
+  final List<Map<String, dynamic>> fiscalProblems;
 
   num k(String key) => (kpis[key] as num?) ?? 0;
 }
@@ -303,5 +308,6 @@ Future<CommercialDashboard> fetchCommercial(ApiClient api) async {
     shippedAwaiting: extra[1],
     pendingCertificate: extra[2],
     overdueReceivables: extra[3],
+    fiscalProblems: await fetchFiscalProblems(api),
   );
 }

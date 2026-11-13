@@ -64,7 +64,7 @@ Map<String, dynamic> _preview({bool ready = true, List<Map<String, dynamic>> pro
     {'sequence': 1, 'dueDate': '2026-12-07', 'amount': 1032.5},
   ],
   'transport': {'mode': 'Por conta do emitente (CIF)', 'carrier': null, 'netWeightKg': 12.5},
-  'additionalInfo': 'PV 9 | Pedido de compra Nº: PO-9',
+  'additionalInfo': 'MERCADORIA OBJETO DE COMERCIALIZACAO E/OU INDUSTRIALIZACAO PELO DESTINATARIO. NUMERO DO PEDIDO DE COMPRAS PO-9.',
   'problems': problems,
   'ready': ready,
   'orderLines': [

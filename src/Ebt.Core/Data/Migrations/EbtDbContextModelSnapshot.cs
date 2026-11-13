@@ -868,6 +868,10 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("character varying(10)")
                         .HasColumnName("legacy_code");
 
+                    b.Property<string>("LegalName")
+                        .HasColumnType("text")
+                        .HasColumnName("legal_name");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -3558,6 +3562,29 @@ namespace Ebt.Core.Data.Migrations
                         .HasDatabaseName("ix_products_code");
 
                     b.ToTable("products", (string)null);
+                });
+
+            modelBuilder.Entity("Ebt.Core.Entities.ProductCompanyNcm", b =>
+                {
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer")
+                        .HasColumnName("product_id");
+
+                    b.Property<string>("Company")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("company");
+
+                    b.Property<string>("Ncm")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("ncm");
+
+                    b.HasKey("ProductId", "Company")
+                        .HasName("pk_product_company_ncms");
+
+                    b.ToTable("product_company_ncms", (string)null);
                 });
 
             modelBuilder.Entity("Ebt.Core.Entities.ProductCustomer", b =>
@@ -7470,6 +7497,18 @@ namespace Ebt.Core.Data.Migrations
                         .HasConstraintName("fk_process_template_operations_process_templates_template_id");
 
                     b.Navigation("Template");
+                });
+
+            modelBuilder.Entity("Ebt.Core.Entities.ProductCompanyNcm", b =>
+                {
+                    b.HasOne("Ebt.Core.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_company_ncms_products_product_id");
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("Ebt.Core.Entities.ProductCustomer", b =>

@@ -158,7 +158,20 @@ Future<Uint8List> buildPreviewNfPdf(Map<String, dynamic> pv, {String number = ''
   final rec = pv['recipient'] as Map<String, dynamic>;
   final tr = pv['transport'] as Map<String, dynamic>;
   final company = _s(pv['company']);
-  String tc(String t) => t.isEmpty ? '' : t.split(' ').map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1).toLowerCase()).join(' ');
+  // Title case as the old paper printed the issuer ("Bst Ind Com de Produtos Metalurgicos Ltda"): small words stay lower case.
+  const small = {'de', 'da', 'do', 'das', 'dos', 'e'};
+  String tc(String t) => t.isEmpty ? '' : t.split(' ').map((w) => w.isEmpty ? w : (small.contains(w.toLowerCase()) ? w.toLowerCase() : w[0].toUpperCase() + w.substring(1).toLowerCase())).join(' ');
+  // The recipient is printed in capitals without accents, as the old system did.
+  String caps(Object? v) => _s(v).toUpperCase().replaceAllMapped(RegExp('[ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ]'), (m) => 'AAAAAEEEEIIIIOOOOOUUUUC'['ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ'.indexOf(m[0]!)]);
+  String phone(Object? v) {
+    final d = _s(v).replaceAll(RegExp(r'\D'), '');
+    return d.length == 10 ? '(${d.substring(0, 2)})${d.substring(2, 6)}-${d.substring(6)}' : (d.length == 11 ? '(${d.substring(0, 2)})${d.substring(2, 7)}-${d.substring(7)}' : d);
+  }
+  String zip(Object? v) {
+    final d = _s(v).replaceAll(RegExp(r'\D'), '');
+    return d.length == 8 ? '${d.substring(0, 5)}-${d.substring(5)}' : d;
+  }
+  String street(Map<String, dynamic> p) => [_s(p['street']), _s(p['number'])].where((e) => e.isNotEmpty).join(', ');
   final items = [
     for (final l in (pv['lines'] as List).cast<Map<String, dynamic>>())
       _Item(
@@ -186,13 +199,15 @@ Future<Uint8List> buildPreviewNfPdf(Map<String, dynamic> pv, {String number = ''
     nature: _s(pv['cfopDescription']).toUpperCase(),
     fiscal: NfFiscal(number: number.isEmpty ? _s(pv['nextNumber']) : number, series: _s(pv['series']).padLeft(3, '0'), protocol: ''),
     party: _Party(
-      name: _s(rec['name']),
+      name: caps(rec['name']),
       document: fmtDocument(rec['document']),
-      ie: _s(rec['stateRegistration']),
-      address: _s(rec['address']),
+      ie: _s(rec['stateRegistration']).replaceAll(RegExp(r'\D'), ''),
+      address: street(rec).isEmpty ? caps(rec['address']) : caps(street(rec)),
+      district: caps(rec['district']),
       zip: _s(rec['zipCode']),
-      city: _s(rec['city']),
+      city: caps(rec['city']),
       uf: _s(rec['uf']),
+      phone: phone(rec['phone']),
     ),
     items: items,
     weight: _n(tr['grossWeightKg']),
@@ -205,8 +220,8 @@ Future<Uint8List> buildPreviewNfPdf(Map<String, dynamic> pv, {String number = ''
     invoiceTotal: _n(pv['invoiceTotal']),
     issuer: _Issuer(
       name: tc(_s(issuer['name'])),
-      address: _s(issuer['address']),
-      city: 'CEP ${_s(issuer['zipCode'])} - ${tc(_s(issuer['city']))}, ${_s(issuer['uf'])}',
+      address: [street(issuer), _s(issuer['district'])].where((e) => e.isNotEmpty).map(tc).join(' - ').replaceAll(RegExp(r'\s+-\s*$'), ''),
+      city: 'CEP ${zip(issuer['zipCode'])} - ${tc(_s(issuer['city']))}, ${tc(_s(issuer['uf']))}${phone(issuer['phone']).isEmpty ? '' : ' - Fone ${phone(issuer['phone'])}'}',
       ie: _s(issuer['stateRegistration']),
       cnpj: fmtDocument(issuer['document']),
       brand: company == 'BST' ? 'BSTTUBOS' : company,

@@ -10,8 +10,10 @@ import '../session.dart';
 import '../theme_tokens.dart';
 import '../widgets/alerts.dart';
 import '../widgets/dash.dart';
+import '../widgets/fiscal_problems.dart' show fiscalProblemLines;
 import '../widgets/responsive.dart';
 import 'backup_alert.dart';
+import 'customers.dart' show openCustomer;
 import 'dashboard_data.dart';
 import 'deliveries.dart' show DeliveriesScreen;
 import 'orders.dart';
@@ -202,6 +204,22 @@ List<DashAlert> buildAlerts(
       ),
       DashAlert('Comercial', Icons.task_alt, 'Entregas expedidas aguardando confirmação', commercial.shippedAwaiting, 'deliveries', 'Shipped', to('deliveries', 'Shipped')),
       DashAlert('Comercial', Icons.account_balance_wallet_outlined, 'Duplicatas vencidas', commercial.overdueReceivables, 'receivables', 'overdue', to('receivables', 'overdue')),
+      DashAlert(
+        'Comercial',
+        Icons.error_outline,
+        'Clientes com cadastro incompleto para NF',
+        commercial.fiscalProblems.length,
+        'customers',
+        null,
+        showList(
+          'Clientes com cadastro incompleto para NF',
+          [...commercial.fiscalProblems]..sort((a, b) => ((b['openOrders'] as num?) ?? 0).compareTo((a['openOrders'] as num?) ?? 0)),
+          (x) => '${x['name']} · ${fiscalProblemLines(x).join(' · ')}',
+          (x) => openCustomer(context, session, x['customerId'] as int).then((_) => refresh()),
+          all: 'customers',
+          total: commercial.fiscalProblems.length,
+        ),
+      ),
       DashAlert('Comercial', Icons.gavel_outlined, 'Orçamentos a autorizar', commercial.k('pendingApprovals').toInt(), 'sales-quotes', null, to('sales-quotes')),
       DashAlert(
         'Comercial',

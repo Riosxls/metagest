@@ -9,6 +9,7 @@ public partial class EbtDbContext
     public DbSet<Cfop> Cfops => Set<Cfop>();
     public DbSet<TaxRule> TaxRules => Set<TaxRule>();
     public DbSet<MonthlyPrice> MonthlyPrices => Set<MonthlyPrice>();
+    public DbSet<ProductCompanyNcm> ProductCompanyNcms => Set<ProductCompanyNcm>();
     public DbSet<FiscalDocument> FiscalDocuments => Set<FiscalDocument>();
     public DbSet<FiscalDocumentLine> FiscalDocumentLines => Set<FiscalDocumentLine>();
     public DbSet<FiscalInstallment> FiscalInstallments => Set<FiscalInstallment>();
@@ -32,6 +33,13 @@ public partial class EbtDbContext
             e.HasIndex(x => x.Company).IsUnique();
             // EBT numbers from 2581 and BST from 897 (where each company stopped in the old system); both stay off until the issuer data is complete.
             e.HasData(new FiscalSettings { Id = 1, Company = FiscalCompany.Ebt, DefaultCarrier = "BTS" }, new FiscalSettings { Id = 2, Company = FiscalCompany.Bst, NextNumber = 897, DefaultCarrier = "BST" });
+        });
+        b.Entity<ProductCompanyNcm>(e =>
+        {
+            e.HasKey(x => new { x.ProductId, x.Company });
+            e.Property(x => x.Company).HasMaxLength(3);
+            e.Property(x => x.Ncm).HasMaxLength(8);
+            e.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<Cfop>(e =>
         {

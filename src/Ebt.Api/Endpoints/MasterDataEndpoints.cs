@@ -8,8 +8,8 @@ namespace Ebt.Api.Endpoints;
 
 public record CustomerCompany(string? Document, string? StateRegistration, bool IcmsContributor, string? Street, string? Number, string? Complement, string? District, string? City, string? Uf, string? ZipCode, string? Contact, string? Email, string? Phone, int? PaymentTermId = null, string? PaymentTermName = null, decimal? CreditLimit = null, decimal? IpiPercent = null, decimal? IcmsPercent = null, string? TaxNote = null, bool? RequireCertificate = null);
 /// <param name="ClientCode">Code printed on the papers; null keeps what is stored, an empty text clears it.</param>
-public record CustomerIn(string Name, string? TradeName, string? LegacyCode, ConsumerType ConsumerType, bool Active = true, CustomerAddressIn? Address = null, CustomerCompany? Company = null, string? ClientCode = null);
-public record CustomerOut(int Id, string Name, string? TradeName, string? LegacyCode, ConsumerType ConsumerType, bool Active, int AddressCount, CustomerAddressOut? DefaultAddress = null, CustomerCompany? Company = null, string? ClientCode = null);
+public record CustomerIn(string Name, string? TradeName, string? LegacyCode, ConsumerType ConsumerType, bool Active = true, CustomerAddressIn? Address = null, CustomerCompany? Company = null, string? ClientCode = null, string? LegalName = null);
+public record CustomerOut(int Id, string Name, string? TradeName, string? LegacyCode, ConsumerType ConsumerType, bool Active, int AddressCount, CustomerAddressOut? DefaultAddress = null, CustomerCompany? Company = null, string? ClientCode = null, string? LegalName = null);
 public record CustomerAddressIn(string Document, string Uf, string? LegacyCode, string? StateRegistration, bool IcmsContributor, string? Street, string? Number, string? Complement, string? District, string? City, string? CityIbgeCode, string? ZipCode, string? DefaultCfop, string? Buyer, string? Email, string? Phone);
 public record CustomerAddressOut(int Id, int CustomerId, string Document, string Uf, string? LegacyCode, string? StateRegistration, bool IcmsContributor, string? Street, string? Number, string? Complement, string? District, string? City, string? CityIbgeCode, string? ZipCode, string? DefaultCfop, string? Buyer, string? Email, string? Phone);
 
@@ -45,10 +45,10 @@ public static class MasterDataEndpoints
                 c.Addresses.OrderBy(a => a.LegacyCode).ThenBy(a => a.Id)
                     .Select(a => new CustomerAddressOut(a.Id, a.CustomerId, a.Document, a.Uf, a.LegacyCode, a.StateRegistration, a.IcmsContributor, a.Street, a.Number, a.Complement, a.District, a.City, a.CityIbgeCode, a.ZipCode, a.DefaultCfop, a.Buyer, a.Email, a.Phone))
                     .FirstOrDefault(),
-                new CustomerCompany(c.Document, c.StateRegistration, c.IcmsContributor, c.Street, c.Number, c.Complement, c.District, c.City, c.Uf, c.ZipCode, c.Contact, c.Email, c.Phone, c.DefaultPaymentTermId, c.DefaultPaymentTerm != null ? c.DefaultPaymentTerm.Name : null, c.CreditLimit, c.IpiPercent, c.IcmsPercent, c.TaxNote, c.RequireCertificateBeforeShip), c.ClientCode),
+                new CustomerCompany(c.Document, c.StateRegistration, c.IcmsContributor, c.Street, c.Number, c.Complement, c.District, c.City, c.Uf, c.ZipCode, c.Contact, c.Email, c.Phone, c.DefaultPaymentTermId, c.DefaultPaymentTerm != null ? c.DefaultPaymentTerm.Name : null, c.CreditLimit, c.IpiPercent, c.IcmsPercent, c.TaxNote, c.RequireCertificateBeforeShip), c.ClientCode, c.LegalName),
             Create = i =>
             {
-                var c = new Customer { Name = i.Name.Trim(), TradeName = Clean(i.TradeName), LegacyCode = Clean(i.LegacyCode), ClientCode = Clean(i.ClientCode), ConsumerType = i.ConsumerType, Active = i.Active };
+                var c = new Customer { Name = i.Name.Trim(), TradeName = Clean(i.TradeName), LegacyCode = Clean(i.LegacyCode), ClientCode = Clean(i.ClientCode), LegalName = Clean(i.LegalName), ConsumerType = i.ConsumerType, Active = i.Active };
                 ApplyCompany(i.Company, c);
                 if (i.Address is { } ai)
                 {
@@ -58,7 +58,7 @@ public static class MasterDataEndpoints
                 }
                 return c;
             },
-            Apply = (i, c) => { c.Name = i.Name.Trim(); c.TradeName = Clean(i.TradeName); c.LegacyCode = Clean(i.LegacyCode); if (i.ClientCode is not null) c.ClientCode = Clean(i.ClientCode); c.ConsumerType = i.ConsumerType; c.Active = i.Active; ApplyCompany(i.Company, c); },
+            Apply = (i, c) => { c.Name = i.Name.Trim(); c.TradeName = Clean(i.TradeName); c.LegacyCode = Clean(i.LegacyCode); if (i.ClientCode is not null) c.ClientCode = Clean(i.ClientCode); if (i.LegalName is not null) c.LegalName = Clean(i.LegalName); c.ConsumerType = i.ConsumerType; c.Active = i.Active; ApplyCompany(i.Company, c); },
             Validate = async (i, db, ct) =>
             {
                 var errors = Errors().Require(Has(i.Name), "name", "Required");

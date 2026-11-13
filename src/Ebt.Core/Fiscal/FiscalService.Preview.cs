@@ -7,7 +7,13 @@ namespace Ebt.Core.Fiscal;
 /// <summary>Something that would stop (Blocking) or only deserves a look before the NF of an order is emitted. <paramref name="Fix"/> says where to fix it.</summary>
 public sealed record NfProblem(string Area, string Message, string Fix, bool Blocking = true);
 
-public sealed record NfPreviewParty(string Name, string? Document, string? StateRegistration, string? Address, string? City, string? Uf, string? ZipCode, string? CityIbgeCode);
+/// <summary>A customer whose register would keep an NF from being issued: which address and what it lacks. OpenOrders = orders not yet shipped, to say where it hurts first.</summary>
+public sealed record CustomerFiscalProblem(int CustomerId, string Name, int OpenOrders, IReadOnlyList<CustomerAddressProblem> Addresses);
+
+public sealed record CustomerAddressProblem(int AddressId, string Label, IReadOnlyList<string> Gaps);
+
+/// <summary>A party of the NF preview: the address joined for reading, and its parts for the printed paper.</summary>
+public sealed record NfPreviewParty(string Name, string? Document, string? StateRegistration, string? Address, string? City, string? Uf, string? ZipCode, string? CityIbgeCode, string? Street = null, string? Number = null, string? District = null, string? Phone = null);
 
 public sealed record NfPreviewLine(int Sequence, string Code, string Description, string? Ncm, string Unit, decimal Quantity, decimal UnitPrice, decimal Total, string PriceSource,
     string IcmsCst, decimal IcmsPercent, decimal IcmsValue, string IpiCst, decimal IpiPercent, decimal IpiValue, decimal PisValue, decimal CofinsValue, string TaxSource);
@@ -33,6 +39,43 @@ public sealed partial class FiscalService
     /// Dry run of the sale NF of a whole order: same CFOP, price, tax and duplicata rules as the real emission, but nothing is reserved, saved or sent to SEFAZ.
     /// Every gap in the registrations comes back as a <see cref="NfProblem"/> instead of an exception, so the screen can show the full checklist at once.
     /// </summary>
+    /// <summary>What a delivery address still lacks to be the recipient of an NF (the same checks the emission makes). Empty = complete.</summary>
+    public static List<string> RecipientGaps(CustomerAddress address)
+    {
+        var gaps = new List<string>();
+        if (Digits(address.Document).Length is not (11 or 14)) gaps.Add("CNPJ/CPF");
+        if (string.IsNullOrWhiteSpace(address.Street) || string.IsNullOrWhiteSpace(address.District) || string.IsNullOrWhiteSpace(address.City)) gaps.Add("endereço");
+        if (Digits(address.CityIbgeCode).Length != 7) gaps.Add("código IBGE do município");
+        if (Digits(address.ZipCode).Length != 8) gaps.Add("CEP");
+        if (!NfeKey.UfCodes.ContainsKey((address.Uf ?? "").ToUpperInvariant())) gaps.Add("UF");
+        if (address.IcmsContributor && string.IsNullOrWhiteSpace(address.StateRegistration)) gaps.Add("inscrição estadual (contribuinte do ICMS)");
+        return gaps;
+    }
+
+    /// <summary>
+    /// Customers (active, not test data) with a delivery address that lacks something the NF needs, with the open orders each has. A customer without any address is listed too.
+    /// The checks are the ones the emission makes, so an alert here is a block there.
+    /// </summary>
+    public async Task<List<CustomerFiscalProblem>> CustomerProblemsAsync(CancellationToken ct = default, int? customerId = null)
+    {
+        var customers = await db.Customers.AsNoTracking().Where(c => c.Active && c.Source != DataSource.Test && (customerId == null || c.Id == customerId)).Include(c => c.Addresses).OrderBy(c => c.Name).ToListAsync(ct);
+        var open = await db.SalesOrders.AsNoTracking().Where(o => o.Status == SalesOrderStatus.Created || o.Status == SalesOrderStatus.Released || o.Status == SalesOrderStatus.PartiallyShipped)
+            .GroupBy(o => o.CustomerId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
+        var result = new List<CustomerFiscalProblem>();
+        foreach (var c in customers)
+        {
+            var problems = new List<CustomerAddressProblem>();
+            if (c.Addresses.Count == 0) problems.Add(new CustomerAddressProblem(0, "Sem endereço de entrega", ["endereço de entrega"]));
+            foreach (var a in c.Addresses.OrderBy(a => a.Id))
+            {
+                var gaps = RecipientGaps(a);
+                if (gaps.Count > 0) problems.Add(new CustomerAddressProblem(a.Id, string.Join(" · ", new[] { a.Street, a.City }.Where(x => !string.IsNullOrWhiteSpace(x))) is { Length: > 0 } label ? label : "Endereço " + a.Id, gaps));
+            }
+            if (problems.Count > 0) result.Add(new CustomerFiscalProblem(c.Id, c.Name, open.GetValueOrDefault(c.Id), problems));
+        }
+        return result;
+    }
+
     public async Task<NfPreview> PreviewSaleAsync(int orderId, CancellationToken ct = default, IReadOnlyDictionary<int, decimal>? quantities = null, PreviewOverrides? typed = null)
     {
         var order = await db.SalesOrders.AsNoTracking().Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == orderId, ct) ?? throw FiscalException.NotFound("Sales order");
@@ -56,17 +99,11 @@ public sealed partial class FiscalService
         var customer = await db.Customers.AsNoTracking().FirstAsync(c => c.Id == order.CustomerId, ct);
         var address = await db.CustomerAddresses.AsNoTracking().FirstOrDefaultAsync(a => a.Id == order.AddressId, ct);
         string? recipientUf = address?.Uf;
-        var recipient = new NfPreviewParty(customer.Name, address?.Document, address?.StateRegistration, address is null ? null : $"{address.Street}, {address.Number} - {address.District}", address?.City, address?.Uf, address?.ZipCode, address?.CityIbgeCode);
+        var recipient = new NfPreviewParty(Clean(customer.LegalName) ?? customer.Name, address?.Document, address?.StateRegistration, address is null ? null : $"{address.Street}, {address.Number} - {address.District}", address?.City, address?.Uf, address?.ZipCode, address?.CityIbgeCode, address?.Street, address?.Number, address?.District, address?.Phone);
         if (address is null) Add("Destinatário", "O pedido não tem endereço de entrega.", "Cadastro do cliente > Endereços");
         else
         {
-            var gaps = new List<string>();
-            if (Digits(address.Document).Length is not (11 or 14)) gaps.Add("CNPJ/CPF");
-            if (string.IsNullOrWhiteSpace(address.Street) || string.IsNullOrWhiteSpace(address.District) || string.IsNullOrWhiteSpace(address.City)) gaps.Add("endereço");
-            if (Digits(address.CityIbgeCode).Length != 7) gaps.Add("código IBGE do município");
-            if (Digits(address.ZipCode).Length != 8) gaps.Add("CEP");
-            if (!NfeKey.UfCodes.ContainsKey(address.Uf.ToUpperInvariant())) gaps.Add("UF");
-            if (address.IcmsContributor && string.IsNullOrWhiteSpace(address.StateRegistration)) gaps.Add("inscrição estadual (contribuinte do ICMS)");
+            var gaps = RecipientGaps(address);
             if (gaps.Count > 0) Add("Destinatário", $"Cadastro de {customer.Name} incompleto para a NF: {string.Join(", ", gaps)}.", "Cadastro do cliente > Endereços");
         }
 
@@ -85,13 +122,14 @@ public sealed partial class FiscalService
         // Items
         var productIds = order.Lines.Select(l => l.ProductId).Distinct().ToList();
         var products = await db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+        var ncmOv = await NcmOverridesAsync(s.Company, productIds, ct);
         var rules = await db.TaxRules.AsNoTracking().Where(r => r.CfopCode == cfop.Code && productIds.Contains(r.ProductId) && (r.CustomerId == customer.Id || r.CustomerId == null)).ToListAsync(ct);
         var local = DateTimeOffset.UtcNow.ToOffset(BrazilOffset);
         var ufIcms = await UfIcmsAsync(recipientUf, ct);
         var doc = new FiscalDocument
         {
             Kind = FiscalKind.Sale, Status = FiscalStatus.Pending, CfopCode = cfop.Code, Series = s.Series, Number = s.NextNumber, AccessKey = "", Environment = s.Environment, Protocol = "", IssuedAt = local,
-            RecipientName = customer.Name, RecipientDocument = Digits(address?.Document), RecipientUf = recipientUf ?? "", Xml = ""
+            RecipientName = Clean(customer.LegalName) ?? customer.Name, RecipientDocument = Digits(address?.Document), RecipientUf = recipientUf ?? "", Xml = ""
         };
         // The NF states what is about to leave: by default what is still to ship of each line, or the weighed quantities the screen sends (0 leaves a line out).
         var shippedByLine = await db.DeliveryLines.AsNoTracking().Where(l => l.Delivery!.OrderId == orderId && (l.Delivery.Status == DeliveryStatus.Shipped || l.Delivery.Status == DeliveryStatus.Delivered))
@@ -114,12 +152,12 @@ public sealed partial class FiscalService
             var monthly = await MonthlyPriceAsync(p.Id, customer.Id, cfop.Code, local.Year, local.Month, ct);
             var price = monthly ?? ol.UnitPrice;
             if (price <= 0) noPrice.Add(p.Code);
-            if (Digits(p.Ncm).Length != 8) noNcm.Add(p.Code);
+            if (Digits(ncmOv.GetValueOrDefault(p.Id) ?? p.Ncm).Length != 8) noNcm.Add(p.Code);
             var rule = rules.Where(r => r.ProductId == p.Id).OrderBy(r => r.CustomerId == null).FirstOrDefault();
             if (rule is null && cfop.Taxed) noRule.Add(p.Code);
             doc.Lines.Add(new FiscalDocumentLine
             {
-                Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = await ItemDescriptionAsync(customer.Id, p.Id, ol.Description, ct), Ncm = Digits(p.Ncm), Unit = ol.SaleUnit ?? ol.Unit,
+                Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = await ItemDescriptionAsync(customer.Id, p.Id, ol.Description, ct), Ncm = Digits(ncmOv.GetValueOrDefault(p.Id) ?? p.Ncm), Unit = ol.SaleUnit ?? ol.Unit,
                 Quantity = qty, UnitPrice = price, Total = Money(qty * price), IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
             }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent, ufIcms));
             sources.Add((monthly is not null ? "Tabela mensal" : "Pedido", rule is not null ? (rule.CustomerId is null ? "Regra do produto" : "Regra do cliente") : ol.IcmsPercent > 0 ? $"Alíquota do pedido, CST do CFOP {cfop.Code}" : ufIcms is not null ? $"ICMS de {recipientUf}, CST do CFOP {cfop.Code}" : $"Padrão do CFOP {cfop.Code}"));
@@ -148,7 +186,7 @@ public sealed partial class FiscalService
         var transport = await TransportAsync(order.Freight == FreightTerms.Cif ? 0 : 1, typed?.Carrier, typed?.VehiclePlate, typed?.Packages ?? volumes, typed?.GrossWeightKg, weights, s, ct);
         if (transport.NetWeightKg is null) Add("Transporte", "Algum produto sem peso líquido: a NF sai sem o peso (pesoL).", "Engenharia > Produtos > Peso líquido", blocking: false);
 
-        var info = Join(SaleLegalText(cfop, doc.Lines), order.CustomerPo is { } po ? $"Pedido de compra Nº: {po}" : null, Clean(typed?.Notes));
+        var info = SaleInfoText(SaleLegalText(cfop, doc.Lines), order.CustomerPo, Clean(typed?.Notes));
         doc.AdditionalInfo = info;
 
         // The real check: build the NF-e XML and validate it against the official schema, so a layout problem shows here and not at the shipment.
@@ -157,12 +195,12 @@ public sealed partial class FiscalService
             try
             {
                 doc.AccessKey = NfeKey.Build(NfeKey.UfCodes[s.Uf], local, s.Cnpj!, s.Series, s.NextNumber, NfeKey.NewCodeNumber(s.NextNumber));
-                var party = new NfeParty(customer.Name, address.Document, address.StateRegistration, address.IcmsContributor, address.Street, address.Number, address.Complement, address.District, address.City, address.CityIbgeCode, address.Uf, address.ZipCode, address.Email ?? customer.Email, address.Phone);
+                var party = new NfeParty(Clean(customer.LegalName) ?? customer.Name, address.Document, address.StateRegistration, address.IcmsContributor, address.Street, address.Number, address.Complement, address.District, address.City, address.CityIbgeCode, address.Uf, address.ZipCode, address.Email ?? customer.Email, address.Phone);
                 NfeSchema.ValidateNfe(NfeXml.Build(s, doc, cfop, party, transport, interstate));
             }
             catch (FiscalException e) { Add("Layout da NF-e", e.Message, "Cadastros indicados na mensagem (o XML não passou na validação do layout 4.00)"); }
         }
-        var issuer = new NfPreviewParty(s.CompanyName ?? "", s.Cnpj, s.StateRegistration, $"{s.Street}, {s.Number} - {s.District}", s.City, s.Uf, s.ZipCode, s.CityIbgeCode);
+        var issuer = new NfPreviewParty(s.CompanyName ?? "", s.Cnpj, s.StateRegistration, $"{s.Street}, {s.Number} - {s.District}", s.City, s.Uf, s.ZipCode, s.CityIbgeCode, s.Street, s.Number, s.District, s.Phone);
         var lines = doc.Lines.Select((l, i) => new NfPreviewLine(l.Sequence, l.Code, l.Description, l.Ncm, l.Unit, l.Quantity, l.UnitPrice, l.Total, sources[i].Price, l.IcmsCst, l.IcmsPercent, l.IcmsValue, l.IpiCst, l.IpiPercent, l.IpiValue, l.PisValue, l.CofinsValue, sources[i].Tax)).ToList();
         return new NfPreview(s.Enabled, sefaz.IsSimulated, s.Environment.ToString(), s.Series, s.NextNumber, cfop.Code, cfop.Description, issuer, recipient, lines, doc.ProductsTotal, doc.FreightTotal, doc.IcmsBase, doc.IcmsTotal,
             doc.IpiTotal, doc.PisTotal, doc.CofinsTotal, doc.InvoiceTotal, installments, new NfPreviewTransport(transport.FreightMode == 0 ? "Por conta do emitente (CIF)" : "Por conta do destinatário (FOB)", transport.Carrier, transport.NetWeightKg, transport.GrossWeightKg, transport.Packages, transport.Packages > 1 ? "VOLUMES" : "VOLUME", transport.VehiclePlate, transport.FreightMode, transport.CarrierDocument, transport.CarrierStateRegistration, transport.CarrierAddress, transport.CarrierCity, transport.CarrierUf), info,

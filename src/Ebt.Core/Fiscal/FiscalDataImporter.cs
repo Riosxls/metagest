@@ -17,13 +17,23 @@ public sealed record BundleUfRate(string Uf, decimal Percent);
 /// <summary>A customer of the old system the file refers to by <c>customerCode</c>, with the CNPJ/CPF of its addresses: how another company's codes are matched to MetaGest customers.</summary>
 public sealed record BundleCustomer(string Code, string? Name, List<string>? Documents);
 
+/// <summary>A customer of the old register by CNPJ/CPF: its razão social and each address with the parts the NF needs (district, IBGE code...).</summary>
+public sealed record BundleCustomerData(string Document, string? LegalName, string? TradeName, List<BundleAddressData>? Addresses);
+
+public sealed record BundleAddressData(string? Street, string? Number, string? District, string? City, string? Uf, string? Zip, string? Ibge, string? StateRegistration, string? Phone);
+
+public sealed record BundleCity(string City, string Uf, string Ibge);
+
+public sealed record BundleProductNcm(string Code, string Ncm);
+
 public sealed record BundlePrice(string ProductCode, string CustomerCode, string Cfop, int Year, int Month, decimal UnitPrice);
 
 public sealed record BundleCfop(string Code, string Description, bool Taxed, string IcmsCst, string IpiCst, string PisCst, string CofinsCst, decimal DefaultPisPercent, decimal DefaultCofinsPercent,
     string? IpiFramingCode, bool GeneratesInstallments);
 
 /// <summary>The file built by <c>scripts/export-fiscal-data.ps1</c> from the legacy DBFs: everything the NF needs that MetaGest did not import with the registers.</summary>
-public sealed record FiscalBundle(string? Source, BundleIssuer? Issuer, List<BundleCarrier>? Carriers, List<BundleTaxRule>? TaxRules, List<BundlePrice>? MonthlyPrices, List<BundleCfop>? Cfops, List<BundleUfRate>? UfRates = null, List<BundleCustomer>? Customers = null);
+public sealed record FiscalBundle(string? Source, BundleIssuer? Issuer, List<BundleCarrier>? Carriers, List<BundleTaxRule>? TaxRules, List<BundlePrice>? MonthlyPrices, List<BundleCfop>? Cfops, List<BundleUfRate>? UfRates = null, List<BundleCustomer>? Customers = null,
+    List<BundleCustomerData>? CustomerData = null, List<BundleCity>? Cities = null, List<BundleProductNcm>? ProductNcms = null);
 
 /// <param name="Section">issuer, cfops, carriers, taxRules or monthlyPrices.</param>
 /// <param name="Notes">Why rows were left out or what deserves a look.</param>
@@ -71,7 +81,9 @@ public sealed class FiscalDataImporter(EbtDbContext db)
             await UfRatesAsync(bundle.UfRates ?? [], ct),
             await CarriersAsync(bundle.Carriers ?? [], ct),
             await TaxRulesAsync(bundle.TaxRules ?? [], map, ct),
-            await PricesAsync(bundle.MonthlyPrices ?? [], map, ct)
+            await PricesAsync(bundle.MonthlyPrices ?? [], map, ct),
+            await CustomerRegisterAsync(bundle.CustomerData ?? [], bundle.Cities ?? [], ct),
+            await ProductNcmAsync(bundle.ProductNcms ?? [], company, ct)
         };
         if (apply) await db.SaveChangesAsync(ct);
         else db.ChangeTracker.Clear();
@@ -116,6 +128,89 @@ public sealed class FiscalDataImporter(EbtDbContext db)
     }
 
     /// <summary>What matching another company's customer codes found: the map from code to MetaGest customer, and why the rest was left out.</summary>
+    /// <summary>Digits of a text, empty (never null) when there are none.</summary>
+    private static string Dg(string? s) => Digits(s) ?? "";
+
+    private static string CityKey(string? s)
+    {
+        var d = (s ?? "").Normalize(System.Text.NormalizationForm.FormD).Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark);
+        return string.Concat(d.Where(char.IsLetterOrDigit)).ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// Completes the customers' register from the old one, by CNPJ/CPF: razão social (the name the NF must carry), and in each address the district, CEP, IE, number and IBGE code it still lacks.
+    /// An address is paired by CEP, or as the only one on both sides. Addresses that still have no IBGE code get it from the city (name + UF) when the old system knows that city.
+    /// Nothing already filled is changed.
+    /// </summary>
+    private async Task<FiscalImportSection> CustomerRegisterAsync(List<BundleCustomerData> rows, List<BundleCity> cities, CancellationToken ct)
+    {
+        var notes = new List<string>();
+        if (rows.Count == 0 && cities.Count == 0) return new("customerRegister", "Cadastro dos clientes (razão social, bairro, IBGE)", 0, 0, 0, 0, 0, ["O arquivo não traz o cadastro dos clientes: gere-o de novo com o script atual."]);
+        var customers = await db.Customers.Include(c => c.Addresses).Where(c => c.Source != DataSource.Test).ToListAsync(ct);
+        var byDoc = new Dictionary<string, List<Customer>>();
+        foreach (var c in customers)
+            foreach (var d in c.Addresses.Select(a => Dg(a.Document)).Append(Dg(c.Document)).Where(d => d.Length is 11 or 14).Distinct())
+                (byDoc.TryGetValue(d, out var l) ? l : byDoc[d] = []).Add(c);
+        int updated = 0, unchanged = 0, skipped = 0, names = 0, filled = 0;
+        var touched = new HashSet<int>();
+        foreach (var row in rows)
+        {
+            var doc = Dg(row.Document);
+            if (!byDoc.TryGetValue(doc, out var found) || found.Distinct().Count() != 1) { skipped++; continue; }
+            var c = found[0];
+            var changed = false;
+            if (string.IsNullOrWhiteSpace(c.LegalName) && !string.IsNullOrWhiteSpace(row.LegalName)) { c.LegalName = row.LegalName.Trim(); names++; changed = true; }
+            var legacy = (row.Addresses ?? []).ToList();
+            foreach (var a in c.Addresses)
+            {
+                var zip = Dg(a.ZipCode);
+                var pair = legacy.FirstOrDefault(x => zip.Length == 8 && Dg(x.Zip) == zip) ?? (c.Addresses.Count == 1 && legacy.Count == 1 ? legacy[0] : null);
+                if (pair is null) continue;
+                if (Dg(a.CityIbgeCode).Length != 7 && Dg(pair.Ibge).Length == 7) { a.CityIbgeCode = Dg(pair.Ibge); filled++; changed = true; }
+                if (string.IsNullOrWhiteSpace(a.District) && !string.IsNullOrWhiteSpace(pair.District)) { a.District = pair.District.Trim(); changed = true; }
+                if (Dg(a.ZipCode).Length != 8 && Dg(pair.Zip).Length == 8) { a.ZipCode = Dg(pair.Zip); changed = true; }
+                if (string.IsNullOrWhiteSpace(a.Number) && !string.IsNullOrWhiteSpace(pair.Number)) { a.Number = pair.Number.Trim(); changed = true; }
+                if (string.IsNullOrWhiteSpace(a.StateRegistration) && !string.IsNullOrWhiteSpace(pair.StateRegistration)) { a.StateRegistration = Dg(pair.StateRegistration); changed = true; }
+            }
+            if (changed) { updated++; touched.Add(c.Id); } else unchanged++;
+        }
+        // IBGE by city name for what is still without a code (also customers that are not in the old register)
+        var byCity = cities.Where(x => Dg(x.Ibge).Length == 7).GroupBy(x => (CityKey(x.City), x.Uf.ToUpperInvariant())).ToDictionary(g => g.Key, g => Dg(g.First().Ibge));
+        int byName = 0;
+        foreach (var a in customers.SelectMany(c => c.Addresses))
+            if (Dg(a.CityIbgeCode).Length != 7 && byCity.TryGetValue((CityKey(a.City), (a.Uf ?? "").ToUpperInvariant()), out var ibge)) { a.CityIbgeCode = ibge; byName++; }
+        notes.Add($"{names} razões sociais preenchidas, {filled} códigos IBGE pelo cadastro antigo e {byName} pelo nome da cidade.");
+        if (skipped > 0) notes.Add($"{skipped} clientes do arquivo sem correspondente único pelo CNPJ/CPF (não cadastrados aqui ou repetidos).");
+        return new("customerRegister", "Cadastro dos clientes (razão social, bairro, IBGE)", rows.Count, 0, updated + (byName > 0 ? 1 : 0), unchanged, skipped, notes);
+    }
+
+    /// <summary>
+    /// The NCM of each product as the old register of this company holds it. EBT: fills a product that has none. BST (and any other company): where it differs from the product's NCM, it is kept as that
+    /// company's own NCM (<c>product_company_ncm</c>), so the same tube goes out with 7306.30.90 on a BST NF and 7306.30.00 on an EBT one.
+    /// </summary>
+    private async Task<FiscalImportSection> ProductNcmAsync(List<BundleProductNcm> rows, string company, CancellationToken ct)
+    {
+        if (rows.Count == 0) return new("productNcm", "NCM dos produtos", 0, 0, 0, 0, 0, ["O arquivo não traz o NCM dos produtos: gere-o de novo com o script atual."]);
+        var products = await db.Products.ToDictionaryAsync(p => p.Code, ct);
+        var own = await db.ProductCompanyNcms.Where(x => x.Company == company).ToDictionaryAsync(x => x.ProductId, ct);
+        int added = 0, updated = 0, unchanged = 0, skipped = 0, differs = 0;
+        foreach (var row in rows)
+        {
+            var ncm = Dg(row.Ncm);
+            if (ncm.Length != 8 || !products.TryGetValue(row.Code.Trim(), out var p)) { skipped++; continue; }
+            if (company == FiscalCompany.Ebt)
+            {
+                if (Dg(p.Ncm).Length != 8) { p.Ncm = ncm; updated++; } else { unchanged++; if (Dg(p.Ncm) != ncm) differs++; }
+                continue;
+            }
+            if (Dg(p.Ncm) == ncm) { unchanged++; if (own.Remove(p.Id, out var stale)) db.ProductCompanyNcms.Remove(stale); continue; }
+            differs++;
+            if (own.TryGetValue(p.Id, out var cur)) { if (cur.Ncm == ncm) unchanged++; else { cur.Ncm = ncm; updated++; } }
+            else { var n = new ProductCompanyNcm { ProductId = p.Id, Company = company, Ncm = ncm }; db.ProductCompanyNcms.Add(n); own[p.Id] = n; added++; }
+        }
+        return new("productNcm", "NCM dos produtos", rows.Count, added, updated, unchanged, skipped, [$"{differs} produtos com NCM diferente do cadastro" + (company == FiscalCompany.Ebt ? " (mantido o do cadastro)." : $": guardados como NCM próprio da {company}.")]);
+    }
+
     private sealed record CustomerMap(Dictionary<string, int> Ids, int NoDocument, int NotFound, int Ambiguous, int InFile);
 
     /// <summary>

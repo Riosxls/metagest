@@ -155,11 +155,30 @@ foreach ($c in (Read-Dbf (Join-Path $Db 'NF010.DBF'))) { $customerNames[(Key $c[
 $customers = @()
 foreach ($c in $usedCodes.Keys) { $customers += [ordered]@{ code = $c; name = $customerNames[$c]; documents = @($docsByCode[$c]) } }
 
+# ---- the register of every customer as the old NF system holds it (legal name, district, IBGE code...), the NCM it gives each product and the IBGE code of each city:
+# MetaGest fills what its customers and products still lack from it (nothing already filled is changed)
+$legalNames = @{}; $tradeNames = @{}
+foreach ($c in (Read-Dbf (Join-Path $Db 'NF010.DBF'))) { $k = Key $c['F01CDCLIE']; $legalNames[$k] = ("$($c['F01NMCLIE'])").Trim(); $tradeNames[$k] = ("$($c['F01NMFANT'])").Trim() }
+$customerData = @{}
+$cityList = @{}
+foreach ($a in (Read-Dbf (Join-Path $Db 'NF020.DBF'))) {
+    $code = Key $a['F02CDCLIE']; $doc = Digits $a['F02CGC']
+    $ibge = Digits $a['F02IDMUNIC']
+    if ($ibge.Length -eq 7 -and $a['F02CIDADE'] -and $a['F02CDESTAD']) { $cityList[("{0}|{1}" -f ("$($a['F02CIDADE'])").Trim().ToUpper(), $a['F02CDESTAD'])] = [ordered]@{ city = ("$($a['F02CIDADE'])").Trim(); uf = $a['F02CDESTAD']; ibge = $ibge } }
+    if ($doc.Length -ne 11 -and $doc.Length -ne 14) { continue }
+    if (-not $customerData.ContainsKey($doc)) { $customerData[$doc] = [ordered]@{ document = $doc; legalName = $legalNames[$code]; tradeName = $tradeNames[$code]; addresses = New-Object System.Collections.Generic.List[object] } }
+    $customerData[$doc].addresses.Add([ordered]@{ street = ("$($a['F02ENDER'])").Trim(); number = ("$($a['F02NUMERO'])").Trim(); district = ("$($a['F02BAIRRO'])").Trim(); city = ("$($a['F02CIDADE'])").Trim(); uf = $a['F02CDESTAD']; zip = Digits $a['F02CEP']; ibge = $ibge; stateRegistration = Digits $a['F02IE']; phone = Digits $a['F02TELEF'] })
+}
+$customerRegister = @(); foreach ($k in $customerData.Keys) { $customerRegister += $customerData[$k] }
+$cities = @(); foreach ($k in $cityList.Keys) { $cities += $cityList[$k] }
+$productNcms = @()
+foreach ($p in (Read-Dbf (Join-Path $Db 'NF060.DBF'))) { $n = Digits $p['F06NCM']; if ($n.Length -eq 8) { $productNcms += [ordered]@{ code = ("$($p['F06CDPECA'])").Trim(); ncm = $n } } }
+
 $ufRates = @()
 foreach ($k in $ufRate.Keys) { if ($ufRate[$k] -gt 0) { $ufRates += [ordered]@{ uf = $k; percent = $ufRate[$k] } } }
 
-$bundle = [ordered]@{ source = $Source; ufRates = $ufRates; generatedAt = (Get-Date).ToString('s'); issuer = $issuer; cfops = $cfops; carriers = $carriers; customers = $customers; taxRules = $rules; monthlyPrices = $prices }
-$json = $bundle | ConvertTo-Json -Depth 6
+$bundle = [ordered]@{ source = $Source; ufRates = $ufRates; generatedAt = (Get-Date).ToString('s'); issuer = $issuer; cfops = $cfops; carriers = $carriers; customers = $customers; customerData = $customerRegister; cities = $cities; productNcms = $productNcms; taxRules = $rules; monthlyPrices = $prices }
+$json = $bundle | ConvertTo-Json -Depth 7
 [IO.File]::WriteAllText($Out, $json, (New-Object Text.UTF8Encoding($false)))
 Write-Host "Wrote $Out"
 Write-Host ("issuer {0} | carriers {1} | cfops {2} | tax rules {3} (no regime {4}, no UF rate {5}) | monthly prices {6} (other unit {7})" -f $issuer.companyName, $carriers.Count, $cfops.Count, $rules.Count, $noRegime, $noUf, $prices.Count, $otherUnit)

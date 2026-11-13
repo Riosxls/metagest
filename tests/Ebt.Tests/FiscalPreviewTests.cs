@@ -88,7 +88,7 @@ public class FiscalPreviewTests(ApiFixture api)
         Assert.Equal("VOLUME", weighed.Transport.Species);
         Assert.Equal(1, weighed.Transport.Packages);
         Assert.Equal(weighed.Transport.NetWeightKg, weighed.Transport.GrossWeightKg);
-        Assert.Contains("Pedido de compra Nº: PO-9", weighed.AdditionalInfo);
+        Assert.Contains("NUMERO DO PEDIDO DE COMPRAS PO-9.", weighed.AdditionalInfo);
         Assert.Equal(950m, weighed.Lines.Single().Total); // 9.5 x 100
         Assert.Equal(400, (int)(await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}?lines=abc")).StatusCode);
 
@@ -128,7 +128,7 @@ public class FiscalPreviewTests(ApiFixture api)
         var nf = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}")).Read<NfPreview>();
         Assert.Equal("TUB12,00X1,60X6000MM 20MF020116", nf.Lines.Single().Description);
         Assert.StartsWith("MERCADORIA OBJETO DE INDUSTRIALIZACAO E/OU COMERCIALIZACAO PELO DESTINATARIO. IPI SUSPENSO CONFORME DECRETO 7212/2010", nf.AdditionalInfo);
-        Assert.Contains("Pedido de compra Nº: PO-9", nf.AdditionalInfo);
+        Assert.Contains("NUMERO DO PEDIDO DE COMPRAS PO-9.", nf.AdditionalInfo);
     }
 
     [Fact]
@@ -225,6 +225,46 @@ public class FiscalPreviewTests(ApiFixture api)
         var again = await (await UploadAsync(admin, bundle, apply: true)).Read<FiscalImportResult>();
         Assert.Equal(0, again.Sections.Single(x => x.Section == "carriers").Added);
         Assert.Equal(1, again.Sections.Single(x => x.Section == "carriers").Unchanged);
+    }
+
+    [Fact]
+    public async Task Import_completes_the_customer_register_and_keeps_a_company_ncm_and_the_alert_goes_away()
+    {
+        var admin = await api.AdminAsync();
+        var doc = "61" + string.Concat(Enumerable.Range(0, 12).Select(_ => Random.Shared.Next(10)));
+        var customer = await (await admin.Post("/api/customers", new CustomerIn("Cliente " + Code("C"), null, null, ConsumerType.Normal))).Read<CustomerOut>();
+        var address = await (await admin.Post($"/api/customers/{customer.Id}/addresses", new CustomerAddressIn(doc, "SP", null, "286024953112", true, "Rua Inco", "246", null, null, "Diadema", null, "09961370", null, null, null, null))).Read<CustomerAddressOut>();
+        var product = await (await admin.Post("/api/products", Tube(Code("T"), "73063000"))).Read<ProductOut>();
+
+        // the register lacks the district and the IBGE code: an alert says so (and what exactly)
+        var problems = await (await admin.GetAsync($"/api/fiscal/customer-problems?customerId={customer.Id}")).Read<JsonElement>();
+        Assert.Equal(1, problems.GetArrayLength());
+        var gaps = problems[0].GetProperty("addresses")[0].GetProperty("gaps").EnumerateArray().Select(x => x.GetString()).ToList();
+        Assert.Contains("código IBGE do município", gaps);
+        Assert.Contains("endereço", gaps);
+
+        var bundle = new
+        {
+            source = "BST",
+            customerData = new[] { new { document = doc, legalName = "INCODIESEL IND.E COM. DE PECAS P DIESEL LTDA", tradeName = "INCODIESEL", addresses = new[] { new { street = "RUA INCO", number = "246", district = "JARDIM ALBA", city = "DIADEMA", uf = "SP", zip = "09961370", ibge = "3513801", stateRegistration = "286024953112", phone = "1140664865" } } } },
+            cities = new[] { new { city = "DIADEMA", uf = "SP", ibge = "3513801" } },
+            productNcms = new[] { new { code = product.Code, ncm = "73063090" } }
+        };
+        var done = await (await UploadAsync(admin, bundle, apply: true)).Read<FiscalImportResult>();
+        Assert.Equal(1, done.Sections.Single(x => x.Section == "customerRegister").Updated);
+        Assert.Equal(1, done.Sections.Single(x => x.Section == "productNcm").Added); // BST's NCM differs: kept as BST's own
+
+        var after = await (await admin.GetAsync($"/api/customers/{customer.Id}")).Read<CustomerOut>();
+        Assert.Equal("INCODIESEL IND.E COM. DE PECAS P DIESEL LTDA", after.LegalName);
+        var addr = await (await admin.GetAsync($"/api/customers/{customer.Id}/addresses")).Read<List<CustomerAddressOut>>();
+        Assert.Equal("3513801", addr.Single().CityIbgeCode);
+        Assert.Equal("JARDIM ALBA", addr.Single().District);
+        Assert.Equal(0, (await (await admin.GetAsync($"/api/fiscal/customer-problems?customerId={customer.Id}")).Read<JsonElement>()).GetArrayLength());
+        Assert.Equal("73063000", (await (await admin.GetAsync($"/api/products/{product.Id}")).Read<ProductOut>()).Ncm); // the product keeps its own NCM
+
+        var again = await (await UploadAsync(admin, bundle, apply: true)).Read<FiscalImportResult>();
+        Assert.Equal(0, again.Sections.Single(x => x.Section == "customerRegister").Updated);
+        Assert.Equal(0, again.Sections.Single(x => x.Section == "productNcm").Added);
     }
 
     [Fact]

@@ -294,3 +294,12 @@ public class FiscalCarrier
     /// <summary>UF of the vehicle plate (veicTransp); the carrier UF is used when empty.</summary>
     public string? VehicleUf { get; set; }
 }
+
+/// <summary>The NCM a company puts on a product when it differs from the product's own (BST and EBT classify some tubes differently, e.g. 7306.30.90 vs 7306.30.00).</summary>
+public class ProductCompanyNcm
+{
+    public int ProductId { get; set; }
+    public Product? Product { get; set; }
+    public string Company { get; set; } = FiscalCompany.Ebt;
+    public string Ncm { get; set; } = "";
+}

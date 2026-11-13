@@ -13,6 +13,7 @@ import '../theme_tokens.dart';
 import '../widgets/contact_list.dart';
 import '../widgets/duplicates.dart';
 import '../widgets/entity_form.dart';
+import '../widgets/fiscal_problems.dart';
 import '../widgets/load_error.dart';
 import '../widgets/pipeline.dart' show StatusBadge, Tone, toneAccent;
 import '../widgets/print_panel.dart' show printPdf;
@@ -203,7 +204,7 @@ String _orDash(String s) => s.trim().isEmpty ? '—' : s;
 const _contactFlex = [30, 15, 24, 14, 17];
 
 /// One customer as a row of the contact list: CNPJ/CPF, e-mail with who to ask for, phone, city; buttons to send an e-mail, copy the phone and print the sheet.
-Widget _customerRow(BuildContext context, ApiClient api, Map<String, dynamic> c, bool wide) {
+Widget _customerRow(BuildContext context, ApiClient api, Map<String, dynamic> c, bool wide, [Map<String, dynamic>? problem]) {
   final co = _company(c);
   // Names, cities and e-mails arrive in every case (CAPS from the old system, lower from typing): shown the same way on every row.
   final email = ptEmail(co?['email']);
@@ -213,6 +214,7 @@ Widget _customerRow(BuildContext context, ApiClient api, Map<String, dynamic> c,
     name: ptText(c['name']),
     subtitle: ptText(c['tradeName']),
     active: c['active'] == true,
+    badge: problem == null ? null : FiscalProblemBadge(problem: problem),
     wide: wide,
     flex: _contactFlex,
     maxActions: 3,
@@ -243,6 +245,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
   final _list = GlobalKey<RecordListState>();
   final _selection = RecordSelection();
   String? _active = 'true';
+  Map<int, Map<String, dynamic>> _problems = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadProblems());
+  }
+
+  /// Customers whose register keeps an NF from being issued: a badge on each and a strip over the list.
+  Future<void> _loadProblems() async {
+    final list = await fetchFiscalProblems(widget.session.api);
+    if (mounted) setState(() => _problems = {for (final p in list) p['customerId'] as int: p});
+  }
 
   @override
   void dispose() {
@@ -281,7 +296,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(children: [DuplicatesAlert(session: widget.session, kind: 'customers'), Expanded(child: RecordList(
+  Widget build(BuildContext context) => Column(children: [DuplicatesAlert(session: widget.session, kind: 'customers'), FiscalProblemsAlert(session: widget.session, problems: _problems.values.toList(), onOpen: (id) => openCustomer(context, widget.session, id).then((_) => _loadProblems())), Expanded(child: RecordList(
     key: _list,
     api: widget.session.api,
     path: '/api/customers',
@@ -295,7 +310,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     pillSearch: true,
     selection: _selection,
     selectionActions: (ctx, sel) => customerSelectionActions(ctx, widget.session.api, sel, filters: () => customerPrintFilters(search: _list.currentState?.searchText ?? '', active: _active), canDelete: widget.session.canCustomers, onDeleted: () => unawaited(_list.currentState?.reload())),
-    rowBuilder: (context, e, wide) => _customerRow(context, widget.session.api, e, wide),
+    rowBuilder: (context, e, wide) => _customerRow(context, widget.session.api, e, wide, _problems[e['id']]),
     groupOf: (e) => contactLetter('${e['name']}'),
     listHeader: const ContactsHeader(titles: ['NOME', 'CNPJ/CPF', 'E-MAIL', 'TELEFONE', 'CIDADE'], flex: _contactFlex, actions: 3),
     columns: [
@@ -342,13 +357,26 @@ class CustomerScreen extends StatefulWidget {
 
 class _CustomerScreenState extends State<CustomerScreen> {
   late Map<String, dynamic> _c = widget.customer;
+  Map<String, dynamic>? _fiscalProblem;
   int get id => _c['id'] as int;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadFiscalProblem());
+  }
+
+  Future<void> _loadFiscalProblem() async {
+    final list = await fetchFiscalProblems(widget.session.api, customerId: id);
+    if (mounted) setState(() => _fiscalProblem = list.isEmpty ? null : list.first);
+  }
   bool get _isActive => _c['active'] == true;
 
   Future<Map<String, dynamic>?> _save(Map<String, dynamic> changes) async {
     final r = await widget.session.api.put('/api/customers/$id', {
       'name': _c['name'],
       'tradeName': _c['tradeName'],
+      'legalName': _c['legalName'],
       'legacyCode': _c['legacyCode'],
       'clientCode': _c['clientCode'],
       'consumerType': _c['consumerType'],
@@ -370,6 +398,7 @@ class _CustomerScreenState extends State<CustomerScreen> {
       fields: [
         const FieldSpec('name', 'Nome / razão social', required: true),
         const FieldSpec('tradeName', 'Nome fantasia'),
+        const FieldSpec('legalName', 'Razão social (como sai na NF)', hint: 'Vazio = o nome acima. Preencha com o nome completo do CNPJ, ex.: INCODIESEL IND.E COM. DE PECAS P DIESEL LTDA'),
         const FieldSpec('legacyCode', 'Código antigo'),
         const FieldSpec('clientCode', 'Código do cliente', hint: 'Impresso como CÓD. CLIENTE no pedido interno e na OF'),
         ..._companyFormFields(),
@@ -382,7 +411,10 @@ class _CustomerScreenState extends State<CustomerScreen> {
         return _save({...rest, 'company': co});
       },
     );
-    if (r != null && mounted) setState(() {});
+    if (r != null && mounted) {
+      setState(() {});
+      unawaited(_loadFiscalProblem());
+    }
   }
 
   Future<void> _toggleActive() async {
@@ -420,6 +452,7 @@ class _CustomerScreenState extends State<CustomerScreen> {
           children: [
             _CustomerHeader(customer: _c),
             DuplicatesBanner(session: s, kind: 'customers', id: id, onOpen: (other) => unawaited(openCustomer(context, s, other))),
+            FiscalProblemBanner(problem: _fiscalProblem),
             const TabBar(
               isScrollable: true,
               tabAlignment: TabAlignment.start,

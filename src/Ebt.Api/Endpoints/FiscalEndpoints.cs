@@ -82,6 +82,7 @@ public static class FiscalEndpoints
         MapInutilizations(app);
         MapCarriers(app);
         MapPreview(app);
+        MapCustomerProblems(app);
         MapLegacyImport(app);
     }
 
@@ -131,6 +132,10 @@ public static class FiscalEndpoints
             // carrier, plate, gross, packages, freight, cfop, notes: what is typed in "Saída da carga", so the preview follows it live.
             return Results.Ok(await fiscal.PreviewSaleAsync(id, ct, quantities, new PreviewOverrides(cfop, freight, carrier, plate, gross, packages, notes)));
         }).WithTags("Fiscal").RequireAuthorization(Policies.Read);
+
+    /// <summary>Customers whose register keeps an NF from being issued (missing IBGE code, CEP, IE...): the app shows a badge on them and in the notifications.</summary>
+    private static void MapCustomerProblems(WebApplication app) =>
+        app.MapGet("/api/fiscal/customer-problems", async (int? customerId, FiscalService fiscal, CancellationToken ct) => Results.Ok(await fiscal.CustomerProblemsAsync(ct, customerId))).WithTags("Fiscal").RequireAuthorization(Policies.Read);
 
     private static void MapInutilizations(WebApplication app)
     {

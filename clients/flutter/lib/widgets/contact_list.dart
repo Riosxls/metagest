@@ -129,7 +129,7 @@ class ContactsHeader extends StatelessWidget {
 /// One person or company in a contact list. Wide: avatar, name with [subtitle], one column per [cells] entry (widths from [flex], name first) and the [actions] on hover.
 /// Narrow: avatar, name and one line with the filled [cells] joined.
 class ContactRow extends StatefulWidget {
-  const ContactRow({super.key, required this.name, this.subtitle = '', this.active = true, required this.cells, required this.flex, this.actions = const [], required this.wide, this.maxActions});
+  const ContactRow({super.key, required this.name, this.subtitle = '', this.active = true, required this.cells, required this.flex, this.actions = const [], this.badge, required this.wide, this.maxActions});
 
   final String name;
   final String subtitle;
@@ -137,6 +137,9 @@ class ContactRow extends StatefulWidget {
   final List<ContactCell> cells;
   final List<int> flex;
   final List<ContactAction> actions;
+
+  /// A small widget next to the name (an alert badge).
+  final Widget? badge;
   final bool wide;
 
   /// Number of action slots reserved at the end of every row (so the columns line up even when a row has fewer buttons); defaults to [actions].length.
@@ -162,6 +165,7 @@ class _ContactRowState extends State<ContactRow> {
         Row(
           children: [
             Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600, color: widget.active ? null : theme.colorScheme.onSurfaceVariant))),
+            if (widget.badge != null) ...[const SizedBox(width: 6), widget.badge!],
             if (!widget.active) ...[const SizedBox(width: 8), const StatusBadge('Inativo', tone: Tone.neutral)],
           ],
         ),

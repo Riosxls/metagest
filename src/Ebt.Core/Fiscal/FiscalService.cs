@@ -53,7 +53,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
             var customer = await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == order.CustomerId, ct) ?? throw FiscalException.NotFound("Customer");
             var address = await db.CustomerAddresses.AsNoTracking().FirstOrDefaultAsync(a => a.Id == delivery.AddressId, ct) ?? throw FiscalException.NotFound("Delivery address");
             var cfop = await CfopAsync(opt.Cfop ?? Clean(address.DefaultCfop) ?? "5101", FiscalKind.Sale, ct);
-            var recipient = new NfeParty(customer.Name, address.Document, address.StateRegistration, address.IcmsContributor, address.Street, address.Number, address.Complement, address.District, address.City, address.CityIbgeCode, address.Uf, address.ZipCode, address.Email ?? customer.Email, address.Phone);
+            var recipient = new NfeParty(Clean(customer.LegalName) ?? customer.Name, address.Document, address.StateRegistration, address.IcmsContributor, address.Street, address.Number, address.Complement, address.District, address.City, address.CityIbgeCode, address.Uf, address.ZipCode, address.Email ?? customer.Email, address.Phone);
             RequireRecipient(recipient, $"customer {customer.Name} (address {address.Id})");
             var interstate = RequireOperationScope(cfop, settings, recipient.Uf);
 
@@ -61,6 +61,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
             var local = issuedAt.ToOffset(BrazilOffset);
             var productIds = delivery.Lines.Select(l => order.Lines.First(x => x.Id == l.OrderLineId).ProductId).Distinct().ToList();
             var products = await db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+            var ncmOv = await NcmOverridesAsync(settings.Company, productIds, ct);
             var rules = await db.TaxRules.AsNoTracking().Where(r => r.CfopCode == cfop.Code && productIds.Contains(r.ProductId) && (r.CustomerId == customer.Id || r.CustomerId == null)).ToListAsync(ct);
             var ufIcms = await UfIcmsAsync(recipient.Uf, ct);
 
@@ -80,7 +81,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
                 var rule = rules.Where(r => r.ProductId == p.Id).OrderBy(r => r.CustomerId == null).FirstOrDefault();
                 doc.Lines.Add(new FiscalDocumentLine
                 {
-                    Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = await ItemDescriptionAsync(customer.Id, p.Id, ol.Description, ct), Ncm = RequireNcm(p), Unit = ol.SaleUnit ?? ol.Unit,
+                    Sequence = (n + 1) * 10, ProductId = p.Id, ProductionOrderId = ol.ProductionOrderId, Code = p.Code, Description = await ItemDescriptionAsync(customer.Id, p.Id, ol.Description, ct), Ncm = RequireNcm(p, ncmOv), Unit = ol.SaleUnit ?? ol.Unit,
                     Quantity = dl.Quantity, UnitPrice = price, Total = Money(dl.Quantity * price),
                     IcmsCst = "", IpiCst = "", PisCst = "", CofinsCst = ""
                 }.WithRates(cfop, rule, ol.IcmsPercent, ol.IpiPercent, ufIcms));
@@ -92,7 +93,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
             CalculateTaxes(doc, cfop, customerIcmsContributor: recipient.IcmsContributor);
             doc.Installments = cfop.GeneratesInstallments ? await InstallmentsAsync(order, customer, doc.InvoiceTotal, local, ct) : [];
 
-            doc.AdditionalInfo = Join(SaleLegalText(cfop, doc.Lines), order.CustomerPo is { } po ? $"Pedido de compra Nº: {po}" : null, delivery.Notes);
+            doc.AdditionalInfo = SaleInfoText(SaleLegalText(cfop, doc.Lines), order.CustomerPo, delivery.Notes);
             if (warnings.Count > 0)
             {
                 doc.Warnings = Cut(string.Join(" | ", warnings), 500);
@@ -268,7 +269,7 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
         // Only the header is saved now (no links to rows the caller may hold locked); lines and links follow once SEFAZ authorizes.
         var shell = new FiscalDocument
         {
-            IssuerId = doc.IssuerId, Kind = doc.Kind, Status = FiscalStatus.Pending, CfopCode = doc.CfopCode, Series = doc.Series, Number = doc.Number, AccessKey = doc.AccessKey, Environment = doc.Environment, Simulated = sefaz.IsSimulated, Protocol = "", IssuedAt = doc.IssuedAt,
+            IssuerId = doc.IssuerId, DeliveryMarker = doc.DeliveryMarker, Kind = doc.Kind, Status = FiscalStatus.Pending, CfopCode = doc.CfopCode, Series = doc.Series, Number = doc.Number, AccessKey = doc.AccessKey, Environment = doc.Environment, Simulated = sefaz.IsSimulated, Protocol = "", IssuedAt = doc.IssuedAt,
             IssuedBy = doc.IssuedBy, CustomerId = doc.CustomerId, SupplierId = doc.SupplierId, RecipientName = doc.RecipientName, RecipientDocument = doc.RecipientDocument, RecipientUf = doc.RecipientUf,
             ProductsTotal = doc.ProductsTotal, FreightTotal = doc.FreightTotal, IcmsBase = doc.IcmsBase, IcmsTotal = doc.IcmsTotal, IpiTotal = doc.IpiTotal, PisTotal = doc.PisTotal, CofinsTotal = doc.CofinsTotal,
             InvoiceTotal = doc.InvoiceTotal, AdditionalInfo = doc.AdditionalInfo, Xml = doc.Xml, Warnings = doc.Warnings, ReferencedAccessKey = doc.ReferencedAccessKey
@@ -589,7 +590,14 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
         if (missing.Count > 0) throw FiscalException.Blocked($"Registration of {who} is incomplete for the NF: {string.Join(", ", missing)}");
     }
 
-    private static string RequireNcm(Product p) => Digits(p.Ncm) is { Length: 8 } ncm ? ncm : throw FiscalException.Blocked($"Product {p.Code} has no valid 8-digit NCM");
+    /// <summary>The NCM each product carries for this company when it differs from the product's own.</summary>
+    private async Task<Dictionary<int, string>> NcmOverridesAsync(string company, IEnumerable<int> productIds, CancellationToken ct)
+    {
+        var ids = productIds.ToList();
+        return await db.ProductCompanyNcms.AsNoTracking().Where(x => x.Company == company && ids.Contains(x.ProductId)).ToDictionaryAsync(x => x.ProductId, x => x.Ncm, ct);
+    }
+
+    private static string RequireNcm(Product p, IReadOnlyDictionary<int, string>? overrides = null) => Digits(overrides is not null && overrides.TryGetValue(p.Id, out var own) ? own : p.Ncm) is { Length: 8 } ncm ? ncm : throw FiscalException.Blocked($"Product {p.Code} has no valid 8-digit NCM");
 
     /// <summary>Issuer settings of a company (EBT when empty), neither locked nor tracked: emission needs only the issuer data, the number is taken later on its own connection.</summary>
     private async Task<FiscalSettings> ReadSettingsAsync(string? company, CancellationToken ct)
@@ -628,6 +636,17 @@ public sealed partial class FiscalService(EbtDbContext db, ISefazClient sefaz, D
     }
 
     private static string Cut(string s, int max) => s.Length <= max ? s : s[..max];
+    /// <summary>The text of a sale NF as the old system printed it: the sentence of the operation, then the customer's purchase order, then what was typed; plain sentences, no separators.</summary>
+    internal static string SaleInfoText(string? legal, string? customerPo, string? notes)
+    {
+        static string Sentence(string s) => s.Trim().TrimEnd('.') + ".";
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(legal)) parts.Add(Sentence(legal));
+        if (!string.IsNullOrWhiteSpace(customerPo)) parts.Add($"NUMERO DO PEDIDO DE COMPRAS {customerPo.Trim()}.");
+        if (!string.IsNullOrWhiteSpace(notes)) parts.Add(notes.Trim());
+        return string.Join(" ", parts);
+    }
+
     private static string Join(params string?[] parts) => string.Join(" | ", parts.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p!.Trim()));
     private static decimal Money(decimal d) => Math.Round(d, 2, MidpointRounding.AwayFromZero);
     private static string Digits(string? s) => string.Concat((s ?? "").Where(char.IsDigit));

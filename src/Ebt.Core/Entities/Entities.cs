@@ -15,6 +15,8 @@ public class Customer : IHasSource
     public string? ClientCode { get; set; }
     public required string Name { get; set; }
     public string? TradeName { get; set; }
+    /// <summary>Razão social, as the NF must name the recipient (the old system's customer name). Empty: the display name is used.</summary>
+    public string? LegalName { get; set; }
     public ConsumerType ConsumerType { get; set; }
     public bool Active { get; set; } = true;
     // Company (fiscal/contact) data; independent from the delivery addresses.

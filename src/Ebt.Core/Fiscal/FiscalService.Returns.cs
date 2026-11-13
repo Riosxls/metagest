@@ -35,7 +35,7 @@ public sealed partial class FiscalService
             var delivery = await db.Deliveries.AsNoTracking().Include(d => d.Order).FirstAsync(d => d.Id == deliveryId, ct);
             var address = await db.CustomerAddresses.AsNoTracking().FirstOrDefaultAsync(a => a.Id == delivery.AddressId, ct) ?? throw FiscalException.NotFound("Delivery address");
             var customer = await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == original.CustomerId, ct) ?? throw FiscalException.NotFound("Customer");
-            var recipient = new NfeParty(customer.Name, address.Document, address.StateRegistration, address.IcmsContributor, address.Street, address.Number, address.Complement, address.District, address.City, address.CityIbgeCode, address.Uf, address.ZipCode, address.Email ?? customer.Email, address.Phone);
+            var recipient = new NfeParty(Clean(customer.LegalName) ?? customer.Name, address.Document, address.StateRegistration, address.IcmsContributor, address.Street, address.Number, address.Complement, address.District, address.City, address.CityIbgeCode, address.Uf, address.ZipCode, address.Email ?? customer.Email, address.Phone);
             RequireRecipient(recipient, $"customer {customer.Name} (address {address.Id})");
             var interstate = !string.Equals(recipient.Uf, settings.Uf, StringComparison.OrdinalIgnoreCase);
             var cfop = await CfopAsync(interstate ? "2202" : "1202", FiscalKind.Return, ct);
