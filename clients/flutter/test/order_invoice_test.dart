@@ -124,6 +124,20 @@ void main() {
     expect(find.byKey(const ValueKey('invoice-qty-90')), findsOneWidget);
   });
 
+  testWidgets('what is typed in Saída da carga reloads the preview by itself', (tester) async {
+    final f = MoreFake()..order['status'] = 'Released';
+    f.overrides['GET /api/fiscal/preview/order/9'] = (r) => _json(_preview());
+    await pumpMore(tester, f, (s) => SalesOrderScreen(session: s, id: 9), size: const Size(1400, 2600));
+    await tapKey(tester, 'order-invoice');
+    final before = f.log.where((r) => r.url.path == '/api/fiscal/preview/order/9').length;
+    await tester.enterText(find.byKey(const ValueKey('invoice-extra-packages')), '3');
+    await tester.pump(const Duration(milliseconds: 700)); // after the pause in typing
+    await tester.pumpAndSettle();
+    final q = f.last('GET', '/api/fiscal/preview/order/9').url.queryParameters;
+    expect(q['packages'], '3');
+    expect(f.log.where((r) => r.url.path == '/api/fiscal/preview/order/9').length, before + 1);
+  });
+
   testWidgets('the simulation lists what is missing and where to fix it', (tester) async {
     final f = MoreFake()..order['status'] = 'Released';
     f.overrides['GET /api/fiscal/preview/order/9'] = (r) => _json(

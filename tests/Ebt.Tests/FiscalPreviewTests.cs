@@ -91,6 +91,14 @@ public class FiscalPreviewTests(ApiFixture api)
         Assert.Equal(950m, weighed.Lines.Single().Total); // 9.5 x 100
         Assert.Equal(400, (int)(await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}?lines=abc")).StatusCode);
 
+        // what is typed in "Saída da carga" changes the preview (live)
+        var typed = await (await admin.GetAsync($"/api/fiscal/preview/order/{order.Id}?lines={line.Id}:9.5&packages=3&plate=abc1d23&gross=10&freight=50&notes=Entregar%20na%20portaria")).Read<NfPreview>();
+        Assert.Equal(3, typed.Transport.Packages);
+        Assert.Equal("VOLUMES", typed.Transport.Species);
+        Assert.Equal(50m, typed.FreightTotal);
+        Assert.Equal(1000m, typed.ProductsTotal - 0m + 50m); // 9.5 x 100 + 50 freight on top of the goods (50 + 950)
+        Assert.Contains("Entregar na portaria", typed.AdditionalInfo);
+
         // emission is off: the typed NF number is registered, the weighed quantity leaves.
         Assert.Equal(HttpStatusCode.BadRequest, (await admin.Post($"/api/sales/orders/{order.Id}/dispatch", new DispatchInput(Today, []))).StatusCode);
         var d = await (await admin.Post($"/api/sales/orders/{order.Id}/dispatch", new DispatchInput(Today, [new DispatchLineInput(line.Id, 9.5m)], InvoiceNumber: "9001", WithoutCertificate: true))).Read<DeliveryOut>();

@@ -33,6 +33,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   bool _sending = false;
   final _qty = <int, TextEditingController>{};
   final _invoiceNumber = TextEditingController();
+  Timer? _debounce;
 
   /// Data of the load that goes on the NF and can be edited before confirming (sent with the dispatch; empty = the server's default).
   static const _extra = {
@@ -49,12 +50,13 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
   static const _usual = ['packages', 'notes'];
   static const _rare = ['carrier', 'grossWeightKg', 'vehiclePlate', 'freight', 'cfop', 'lotNumber'];
   static const _numericExtra = {'grossWeightKg', 'freight', 'packages'};
-  final _extraCtl = {for (final k in _extra.keys) k: TextEditingController()};
+  late final _extraCtl = {for (final k in _extra.keys) k: TextEditingController()..addListener(_typed)};
 
   ApiClient get api => widget.session.api;
 
   @override
   void dispose() {
+    _debounce?.cancel();
     for (final c in _qty.values) {
       c.dispose();
     }
@@ -67,6 +69,30 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
 
   /// 500.0 -> "500", 12.5 -> "12,5" (what a person types).
   String _numText(num v) => (v == v.roundToDouble() ? v.toInt().toString() : v.toString()).replaceAll('.', ',');
+
+  /// Everything typed in "Saída da carga" that changes the NF, as query parameters, so the preview follows it live.
+  Map<String, dynamic>? _previewQuery() {
+    final q = <String, dynamic>{};
+    if (_qty.isNotEmpty) q['lines'] = _linesQuery();
+    String t(String k) => _extraCtl[k]!.text.trim();
+    if (t('carrier').isNotEmpty) q['carrier'] = t('carrier');
+    if (t('vehiclePlate').isNotEmpty) q['plate'] = t('vehiclePlate');
+    if (t('cfop').isNotEmpty) q['cfop'] = t('cfop');
+    if (t('notes').isNotEmpty) q['notes'] = t('notes');
+    final gross = parseDecimal(t('grossWeightKg')), freight = parseDecimal(t('freight')), packages = parseDecimal(t('packages'));
+    if (gross != null) q['gross'] = '$gross';
+    if (freight != null) q['freight'] = '$freight';
+    if (packages != null && packages > 0) q['packages'] = '${packages.toInt()}';
+    return q.isEmpty ? null : q;
+  }
+
+  /// Reloads the preview shortly after the last keystroke.
+  void _typed() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted && !_sending) unawaited(_load());
+    });
+  }
 
   /// `orderLineId:quantity,...` of the weighed quantities typed (0 when empty or invalid, which leaves the item out).
   String _linesQuery() => [for (final e in _qty.entries) '${e.key}:${parseDecimal(e.value.text.trim()) ?? 0}'].join(',');
@@ -81,7 +107,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
     setState(() => _loading = true);
     try {
       final order = await api.get('/api/sales/orders/${widget.id}') as Map<String, dynamic>;
-      final nf = await api.get('/api/fiscal/preview/order/${widget.id}', _qty.isEmpty ? null : {'lines': _linesQuery()}) as Map<String, dynamic>;
+      final nf = await api.get('/api/fiscal/preview/order/${widget.id}', _previewQuery()) as Map<String, dynamic>;
       if (mounted) {
         setState(() {
           _order = order;
@@ -90,7 +116,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
           // The first load proposes what is still to ship; the weighed quantities typed afterwards are kept on the next loads.
           for (final l in (nf['orderLines'] as List? ?? const []).cast<Map<String, dynamic>>()) {
             if ((l['remaining'] as num) > 0) {
-              _qty.putIfAbsent(l['orderLineId'] as int, () => TextEditingController(text: _numText(l['quantity'] as num)));
+              _qty.putIfAbsent(l['orderLineId'] as int, () => TextEditingController(text: _numText(l['quantity'] as num))..addListener(_typed));
             }
           }
         });
@@ -445,6 +471,7 @@ class _OrderInvoiceScreenState extends State<OrderInvoiceScreen> {
           _kv('Transportadora', transport['carrier']),
           _kv('Peso líquido', transport['netWeightKg'] == null ? null : '${fmtNum(transport['netWeightKg'], 3)} kg'),
           _kv('Peso bruto', transport['grossWeightKg'] == null ? null : '${fmtNum(transport['grossWeightKg'], 3)} kg'),
+          _kv('Placa', transport['vehiclePlate']),
           _kv('Volumes', (transport['packages'] ?? 0) == 0 ? null : '${transport['packages']} · ${fmt(transport['species'])}'),
           const SizedBox(height: 6),
           Text('Líquido = peso das mercadorias. Bruto = com a embalagem; se não for digitado, sai igual ao líquido (como nas NFs antigas).', style: Theme.of(context).textTheme.bodySmall),
