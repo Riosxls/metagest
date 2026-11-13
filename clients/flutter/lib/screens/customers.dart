@@ -7,7 +7,7 @@ import '../api.dart';
 import '../entities.dart';
 import '../labels.dart';
 import '../reports/print_docs.dart' show buildCustomerContactPdf;
-import '../reports/pt_text.dart' show ptEmail, ptPhone, ptText;
+import '../reports/pt_text.dart' show ptEmail, ptIe, ptPhone, ptText, ptZip;
 import '../session.dart';
 import '../theme_tokens.dart';
 import '../widgets/contact_list.dart';
@@ -598,7 +598,7 @@ class _CustomerCompany extends StatelessWidget {
     final filled = a != null && a.entries.any((e) => e.key != 'icmsContributor' && e.value != null && '${e.value}'.isNotEmpty);
     final street = [a?['street'], a?['number'], a?['complement']].where((x) => x != null && '$x'.isNotEmpty).join(', ');
     final place = [a?['district'], fmt(a?['city']).isEmpty ? null : '${a!['city']}/${fmt(a['uf'])}'].where((x) => x != null && '$x'.isNotEmpty).join(' · ');
-    final zip = fmt(a?['zipCode']);
+    final zip = ptZip(a?['zipCode']);
     final addressCopy = _addressLine(a);
     final identity = Section(
       title: 'Dados da empresa',
@@ -608,7 +608,7 @@ class _CustomerCompany extends StatelessWidget {
               ('Nome', fmt(customer['name'])),
               ('Fantasia', fmt(customer['tradeName'])),
               ('CNPJ/CPF', fmtDocument(a['document'])),
-              ('Inscrição estadual', fmt(a['stateRegistration'])),
+              ('Inscrição estadual', ptIe(a['stateRegistration'], a['uf'])),
               ('Código do cliente', fmt(customer['clientCode'])),
             ]),
     );

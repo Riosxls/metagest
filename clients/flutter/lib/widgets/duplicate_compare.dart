@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../reports/pt_text.dart' show ptIe, ptPhone, ptZip;
+import '../screens/customers.dart' show fmtDocument;
 import '../session.dart';
 import 'actions.dart';
 
@@ -69,6 +71,18 @@ class _CompareDialogState extends State<_CompareDialog> {
   }
 
   String? _value(Map<String, dynamic> f, int id) => ((f['values'] as Map)['$id'] as String?);
+
+  /// The value as people read it: CNPJ/CPF, IE, CEP and phone with their punctuation (the stored value is only digits, and is what gets copied).
+  String _shown(String key, String? v) {
+    if (v == null || v.isEmpty) return '—';
+    return switch (key) {
+      'document' => fmtDocument(v),
+      'stateRegistration' => ptIe(v),
+      'zipCode' => ptZip(v),
+      'phone' => ptPhone(v),
+      _ => v,
+    };
+  }
 
   /// Each field starts with the kept record's value, or the first filled one when the kept record has none.
   void _applyDefaults() {
@@ -231,7 +245,7 @@ class _CompareDialogState extends State<_CompareDialog> {
     final v = _value(f, id);
     final differs = f['differs'] == true;
     final text = Text(
-      v == null || v.isEmpty ? '—' : v,
+      _shown(f['key'] as String, v),
       style: theme.textTheme.bodyMedium?.copyWith(color: v == null || v.isEmpty ? theme.colorScheme.onSurfaceVariant : null),
     );
     if (!differs) return Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), child: text);
