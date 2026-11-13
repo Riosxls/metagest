@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../entities.dart';
+import 'pipeline.dart' show Tone, toneColors;
 import 'responsive.dart';
 
 /// A cell of [DashGrid]: one column wide by default, [GridItem.panel] and [GridItem.bars] span two.
@@ -73,7 +74,7 @@ ShapeBorder dashCardShape(BuildContext context) => RoundedRectangleBorder(
 
 /// Dashboard card with an icon, a [value] and a [label]; [alert] highlights it.
 class DashTile extends StatelessWidget {
-  const DashTile({super.key, required this.icon, required this.label, required this.value, this.hint, this.alert = false, this.onTap});
+  const DashTile({super.key, required this.icon, required this.label, required this.value, this.hint, this.alert = false, this.pending = false, this.onTap});
 
   static const height = 112.0;
 
@@ -84,13 +85,18 @@ class DashTile extends StatelessWidget {
   /// Secondary figure beside [value], e.g. the amount behind a count.
   final String? hint;
   final bool alert;
+
+  /// A register still to be completed (blocked products, no routing, incomplete customers): amber, and its number does not shout like a late order's.
+  final bool pending;
   final void Function()? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final (_, warn) = toneColors(context, Tone.warning);
     final fg = alert ? cs.error : null;
+    final accent = alert ? cs.error : (pending ? warn : null);
     // A zero that is not an alarm steps back so the numbers that matter stand out.
     final valueColor = fg ?? (value == '0' ? cs.onSurfaceVariant : null);
     return Semantics(
@@ -100,10 +106,10 @@ class DashTile extends StatelessWidget {
       child: Card(
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
-        shape: alert
+        shape: accent != null
             ? RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: cs.error.withValues(alpha: 0.6)),
+                side: BorderSide(color: accent.withValues(alpha: 0.6)),
               )
             : dashCardShape(context),
         color: cs.surfaceContainerHigh,
@@ -116,8 +122,8 @@ class DashTile extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    // The tile keeps its own icon (it says what the number is); the alert state is a badge on it, not a different glyph.
-                    Badge(isLabelVisible: alert, smallSize: 8, backgroundColor: cs.error, child: Icon(icon, size: 20, color: alert ? cs.error : cs.primary)),
+                    // The tile keeps its own icon (it says what the number is); the state is the colour of the icon and of the border, and the word beside the number.
+                    Icon(icon, size: 20, color: accent ?? cs.primary),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Tooltip(
@@ -125,7 +131,7 @@ class DashTile extends StatelessWidget {
                         child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
                       ),
                     ),
-                    if (onTap != null) Icon(Icons.chevron_right, size: 18, color: fg ?? cs.onSurfaceVariant),
+                    if (onTap != null) Icon(Icons.chevron_right, size: 18, color: accent ?? cs.onSurfaceVariant),
                   ],
                 ),
                 Expanded(
@@ -147,7 +153,7 @@ class DashTile extends StatelessWidget {
                           ),
                           if (hint != null) ...[
                             const SizedBox(width: 8),
-                            Text(hint!, style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                            Text(hint!, style: theme.textTheme.bodyMedium?.copyWith(color: accent ?? cs.onSurfaceVariant)),
                           ],
                         ],
                       ),

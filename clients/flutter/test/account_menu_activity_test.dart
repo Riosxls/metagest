@@ -226,13 +226,13 @@ void main() {
         AlertInfo(Icons.block, 'Produtos bloqueados', 2, 'products', null, 'engenharia'),
       ]);
       await _pump(tester, Scaffold(appBar: AppBar(actions: [AlertBell(center: s.alerts, onNavigate: (_, [_]) {})])));
-      expect(s.alerts.total, 5);
+      expect(s.alerts.total, 2); // two alert lines (the bell and the Painel count lines, not items)
       await s.saveNotificationPrefs(muted: {'pcp'});
       await tester.pumpAndSettle();
-      expect(s.alerts.total, 2);
+      expect(s.alerts.total, 1);
       expect(s.alerts.silenced, 1);
-      expect(find.byTooltip('Notificações (2)'), findsOneWidget);
-      await tester.tap(find.byTooltip('Notificações (2)'));
+      expect(find.byTooltip('Notificações (1)'), findsOneWidget);
+      await tester.tap(find.byTooltip('Notificações (1)'));
       await tester.pumpAndSettle();
       expect(find.text('OFs atrasadas'), findsNothing);
       expect(find.text('Produtos bloqueados'), findsOneWidget);

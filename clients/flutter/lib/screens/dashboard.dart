@@ -98,6 +98,9 @@ class DashAlert {
   final String navId;
   final String? filter;
   final void Function()? onTap;
+
+  /// Registers still to be completed (not something late): amber, after the urgent ones.
+  bool get pending => const {'Produtos bloqueados', 'Produtos sem roteiro', 'Clientes: cadastro incompleto p/ NF', 'Entregas com certificado pendente'}.contains(label);
 }
 
 List<DashAlert> buildAlerts(
@@ -207,7 +210,7 @@ List<DashAlert> buildAlerts(
       DashAlert(
         'Comercial',
         Icons.error_outline,
-        'Clientes com cadastro incompleto para NF',
+        'Clientes: cadastro incompleto p/ NF',
         commercial.fiscalProblems.length,
         'customers',
         null,
@@ -362,8 +365,10 @@ DashAlert _applyPrefs(DashAlert a, Session session) {
 
 /// What the bell needs from [alerts]: the ones that are not legacy backlog. Silenced modules stay in; [AlertCenter] filters and counts them.
 List<AlertInfo> bellAlerts(List<DashAlert> alerts) => [
-  for (final a in alerts)
-    if (!a.muted) AlertInfo(a.icon, a.label, a.count, a.navId, a.filter, alertModuleKey(a.module)),
+  // What is late first, the registers to complete after (the order the Painel shows too).
+  for (final urgent in [false, true])
+    for (final a in alerts)
+      if (!a.muted && a.pending == urgent) AlertInfo(a.icon, a.label, a.count, a.navId, a.filter, alertModuleKey(a.module)),
 ];
 
 /// Reads the five sections and puts the alerts on the bell. The Painel does this itself; the shell calls it when another screen is the one
@@ -653,23 +658,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
         label: a.label,
         value: '${a.count}',
         // A tile that opens nothing is information, not a call to act: it drops the alarm look.
-        alert: !a.muted && a.onTap != null,
+        alert: !a.muted && !a.pending && a.onTap != null,
+        pending: !a.muted && a.pending && a.onTap != null,
+        hint: a.muted || a.onTap == null ? null : (a.pending ? 'pendência' : 'urgente'),
         onTap: a.onTap,
       ),
     );
     final order = [for (final m in modulesFor(widget.session.role)) m.section];
-    final groups = <Widget>[];
+    final blocks = <Widget>[];
     for (final section in order) {
-      final mine = fresh.where((a) => a.module == section).toList();
+      final mine = [...fresh.where((a) => a.module == section && !a.pending), ...fresh.where((a) => a.module == section && a.pending)];
       if (mine.isEmpty) continue;
-      groups.add(
-        Padding(
-          padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.sm),
-          child: Text(section, style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+      blocks.add(
+        Column(
+          key: ValueKey('alert-group-$section'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.sm),
+              child: Text(section, style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            ),
+            DashGrid(items: [for (final a in mine) tile(a)]),
+          ],
         ),
       );
-      groups.add(DashGrid(items: [for (final a in mine) tile(a)]));
     }
+    // The modules sit side by side on a wide window (up to three in a row), so the alerts take one band and the modules below come into the first screen.
+    final groups = <Widget>[
+      LayoutBuilder(
+        builder: (context, box) {
+          const gap = 20.0;
+          final perRow = box.maxWidth >= 1000 ? math.min(3, blocks.length) : 1;
+          if (perRow <= 1) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: blocks);
+          final width = (box.maxWidth - gap * (perRow - 1)) / perRow - 0.01;
+          return Wrap(spacing: gap, runSpacing: 0, children: [for (final b in blocks) SizedBox(width: width, child: b)]);
+        },
+      ),
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -969,7 +994,15 @@ class ModuleCard extends StatelessWidget {
                       child: Text(module.section, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
                     ),
                     if (attention > 0)
-                      Badge(label: Text('$attention'), backgroundColor: cs.error, textColor: cs.onError)
+                      Tooltip(
+                        message: status,
+                        child: Container(
+                          key: ValueKey('module-pending-${module.section}'),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                          decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(999)),
+                          child: Text(status, style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
+                        ),
+                      )
                     else if (!loading && lines != null)
                       Tooltip(message: 'Nada pendente', child: Icon(Icons.check_circle_outline, size: 20, color: cs.primary)),
                     const SizedBox(width: 4),

@@ -22,7 +22,8 @@ class AlertCenter extends ValueNotifier<List<AlertInfo>> {
   Set<String> _mutedModules = const {};
   int _silenced = 0;
 
-  int get total => value.fold(0, (n, a) => n + a.count);
+  /// How many alert lines the bell shows: the same count the Painel prints in "Atenção · N alertas" (the lines carry their own item counts).
+  int get total => value.length;
 
   /// Alert lines left out of the bell because their module is silenced.
   int get silenced => _silenced;

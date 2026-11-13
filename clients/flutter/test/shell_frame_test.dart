@@ -139,7 +139,7 @@ void main() {
     final semantics = tester.ensureSemantics();
     session.alerts.value = const [AlertInfo(Icons.block, 'x', 3, 'production-orders')];
     await tester.pumpAndSettle();
-    expect(find.bySemanticsLabel('Alertas, 3 pendentes'), findsOneWidget);
+    expect(find.bySemanticsLabel('Alertas, 1 pendente'), findsOneWidget);
     expect(find.bySemanticsLabel('Início'), findsOneWidget);
     semantics.dispose();
   });

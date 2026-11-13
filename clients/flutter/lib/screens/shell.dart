@@ -747,6 +747,9 @@ class _ShellState extends State<Shell> {
 
   NavItem get _item => _items.firstWhere((i) => i.id == _current);
 
+  /// The collapsed sidebar names its icons from this width on.
+  static bool _railCaptions(BuildContext context) => MediaQuery.sizeOf(context).width >= 1400;
+
   Widget _railItem(NavItem d, ColorScheme cs, VoidCallback tap, {String? title, IconData? icon, bool? selected, String? hint}) {
     final active = selected ?? d.id == _current;
     return Tooltip(
@@ -766,8 +769,23 @@ class _ShellState extends State<Shell> {
             child: InkWell(
               borderRadius: BorderRadius.circular(10),
               onTap: tap,
-              // Icons only: the name is in the tooltip and read by screen readers.
-              child: SizedBox(height: scaledHeight(context, 40), child: Icon(icon ?? d.icon, color: active ? cs.onSecondaryContainer : cs.onSurfaceVariant)),
+              // A wide window has room for a caption under the icon; a narrow one keeps icons only (the name is in the tooltip and read by screen readers).
+              child: _railCaptions(context)
+                  ? SizedBox(
+                      height: scaledHeight(context, 56),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(icon ?? d.icon, size: 22, color: active ? cs.onSecondaryContainer : cs.onSurfaceVariant),
+                          const SizedBox(height: 2),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: Text(title ?? d.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: active ? cs.onSecondaryContainer : cs.onSurfaceVariant)),
+                          ),
+                        ],
+                      ),
+                    )
+                  : SizedBox(height: scaledHeight(context, 40), child: Icon(icon ?? d.icon, color: active ? cs.onSecondaryContainer : cs.onSurfaceVariant)),
             ),
           ),
         ),
@@ -1363,7 +1381,7 @@ class _ShellState extends State<Shell> {
             ? Row(
                 children: [
                   SizedBox(
-                    width: _collapsed ? 72 : 280,
+                    width: _collapsed ? (_railCaptions(context) ? 88 : 72) : 280,
                     child: _menu(rail: _collapsed),
                   ),
                   const VerticalDivider(width: 1),

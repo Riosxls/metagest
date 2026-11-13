@@ -135,7 +135,7 @@ class QuickActionBar extends StatelessWidget {
         children: [
           for (final a in actions)
             FilledButton.tonalIcon(onPressed: () => a.run(context).then((_) => onDone?.call()), icon: Icon(a.icon), label: Text(a.label)),
-          if (onEdit != null) IconButton(key: const ValueKey('quick-actions-edit'), tooltip: 'Editar atalhos', onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
+          if (onEdit != null) TextButton.icon(key: const ValueKey('quick-actions-edit'), onPressed: onEdit, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('Editar atalhos')),
         ],
       ),
     );
