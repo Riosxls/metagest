@@ -123,7 +123,8 @@ void main() {
     final body = jsonDecode(post.body) as Map<String, dynamic>;
     expect(post.url.path, '/api/customers');
     expect(body['name'], 'Nova Ltda');
-    expect(body['company']['document'], '98765432000111');
+    // The form sends the CNPJ as shown (with punctuation); the server keeps only the digits.
+    expect((body['company']['document'] as String).replaceAll(RegExp(r'\D'), ''), '98765432000111');
     expect(body['address']['uf'], 'AC');
     expect(body['address']['buyer'], 'Carla');
   });

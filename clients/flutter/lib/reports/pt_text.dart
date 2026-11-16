@@ -263,33 +263,92 @@ String ptZip(Object? value) {
   return d.length == 8 ? '${d.substring(0, 5)}-${d.substring(5)}' : raw.trim();
 }
 
-/// State registration (I.E.) with the dots of its state: SP 123.456.789.012, SC 123.456.789, PR 123.45678-90, RS 123/4567890, MG 123.456.789/0123, RJ 12.345.67-8.
-/// Other states, "ISENTO" and anything that does not have the digits of its state stay as typed.
+/// State registration patterns by state and number of digits ('#' = a digit). States that are not listed (AL, AP, ES, MA, MS, PI, TO) have no punctuation.
+const _iePatterns = <String, Map<int, String>>{
+  'AC': {13: '##.###.###/###-##'},
+  'AM': {9: '##.###.###-#'},
+  'BA': {8: '######-##', 9: '#######-##'},
+  'CE': {9: '########-#'},
+  'DF': {13: '###########-##'},
+  'GO': {9: '##.###.###-#'},
+  'MT': {11: '##########-#'},
+  'MG': {13: '###.###.###/####'},
+  'PA': {9: '##-######-#'},
+  'PB': {9: '########-#'},
+  'PR': {10: '###.#####-##'},
+  'PE': {9: '#######-##', 14: '##.#.###.#######-#'},
+  'RJ': {8: '##.###.##-#'},
+  'RN': {9: '##.###.###-#', 10: '##.#.###.###-#'},
+  'RS': {10: '###/#######'},
+  'RO': {9: '###.#####-#'},
+  'RR': {9: '########-#'},
+  'SC': {9: '###.###.###'},
+  'SE': {9: '########-#'},
+  'SP': {12: '###.###.###.###'},
+};
+
+/// Writes the digits [d] into [pattern] ('#' = digit), stopping where the digits end (no trailing separator).
+String _fill(String pattern, String d) {
+  final out = StringBuffer();
+  var at = 0;
+  for (var i = 0; i < pattern.length && at < d.length; i++) {
+    if (pattern[i] == '#') {
+      out.write(d[at++]);
+    } else {
+      out.write(pattern[i]);
+    }
+  }
+  return out.toString();
+}
+
+/// State registration (I.E.) with the punctuation of its state (SP 123.456.789.012, PR 123.45678-90, RS 123/4567890, MG 123.456.789/0123, ...).
+/// "ISENTO", a state without punctuation and anything that does not have the digits of its state stay as typed.
 String ptIe(Object? value, [Object? uf]) {
   final raw = value == null ? '' : '$value'.trim();
   final d = raw.replaceAll(RegExp(r'\D'), '');
   if (d.isEmpty || RegExp(r'[A-Za-z]').hasMatch(raw)) return raw;
   final state = '${uf ?? ''}'.toUpperCase();
-  String cut(List<int> parts, List<String> seps) {
-    var out = '';
-    var at = 0;
-    for (var i = 0; i < parts.length; i++) {
-      out += d.substring(at, at + parts[i]);
-      at += parts[i];
-      if (i < seps.length) out += seps[i];
-    }
-    return out;
-  }
-
-  if (state == 'SP' && d.length == 12) return cut([3, 3, 3, 3], ['.', '.', '.']);
-  if (state == 'SC' && d.length == 9) return cut([3, 3, 3], ['.', '.']);
-  if (state == 'PR' && d.length == 10) return cut([3, 5, 2], ['.', '-']);
-  if (state == 'RS' && d.length == 10) return cut([3, 7], ['/']);
-  if (state == 'MG' && d.length == 13) return cut([3, 3, 3, 4], ['.', '.', '/']);
-  if (state == 'RJ' && d.length == 8) return cut([2, 3, 2, 1], ['.', '.', '-']);
   // Without the state, twelve digits are a São Paulo registration.
-  if (state.isEmpty && d.length == 12) return cut([3, 3, 3, 3], ['.', '.', '.']);
-  return raw;
+  final pattern = _iePatterns[state.isEmpty ? 'SP' : state]?[d.length];
+  return pattern == null ? raw : _fill(pattern, d);
+}
+
+/// The I.E. while it is typed: the punctuation of the state appears as the digits do. A number with letters ("ISENTO") is left alone; without a
+/// state only a complete São Paulo number (12 digits) is formatted; a state without punctuation keeps the bare digits.
+String maskIeInput(String text, [String? uf]) {
+  if (RegExp(r'[A-Za-z]').hasMatch(text)) return text;
+  final d = text.replaceAll(RegExp(r'\D'), '');
+  if (d.isEmpty) return '';
+  final state = (uf ?? '').toUpperCase();
+  if (state.isEmpty) return d.length == 12 ? _fill(_iePatterns['SP']![12]!, d) : text;
+  final patterns = _iePatterns[state];
+  if (patterns == null) return d;
+  final lengths = patterns.keys.toList()..sort();
+  // The shortest pattern that still has room for the digits, else the longest one (extra digits are dropped).
+  final len = lengths.firstWhere((l) => l >= d.length, orElse: () => lengths.last);
+  final pattern = patterns[len]!;
+  return _fill(pattern, d.length > len ? d.substring(0, len) : d);
+}
+
+/// The CEP while it is typed: 09370-901.
+String maskZip(String text, [String? uf]) {
+  final d = text.replaceAll(RegExp(r'\D'), '');
+  final x = d.length > 8 ? d.substring(0, 8) : d;
+  return x.length > 5 ? '${x.substring(0, 5)}-${x.substring(5)}' : x;
+}
+
+/// The telephone while it is typed: (11) 2914-5677 (landline) or (11) 99999-9999 (mobile). A field holding several numbers ("... / ...", "... ou ...") and
+/// a local number typed without area code ("2914-5677") are left as typed.
+String maskPhone(String text, [String? uf]) {
+  if (RegExp(r'[/;,]|[A-Za-z]').hasMatch(text)) return text;
+  if (!text.trimLeft().startsWith('(') && RegExp(r'^\d{4,5}-\d').hasMatch(text.trim())) return text;
+  final d = text.replaceAll(RegExp(r'\D'), '');
+  if (d.isEmpty) return '';
+  if (d.length > 11) return text;
+  if (d.length <= 2) return '($d';
+  final rest = d.substring(2);
+  final cut = d.length == 11 ? 5 : 4;
+  return '(${d.substring(0, 2)}) ${rest.length > cut ? '${rest.substring(0, cut)}-${rest.substring(cut)}' : rest}';
 }
 
 /// Telephone as (11) 4546-8895.

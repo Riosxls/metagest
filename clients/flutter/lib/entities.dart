@@ -136,8 +136,8 @@ class FieldSpec {
   /// A money amount: shown with two decimals when the form opens.
   final bool money;
 
-  /// Writes the typed text with its punctuation as it is typed (CNPJ/CPF, IE); the server keeps only the digits.
-  final String Function(String)? mask;
+  /// Writes the typed text with its punctuation as it is typed (CNPJ/CPF, IE, CEP, phone); the second argument is the UF of the form (the IE follows it).
+  final String Function(String text, String? uf)? mask;
 }
 
 /// One column of a record list or table: header, value reader and alignment.

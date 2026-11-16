@@ -7,7 +7,7 @@ import '../api.dart';
 import '../entities.dart';
 import '../labels.dart';
 import '../reports/print_docs.dart' show buildCustomerContactPdf;
-import '../reports/pt_text.dart' show ptEmail, ptIe, ptPhone, ptText, ptZip;
+import '../reports/pt_text.dart' show maskIeInput, maskPhone, maskZip, ptEmail, ptIe, ptPhone, ptText, ptZip;
 import '../session.dart';
 import '../theme_tokens.dart';
 import '../widgets/contact_list.dart';
@@ -39,7 +39,7 @@ String fmtDocument(Object? v) {
 }
 
 /// CPF/CNPJ while it is typed: the punctuation appears as the digits do (up to 11 digits a CPF, then a CNPJ).
-String maskDocument(String text) {
+String maskDocument(String text, [String? uf]) {
   final d = text.replaceAll(RegExp(r'\D'), '');
   final x = d.length > 14 ? d.substring(0, 14) : d;
   final b = StringBuffer();
@@ -60,8 +60,8 @@ String maskDocument(String text) {
   return b.toString();
 }
 
-/// State registration while it is typed: formatted once it has the 12 digits of a São Paulo one; anything else stays as typed (other states, ISENTO).
-String maskIe(String text) => ptIe(text);
+/// State registration while it is typed, with the punctuation of the UF of the same form.
+String maskIe(String text, [String? uf]) => maskIeInput(text, uf);
 
 /// The 27 Brazilian states, for the UF dropdown.
 const _ufs = {
@@ -135,10 +135,10 @@ const _companyFields = [
   FieldSpec('district', 'Bairro'),
   FieldSpec('city', 'Cidade'),
   FieldSpec('uf', 'UF', type: FieldType.choice, choices: _ufs),
-  FieldSpec('zipCode', 'CEP', hint: '8 dígitos'),
+  FieldSpec('zipCode', 'CEP', hint: '8 dígitos', mask: maskZip),
   FieldSpec('contact', 'Contato'),
   FieldSpec('email', 'E-mail'),
-  FieldSpec('phone', 'Telefone'),
+  FieldSpec('phone', 'Telefone', mask: maskPhone),
   FieldSpec('paymentTermId', 'Prazo padrão', type: FieldType.lookup, lookup: LookupSpec('/api/sales/payment-terms'), hint: 'Usado como padrão nos orçamentos'),
   FieldSpec('creditLimit', 'Limite de crédito (R\$)', type: FieldType.decimal, hint: 'Vazio = vale o limite do prazo'),
   FieldSpec('ipiPercent', 'IPI usual (%)', type: FieldType.decimal, hint: 'Entra nos itens do orçamento quando a tabela de preços não traz IPI'),
@@ -172,7 +172,7 @@ String? phoneHint(String key, Map<String, dynamic> values) {
 }
 
 List<FieldSpec> _companyFormFields() => [
-  for (final f in _companyFields) FieldSpec('company.${f.key}', f.label, type: f.type, hint: f.hint, lookup: f.lookup, defaultValue: f.defaultValue, choices: f.choices),
+  for (final f in _companyFields) FieldSpec('company.${f.key}', f.label, type: f.type, hint: f.hint, lookup: f.lookup, defaultValue: f.defaultValue, choices: f.choices, mask: f.mask),
 ];
 
 (Map<String, dynamic>, Map<String, dynamic>) _splitCompany(Map<String, dynamic> b) {
@@ -199,10 +199,10 @@ const _addressFields = [
   FieldSpec('district', 'Bairro'),
   FieldSpec('city', 'Cidade'),
   FieldSpec('uf', 'UF', required: true, type: FieldType.choice, choices: _ufs),
-  FieldSpec('zipCode', 'CEP', hint: '8 dígitos'),
+  FieldSpec('zipCode', 'CEP', hint: '8 dígitos', mask: maskZip),
   FieldSpec('buyer', 'Contato'),
   FieldSpec('email', 'E-mail'),
-  FieldSpec('phone', 'Telefone'),
+  FieldSpec('phone', 'Telefone', mask: maskPhone),
 ];
 
 const _shippingKeys = {'street', 'number', 'complement', 'district', 'city', 'uf', 'zipCode', 'buyer', 'phone', 'email'};
@@ -220,6 +220,7 @@ final _shippingFields = [
         type: f.type,
         choices: f.choices,
         hint: f.hint,
+        mask: f.mask,
       ),
 ];
 

@@ -214,6 +214,15 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
     });
   }
 
+  /// The UF typed or chosen in the same block of the form ("company.uf" for "company.stateRegistration"), from the form or from the [initial] values.
+  String? _ufOf(FieldSpec f, [Map<String, dynamic>? initial]) {
+    final dot = f.key.lastIndexOf('.');
+    final key = '${dot < 0 ? '' : f.key.substring(0, dot + 1)}uf';
+    final v = initial != null ? initial[key] : (_values[key] ?? _text[key]?.text);
+    final s = v == null ? null : '$v'.trim();
+    return s == null || s.isEmpty ? null : s;
+  }
+
   String _signature() => jsonEncode([for (final f in widget.fields) _text[f.key]?.text ?? _values[f.key]]);
 
   bool _isText(FieldSpec f) =>
@@ -227,7 +236,7 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
       if (_isText(f)) {
         _text[f.key] = TextEditingController(
           text: f.type == FieldType.text
-              ? (f.mask != null ? f.mask!(v as String? ?? '') : (v as String? ?? ''))
+              ? (f.mask != null ? f.mask!(v as String? ?? '', _ufOf(f, widget.initial)) : (v as String? ?? ''))
               : (f.type == FieldType.date
                     ? fmtDay(v)
                     : (f.type == FieldType.time ? fmtTime(v) : (f.money && v is num ? fmtDecimalInput(v) : fmt(v)))),
@@ -553,7 +562,7 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
           obscureText: f.obscure,
           inputFormatters: f.uppercase
               ? [_UpperCase()]
-              : (f.mask != null ? [_Masked(f.mask!)] : (f.digitsOnly ? [FilteringTextInputFormatter.digitsOnly] : null)),
+              : (f.mask != null ? [_Masked((t) => f.mask!(t, _ufOf(f)))] : (f.digitsOnly ? [FilteringTextInputFormatter.digitsOnly] : null)),
           textCapitalization: f.uppercase ? TextCapitalization.characters : TextCapitalization.none,
           keyboardType: f.type == FieldType.text
               ? TextInputType.text
@@ -759,16 +768,33 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
   }
 }
 
-/// Re-writes the text with [mask] after every edit and keeps the cursor at the end (the masks only add punctuation).
+/// Re-writes the text with [mask] after every edit. The cursor stays where it was among the digits and letters, so typing or deleting in the middle of
+/// a number does not send it to the end.
 class _Masked extends TextInputFormatter {
   _Masked(this.mask);
 
   final String Function(String) mask;
 
+  static bool _significant(String c) => RegExp(r'[0-9A-Za-z]').hasMatch(c);
+
   @override
   TextEditingValue formatEditUpdate(TextEditingValue old, TextEditingValue value) {
     final text = mask(value.text);
-    return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+    if (text == value.text) return value;
+    final cursor = value.selection.isValid ? value.selection.extentOffset.clamp(0, value.text.length) : value.text.length;
+    var before = 0;
+    for (var i = 0; i < cursor; i++) {
+      if (_significant(value.text[i])) before++;
+    }
+    var at = 0;
+    var seen = 0;
+    while (at < text.length && seen < before) {
+      if (_significant(text[at])) seen++;
+      at++;
+    }
+    // Typing at the end of the text keeps the cursor at the end (after the punctuation that was just added).
+    if (cursor == value.text.length) at = text.length;
+    return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: at));
   }
 }
 
