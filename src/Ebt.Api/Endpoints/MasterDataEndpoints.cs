@@ -211,7 +211,7 @@ public static class MasterDataEndpoints
     {
         if (i is null) return;
         c.Document = Numeric(i.Document);
-        c.StateRegistration = Clean(i.StateRegistration);
+        c.StateRegistration = Numeric(i.StateRegistration);
         c.IcmsContributor = i.IcmsContributor;
         c.Street = Clean(i.Street);
         c.Number = Clean(i.Number);
@@ -303,7 +303,7 @@ public static class MasterDataEndpoints
         a.Document = Numeric(i.Document)!;
         a.Uf = i.Uf.Trim().ToUpper();
         a.LegacyCode = Clean(i.LegacyCode);
-        a.StateRegistration = Clean(i.StateRegistration);
+        a.StateRegistration = Numeric(i.StateRegistration);
         a.IcmsContributor = i.IcmsContributor;
         a.Street = Clean(i.Street);
         a.Number = Clean(i.Number);
@@ -371,7 +371,7 @@ public static class MasterDataEndpoints
         a.Document = Numeric(i.Document);
         a.Uf = i.Uf.Trim().ToUpper();
         a.LegacyCode = Clean(i.LegacyCode);
-        a.StateRegistration = Clean(i.StateRegistration);
+        a.StateRegistration = Numeric(i.StateRegistration);
         a.Street = Clean(i.Street);
         a.Number = Clean(i.Number);
         a.District = Clean(i.District);

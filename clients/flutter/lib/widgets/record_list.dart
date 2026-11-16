@@ -1156,7 +1156,10 @@ class NameCache {
 /// Label/value pairs laid out in equal columns so values line up across rows. A value that is long (an address, a note) gets a row of its own
 /// instead of squeezing the next pair against it.
 class InfoGrid extends StatelessWidget {
-  const InfoGrid(this.entries, {super.key, this.minColumnWidth = 210, this.longValue = 44});
+  const InfoGrid(this.entries, {super.key, this.minColumnWidth = 210, this.longValue = 44, this.copyLabels = const {}});
+
+  /// Labels whose value gets a copy button beside it (CNPJ/CPF, IE).
+  final Set<String> copyLabels;
 
   final List<(String, String)> entries;
   final double minColumnWidth;
@@ -1174,7 +1177,26 @@ class InfoGrid extends StatelessWidget {
       children: [
         Text(e.$1, style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         const SizedBox(height: 4),
-        Text(e.$2, style: theme.textTheme.bodyLarge),
+        if (copyLabels.contains(e.$1))
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: Text(e.$2, style: theme.textTheme.bodyLarge)),
+              IconButton(
+                key: ValueKey('copy-${e.$1}'),
+                tooltip: 'Copiar ${e.$1}',
+                visualDensity: VisualDensity.compact,
+                iconSize: 18,
+                icon: const Icon(Icons.copy_outlined),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: e.$2));
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${e.$1} copiado')));
+                },
+              ),
+            ],
+          )
+        else
+          Text(e.$2, style: theme.textTheme.bodyLarge),
       ],
     );
     return LayoutBuilder(

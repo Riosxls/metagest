@@ -38,6 +38,31 @@ String fmtDocument(Object? v) {
   return d;
 }
 
+/// CPF/CNPJ while it is typed: the punctuation appears as the digits do (up to 11 digits a CPF, then a CNPJ).
+String maskDocument(String text) {
+  final d = text.replaceAll(RegExp(r'\D'), '');
+  final x = d.length > 14 ? d.substring(0, 14) : d;
+  final b = StringBuffer();
+  if (x.length <= 11) {
+    for (var i = 0; i < x.length; i++) {
+      if (i == 3 || i == 6) b.write('.');
+      if (i == 9) b.write('-');
+      b.write(x[i]);
+    }
+  } else {
+    for (var i = 0; i < x.length; i++) {
+      if (i == 2 || i == 5) b.write('.');
+      if (i == 8) b.write('/');
+      if (i == 12) b.write('-');
+      b.write(x[i]);
+    }
+  }
+  return b.toString();
+}
+
+/// State registration while it is typed: formatted once it has the 12 digits of a São Paulo one; anything else stays as typed (other states, ISENTO).
+String maskIe(String text) => ptIe(text);
+
 /// The 27 Brazilian states, for the UF dropdown.
 const _ufs = {
   'AC': 'AC',
@@ -101,8 +126,8 @@ Map<String, dynamic>? _company(Map<String, dynamic> c) => c['company'] as Map<St
 
 // Company data lives on the customer itself, independent from the delivery locais. Its address is the main one; a customer without a delivery address delivers there.
 const _companyFields = [
-  FieldSpec('document', 'CNPJ/CPF', hint: 'Somente números ou com pontuação'),
-  FieldSpec('stateRegistration', 'Inscrição estadual'),
+  FieldSpec('document', 'CNPJ/CPF', hint: 'A pontuação entra sozinha', mask: maskDocument),
+  FieldSpec('stateRegistration', 'Inscrição estadual', mask: maskIe),
   FieldSpec('icmsContributor', 'Contribuinte de ICMS', type: FieldType.boolean, defaultValue: false),
   FieldSpec('street', 'Endereço principal'),
   FieldSpec('number', 'Número'),
@@ -165,8 +190,8 @@ String _addressLine(Map<String, dynamic>? a) {
 }
 
 const _addressFields = [
-  FieldSpec('document', 'CNPJ/CPF', required: true, hint: 'Somente números ou com pontuação'),
-  FieldSpec('stateRegistration', 'Inscrição estadual'),
+  FieldSpec('document', 'CNPJ/CPF', required: true, hint: 'A pontuação entra sozinha', mask: maskDocument),
+  FieldSpec('stateRegistration', 'Inscrição estadual', mask: maskIe),
   FieldSpec('icmsContributor', 'Contribuinte de ICMS', type: FieldType.boolean, defaultValue: false),
   FieldSpec('street', 'Endereço'),
   FieldSpec('number', 'Número'),
@@ -610,7 +635,7 @@ class _CustomerCompany extends StatelessWidget {
               ('CNPJ/CPF', fmtDocument(a['document'])),
               ('Inscrição estadual', ptIe(a['stateRegistration'], a['uf'])),
               ('Código do cliente', fmt(customer['clientCode'])),
-            ]),
+            ], copyLabels: const {'CNPJ/CPF', 'Inscrição estadual'}),
     );
     final address = Section(
       title: 'Endereço principal',

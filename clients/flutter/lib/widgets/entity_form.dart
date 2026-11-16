@@ -227,7 +227,7 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
       if (_isText(f)) {
         _text[f.key] = TextEditingController(
           text: f.type == FieldType.text
-              ? (v as String? ?? '')
+              ? (f.mask != null ? f.mask!(v as String? ?? '') : (v as String? ?? ''))
               : (f.type == FieldType.date
                     ? fmtDay(v)
                     : (f.type == FieldType.time ? fmtTime(v) : (f.money && v is num ? fmtDecimalInput(v) : fmt(v)))),
@@ -553,7 +553,7 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
           obscureText: f.obscure,
           inputFormatters: f.uppercase
               ? [_UpperCase()]
-              : (f.digitsOnly ? [FilteringTextInputFormatter.digitsOnly] : null),
+              : (f.mask != null ? [_Masked(f.mask!)] : (f.digitsOnly ? [FilteringTextInputFormatter.digitsOnly] : null)),
           textCapitalization: f.uppercase ? TextCapitalization.characters : TextCapitalization.none,
           keyboardType: f.type == FieldType.text
               ? TextInputType.text
@@ -756,6 +756,19 @@ class _EntityFormDialogState extends State<EntityFormDialog> {
       bindings: {const SingleActivator(LogicalKeyboardKey.enter, control: true): () => _busy ? null : unawaited(_save())},
       child: DiscardGuard(isDirty: () => _signature() != _initial, child: dialog),
     );
+  }
+}
+
+/// Re-writes the text with [mask] after every edit and keeps the cursor at the end (the masks only add punctuation).
+class _Masked extends TextInputFormatter {
+  _Masked(this.mask);
+
+  final String Function(String) mask;
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue old, TextEditingValue value) {
+    final text = mask(value.text);
+    return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
   }
 }
 
