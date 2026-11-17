@@ -255,10 +255,10 @@ public class FiscalPreviewTests(ApiFixture api)
         var admin = await api.AdminAsync();
         var doc = "61" + string.Concat(Enumerable.Range(0, 12).Select(_ => Random.Shared.Next(10)));
         var customer = await (await admin.Post("/api/customers", new CustomerIn("Cliente " + Code("C"), null, null, ConsumerType.Normal))).Read<CustomerOut>();
-        var address = await (await admin.Post($"/api/customers/{customer.Id}/addresses", new CustomerAddressIn(doc, "SP", null, "286024953112", true, "Rua Inco", "246", null, null, "Diadema", null, "09961370", null, null, null, null))).Read<CustomerAddressOut>();
+        var address = await (await admin.Post($"/api/customers/{customer.Id}/addresses", new CustomerAddressIn(doc, "SP", null, "286024953112", true, "Rua Inco", "246", null, null, "Diadema Velha", null, "09961370", null, null, null, null))).Read<CustomerAddressOut>();
         var product = await (await admin.Post("/api/products", Tube(Code("T"), "73063000"))).Read<ProductOut>();
 
-        // the register lacks the district and the IBGE code: an alert says so (and what exactly)
+        // the register lacks the district and the IBGE code (a city the built-in table does not know, so nothing fills it on save): an alert says so (and what exactly)
         var problems = await (await admin.GetAsync($"/api/fiscal/customer-problems?customerId={customer.Id}")).Read<JsonElement>();
         Assert.Equal(1, problems.GetArrayLength());
         var gaps = problems[0].GetProperty("addresses")[0].GetProperty("gaps").EnumerateArray().Select(x => x.GetString()).ToList();
@@ -268,8 +268,8 @@ public class FiscalPreviewTests(ApiFixture api)
         var bundle = new
         {
             source = "BST",
-            customerData = new[] { new { document = doc, legalName = "INCODIESEL IND.E COM. DE PECAS P DIESEL LTDA", tradeName = "INCODIESEL", addresses = new[] { new { street = "RUA INCO", number = "246", district = "JARDIM ALBA", city = "DIADEMA", uf = "SP", zip = "09961370", ibge = "3513801", stateRegistration = "286024953112", phone = "1140664865" } } } },
-            cities = new[] { new { city = "DIADEMA", uf = "SP", ibge = "3513801" } },
+            customerData = new[] { new { document = doc, legalName = "INCODIESEL IND.E COM. DE PECAS P DIESEL LTDA", tradeName = "INCODIESEL", addresses = new[] { new { street = "RUA INCO", number = "246", district = "JARDIM ALBA", city = "DIADEMA VELHA", uf = "SP", zip = "09961370", ibge = "3513801", stateRegistration = "286024953112", phone = "1140664865" } } } },
+            cities = new[] { new { city = "DIADEMA VELHA", uf = "SP", ibge = "3513801" } },
             productNcms = new[] { new { code = product.Code, ncm = "73063090" } }
         };
         var done = await (await UploadAsync(admin, bundle, apply: true)).Read<FiscalImportResult>();
