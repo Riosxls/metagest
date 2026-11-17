@@ -329,8 +329,18 @@ void main() {
           children: [DuplicatesAlert(key: const ValueKey('s'), session: session, kind: 'suppliers')],
         ),
       );
-      expect(find.text('Atenção: 2 grupos de fornecedores parecem duplicados'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('duplicates-alert')));
+      expect(find.text('2 grupos de fornecedores parecem duplicados'), findsOneWidget);
+      expect(find.text('Ver'), findsNothing, reason: 'the strip has only the X');
+      // The way in is the attention button of the toolbar.
+      await pumpApp(
+        tester,
+        Column(
+          children: [DuplicatesButton(session: session, kind: 'suppliers')],
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('attention-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2 grupos de fornecedores parecem duplicados'));
       await tester.pumpAndSettle();
       expect(find.text('Cadastros duplicados'), findsOneWidget);
       // The screen opens on the Fornecedores tab.
@@ -345,7 +355,12 @@ void main() {
           children: [DuplicatesAlert(key: const ValueKey('one'), session: one, kind: 'products')],
         ),
       );
-      expect(find.text('Atenção: 1 grupo de produtos parece duplicado'), findsOneWidget);
+      expect(find.text('1 grupo de produtos parece duplicado'), findsOneWidget);
+
+      // The X hides the strip for good (the button of the toolbar stays).
+      await tester.tap(find.byKey(const ValueKey('dismiss-notice-products-duplicates')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('duplicates-alert')), findsNothing);
 
       final broken = sessionFor('Sales', MockClient((r) async => json({'message': 'x'}, 500)));
       await pumpApp(

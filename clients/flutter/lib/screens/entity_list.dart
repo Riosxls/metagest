@@ -11,7 +11,7 @@ import '../widgets/entity_form.dart';
 import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
 import '../widgets/record_selection.dart';
-import 'duplicates.dart' show DuplicatesAlert;
+import 'duplicates.dart' show DuplicatesAlert, DuplicatesButton;
 import 'entity_selection.dart';
 import 'product_detail.dart';
 import 'stock_balances.dart';
@@ -128,6 +128,7 @@ class _EntityListScreenState extends State<EntityListScreen> {
     groupOf: isEmployee ? (e) => contactLetter('${e['name']}') : null,
     listHeader: isEmployee ? const ContactsHeader(titles: ['NOME', 'MATRÍCULA', 'APELIDO'], flex: [38, 14, 24]) : null,
     // Same selection as the customer list: long press (or the checklist button), tick rows, then print / export / inactivate / delete.
+    toolbarActions: widget.spec.path == products.path ? [DuplicatesButton(session: widget.session, kind: 'products')] : const [],
     selection: _selection,
     selectionActions: (ctx, sel) => entitySelectionActions(
       ctx,

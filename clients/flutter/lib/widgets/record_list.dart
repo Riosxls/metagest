@@ -54,7 +54,11 @@ class RecordList extends StatefulWidget {
     this.pillSearch = true,
     this.selection,
     this.selectionActions,
+    this.toolbarActions = const [],
   });
+
+  /// Extra buttons of the toolbar, before "Selecionar" and "Atualizar" (the attention button of a list).
+  final List<Widget> toolbarActions;
 
   /// When set, every row gets a checkbox and a bar above the list offers "select all" (every row matching the search and filters, not only
   /// this page), the count and [selectionActions]. The screen owns the object and reads the chosen rows from it.
@@ -566,6 +570,7 @@ class RecordListState extends State<RecordList> {
                       ],
                     ),
                   ),
+                  ...widget.toolbarActions,
                   if (widget.selection != null && !_selecting) IconButton(key: const ValueKey('select-mode'), tooltip: 'Selecionar', onPressed: widget.selection!.enter, icon: const Icon(Icons.checklist)),
                   IconButton(tooltip: 'Atualizar', onPressed: reload, icon: const Icon(Icons.refresh)),
                 ],

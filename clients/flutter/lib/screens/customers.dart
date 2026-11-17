@@ -21,7 +21,7 @@ import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
 import '../widgets/record_selection.dart';
 import 'customer_print.dart';
-import 'duplicates.dart' show DuplicatesAlert;
+import 'duplicates.dart' show DuplicatesAlert, DuplicatesButton;
 import 'receivables.dart';
 import 'sales_common.dart';
 import 'sales_quotes.dart' show newQuote;
@@ -322,8 +322,16 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(children: [DuplicatesAlert(session: widget.session, kind: 'customers'), FiscalProblemsAlert(session: widget.session, problems: _problems.values.toList(), onOpen: (id) => openCustomer(context, widget.session, id).then((_) => _loadProblems())), Expanded(child: RecordList(
+  Widget build(BuildContext context) => Column(children: [DuplicatesAlert(session: widget.session, kind: 'customers'), FiscalProblemsAlert(problems: _problems.values.toList()), Expanded(child: RecordList(
     key: _list,
+    // Attention button beside "Selecionar" and "Atualizar": the duplicates and the registers that cannot be invoiced, for as long as there are any.
+    toolbarActions: [
+      DuplicatesButton(
+        session: widget.session,
+        kind: 'customers',
+        extra: [if (_problems.isNotEmpty) fiscalProblemsNotice(context, _problems.values.toList(), (id) => openCustomer(context, widget.session, id).then((_) => _loadProblems()))],
+      ),
+    ],
     api: widget.session.api,
     path: '/api/customers',
     query: {'active': _active},

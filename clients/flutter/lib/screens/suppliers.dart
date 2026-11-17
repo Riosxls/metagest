@@ -11,7 +11,7 @@ import '../widgets/load_error.dart';
 import '../widgets/record_list.dart';
 import '../widgets/record_nav.dart';
 import 'customers.dart' show fmtDocument;
-import 'duplicates.dart' show DuplicatesAlert;
+import 'duplicates.dart' show DuplicatesAlert, DuplicatesButton;
 import 'orders.dart';
 import 'receipts.dart';
 import 'stock_documents.dart';
@@ -66,6 +66,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
   @override
   Widget build(BuildContext context) => Column(children: [DuplicatesAlert(session: widget.session, kind: 'suppliers'), Expanded(child: RecordList(
     key: _list,
+    toolbarActions: [DuplicatesButton(session: widget.session, kind: 'suppliers')],
     api: widget.session.api,
     path: suppliers.path,
     columns: suppliers.columns,

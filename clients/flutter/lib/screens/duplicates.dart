@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../session.dart';
 import '../widgets/actions.dart';
+import '../widgets/attention.dart';
 import '../widgets/duplicate_compare.dart';
 import '../widgets/duplicates.dart';
 import '../widgets/load_error.dart';
-import '../widgets/pipeline.dart' show Tone, toneColors;
 import 'customers.dart' show openCustomer;
 import 'product_detail.dart' show openProduct;
 import 'suppliers.dart' show openSupplier;
@@ -81,6 +81,7 @@ class _DuplicateGroupsViewState extends State<DuplicateGroupsView> with Automati
   Future<void> _load() async {
     try {
       final r = await widget.session.api.get('/api/duplicates/${widget.kind}') as Map<String, dynamic>;
+      unawaited(DuplicatesInfo.refresh(widget.session.api, widget.kind));
       if (!mounted) return;
       setState(() {
         _groups = (r['groups'] as List).cast<Map<String, dynamic>>();
@@ -241,9 +242,10 @@ void openDuplicates(BuildContext context, Session session, String kind) => unawa
   ),
 );
 
-/// "Atenção" strip above the list of customers, products or suppliers: shown only when the server finds suspected duplicates of that kind, and a tap
-/// opens the duplicates screen on that kind. It is a hint, never a blocker: while loading or when the check fails, nothing shows.
-class DuplicatesAlert extends StatefulWidget {
+/// "Atenção" strip above the list of customers, products or suppliers: shown only when the server finds suspected duplicates of that kind, with an X to
+/// dismiss it. The way to the duplicates is the [DuplicatesButton] of the list toolbar. It is a hint, never a blocker: while loading or when the check
+/// fails, nothing shows.
+class DuplicatesAlert extends StatelessWidget {
   const DuplicatesAlert({super.key, required this.session, required this.kind});
 
   final Session session;
@@ -252,61 +254,40 @@ class DuplicatesAlert extends StatefulWidget {
   final String kind;
 
   @override
-  State<DuplicatesAlert> createState() => _DuplicatesAlertState();
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+    valueListenable: DuplicatesInfo.of(session.api, kind),
+    builder: (context, groups, _) => NoticeStrip(
+      stripKey: const ValueKey('duplicates-alert'),
+      id: '$kind-duplicates',
+      count: groups,
+      icon: Icons.content_copy_outlined,
+      text: duplicatesNoticeText(kind, groups),
+    ),
+  );
 }
 
-class _DuplicatesAlertState extends State<DuplicatesAlert> {
-  int _groups = 0;
+/// "7 grupos de clientes parecem duplicados".
+String duplicatesNoticeText(String kind, int groups) {
+  final what = duplicateKindLabels[kind]!.toLowerCase();
+  return groups == 1 ? '1 grupo de $what parece duplicado' : '$groups grupos de $what parecem duplicados';
+}
+
+/// The notice that opens the duplicates screen on [kind].
+AttentionNotice duplicatesNotice(BuildContext context, Session session, String kind, int groups) => AttentionNotice(Icons.content_copy_outlined, duplicatesNoticeText(kind, groups), () async {
+  openDuplicates(context, session, kind);
+});
+
+/// The attention button of a list toolbar: the duplicates of [kind] (while there are any) and the [extra] notices of the screen.
+class DuplicatesButton extends StatelessWidget {
+  const DuplicatesButton({super.key, required this.session, required this.kind, this.extra = const []});
+
+  final Session session;
+  final String kind;
+  final List<AttentionNotice> extra;
 
   @override
-  void initState() {
-    super.initState();
-    unawaited(_load());
-  }
-
-  Future<void> _load() async {
-    try {
-      final r = await widget.session.api.get('/api/duplicates/${widget.kind}');
-      final groups = r is Map ? (r['groups'] as List?)?.length ?? 0 : 0;
-      if (mounted) setState(() => _groups = groups);
-    } catch (e) {
-      debugPrint('duplicates: alert not loaded: $e');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_groups == 0) return const SizedBox.shrink();
-    final (bg, fg) = toneColors(context, Tone.warning);
-    final what = duplicateKindLabels[widget.kind]!.toLowerCase();
-    return Padding(
-      key: const ValueKey('duplicates-alert'),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: Material(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => openDuplicates(context, widget.session, widget.kind),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Icon(Icons.content_copy_outlined, color: fg, size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _groups == 1 ? 'Atenção: 1 grupo de $what parece duplicado' : 'Atenção: $_groups grupos de $what parecem duplicados',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(color: fg),
-                  ),
-                ),
-                Text('Ver', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
-                Icon(Icons.chevron_right, color: fg, size: 18),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+    valueListenable: DuplicatesInfo.of(session.api, kind),
+    builder: (context, groups, _) => AttentionButton(notices: [if (groups > 0) duplicatesNotice(context, session, kind, groups), ...extra]),
+  );
 }
