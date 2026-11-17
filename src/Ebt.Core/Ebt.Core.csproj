@@ -22,6 +22,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Certificates/legacy-specs.json" />
     <EmbeddedResource Include="Fiscal/Schemas/*.xsd" />
+    <EmbeddedResource Include="Fiscal/Data/ibge-municipios.csv" />
     <InternalsVisibleTo Include="Ebt.Tests" />
   </ItemGroup>
 

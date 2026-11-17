@@ -52,6 +52,7 @@ builder.Services.AddFiscal(builder.Configuration);
 builder.Services.AddScoped<Ebt.Core.Receivables.ReceivablesService>();
 builder.Services.AddScoped<Ebt.Core.Duplicates.DuplicateService>();
 builder.Services.AddScoped<Ebt.Core.Duplicates.DuplicateMergeService>();
+builder.Services.AddScoped<Ebt.Core.Fiscal.IbgeFillService>();
 builder.Services.AddSales();
 builder.Services.AddMail(builder.Configuration);
 builder.Services.AddCertificates();

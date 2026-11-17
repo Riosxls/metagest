@@ -113,6 +113,8 @@ Map<String, List<String>> _formatErrors(Map<String, dynamic> now, Map<String, dy
   }
   final zip = _digits(now['zipCode']);
   if (zip.isNotEmpty && changed('zipCode') && zip.length != 8) errors['${prefix}zipCode'] = ['CEP tem 8 dígitos'];
+  final ibge = _digits(now['cityIbgeCode']);
+  if (ibge.isNotEmpty && changed('cityIbgeCode') && ibge.length != 7) errors['${prefix}cityIbgeCode'] = ['O código IBGE tem 7 dígitos'];
   return errors;
 }
 
@@ -135,6 +137,7 @@ const _companyFields = [
   FieldSpec('district', 'Bairro'),
   FieldSpec('city', 'Cidade'),
   FieldSpec('uf', 'UF', type: FieldType.choice, choices: _ufs),
+  FieldSpec('cityIbgeCode', 'Código IBGE do município', hint: '7 números. Vazio = preenchido pela cidade e UF ao salvar', digitsOnly: true),
   FieldSpec('zipCode', 'CEP', hint: '8 dígitos', mask: maskZip),
   FieldSpec('contact', 'Contato'),
   FieldSpec('email', 'E-mail'),
@@ -172,7 +175,7 @@ String? phoneHint(String key, Map<String, dynamic> values) {
 }
 
 List<FieldSpec> _companyFormFields() => [
-  for (final f in _companyFields) FieldSpec('company.${f.key}', f.label, type: f.type, hint: f.hint, lookup: f.lookup, defaultValue: f.defaultValue, choices: f.choices, mask: f.mask),
+  for (final f in _companyFields) FieldSpec('company.${f.key}', f.label, type: f.type, hint: f.hint, lookup: f.lookup, defaultValue: f.defaultValue, choices: f.choices, mask: f.mask, digitsOnly: f.digitsOnly),
 ];
 
 (Map<String, dynamic>, Map<String, dynamic>) _splitCompany(Map<String, dynamic> b) {
@@ -199,13 +202,14 @@ const _addressFields = [
   FieldSpec('district', 'Bairro'),
   FieldSpec('city', 'Cidade'),
   FieldSpec('uf', 'UF', required: true, type: FieldType.choice, choices: _ufs),
+  FieldSpec('cityIbgeCode', 'Código IBGE do município', hint: '7 números. Vazio = preenchido pela cidade e UF ao salvar', digitsOnly: true),
   FieldSpec('zipCode', 'CEP', hint: '8 dígitos', mask: maskZip),
   FieldSpec('buyer', 'Contato'),
   FieldSpec('email', 'E-mail'),
   FieldSpec('phone', 'Telefone', mask: maskPhone),
 ];
 
-const _shippingKeys = {'street', 'number', 'complement', 'district', 'city', 'uf', 'zipCode', 'buyer', 'phone', 'email'};
+const _shippingKeys = {'street', 'number', 'complement', 'district', 'city', 'uf', 'cityIbgeCode', 'zipCode', 'buyer', 'phone', 'email'};
 final _shippingFields = [
   for (final f in _addressFields)
     if (_shippingKeys.contains(f.key))
@@ -221,6 +225,7 @@ final _shippingFields = [
         choices: f.choices,
         hint: f.hint,
         mask: f.mask,
+        digitsOnly: f.digitsOnly,
       ),
 ];
 
@@ -311,7 +316,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         // Starting point only: the first delivery local copies the company data when it is complete enough to be saved.
         if (fmt(company['document']).isNotEmpty && fmt(company['uf']).isNotEmpty) {
           body['address'] = {
-            for (final k in ['document', 'stateRegistration', 'icmsContributor', 'street', 'number', 'complement', 'district', 'city', 'uf', 'zipCode', 'email', 'phone']) k: company[k],
+            for (final k in ['document', 'stateRegistration', 'icmsContributor', 'street', 'number', 'complement', 'district', 'city', 'uf', 'cityIbgeCode', 'zipCode', 'email', 'phone']) k: company[k],
             'buyer': company['contact'],
           };
         }

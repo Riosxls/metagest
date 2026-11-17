@@ -30,6 +30,8 @@ public class Customer : IHasSource
     public string? Complement { get; set; }
     public string? District { get; set; }
     public string? City { get; set; }
+    /// <summary>The 7-digit IBGE code of the city (cMun of the NF-e); filled from the city and state when left empty.</summary>
+    public string? CityIbgeCode { get; set; }
     public string? Uf { get; set; }
     public string? ZipCode { get; set; }
     public string? Contact { get; set; }

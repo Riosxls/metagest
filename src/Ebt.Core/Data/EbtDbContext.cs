@@ -42,6 +42,7 @@ public partial class EbtDbContext(DbContextOptions<EbtDbContext> options) : DbCo
             e.Property(x => x.IpiPercent).HasPrecision(5, 2);
             e.Property(x => x.IcmsPercent).HasPrecision(5, 2);
             e.Property(x => x.TaxNote).HasMaxLength(600);
+            e.Property(x => x.CityIbgeCode).HasMaxLength(7);
             e.HasOne(x => x.DefaultPaymentTerm).WithMany().HasForeignKey(x => x.DefaultPaymentTermId).OnDelete(DeleteBehavior.SetNull);
         });
         b.Entity<CustomerAddress>(e =>

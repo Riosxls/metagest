@@ -91,6 +91,16 @@ public static class FiscalEndpoints
     /// <summary>Fiscal data of the old system (issuer, CFOPs, carriers, tax rules, monthly prices) from the JSON of scripts/export-fiscal-data.ps1: preview first, then apply.</summary>
     private static void MapLegacyImport(WebApplication app)
     {
+        // The IBGE code of a city: "Louveira", "SP" -> 3527306. 404 when the name matches no municipality of that state.
+        app.MapGet("/api/fiscal/ibge", (string city, string uf) => IbgeMunicipalities.Find(city, uf) is { } code ? Results.Ok(new { code }) : Results.NotFound()).WithTags("Fiscal").RequireAuthorization(Policies.Read);
+        // Fills the IBGE code of every customer, delivery address and supplier address that has none, from city and state. apply=false only counts.
+        app.MapPost("/api/fiscal/ibge/fill", async (bool? apply, IbgeFillService svc, EbtDbContext db, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            var result = await svc.FillAsync(apply == true, ct);
+            if (apply == true) { db.AuditLog.Add(new AuditEntry { At = DateTimeOffset.UtcNow, User = user.Identity?.Name, Entity = "FiscalData", EntityId = "ibge", Action = "IbgeFill", Changes = System.Text.Json.JsonSerializer.Serialize(new { result.Filled, result.Unmatched }) }); await db.SaveChangesAsync(ct); }
+            return Results.Ok(result);
+        }).WithTags("Fiscal").RequireAuthorization(Policies.Admin);
+
         var g = app.MapGroup("/api/fiscal/legacy-import").WithTags("Fiscal");
         g.MapGet("/summary", async (string? company, FiscalDataImporter importer, CancellationToken ct) => Results.Ok(await importer.SummaryAsync(company, ct))).RequireAuthorization(Policies.Read);
         g.MapPost("/", async (IFormFile file, bool? apply, FiscalDataImporter importer, EbtDbContext db, ClaimsPrincipal user, CancellationToken ct) =>

@@ -117,6 +117,9 @@ void main() {
     await tester.tap(find.text('AC').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('field-company.contact')), 'Carla');
+    // The company block has the IBGE code of the city (numbers only); the server fills it from the city when it is empty.
+    await tester.ensureVisible(find.byKey(const ValueKey('field-company.cityIbgeCode')));
+    await tester.enterText(find.byKey(const ValueKey('field-company.cityIbgeCode')), '12a3456b7');
     await tester.tap(find.text('Salvar'));
     await tester.pumpAndSettle();
     final post = env.log.firstWhere((r) => r.method == 'POST');
@@ -125,6 +128,8 @@ void main() {
     expect(body['name'], 'Nova Ltda');
     // The form sends the CNPJ as shown (with punctuation); the server keeps only the digits.
     expect((body['company']['document'] as String).replaceAll(RegExp(r'\D'), ''), '98765432000111');
+    expect(body['company']['cityIbgeCode'], '1234567');
+    expect(body['address']['cityIbgeCode'], '1234567');
     expect(body['address']['uf'], 'AC');
     expect(body['address']['buyer'], 'Carla');
   });

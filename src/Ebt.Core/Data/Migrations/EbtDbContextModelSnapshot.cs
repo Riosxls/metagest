@@ -811,6 +811,11 @@ namespace Ebt.Core.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("city");
 
+                    b.Property<string>("CityIbgeCode")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("city_ibge_code");
+
                     b.Property<string>("ClientCode")
                         .HasColumnType("text")
                         .HasColumnName("client_code");

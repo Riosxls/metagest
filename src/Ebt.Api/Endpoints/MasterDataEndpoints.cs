@@ -1,12 +1,13 @@
 using Ebt.Api.Infrastructure;
 using Ebt.Core.Data;
 using Ebt.Core.Entities;
+using Ebt.Core.Fiscal;
 using Microsoft.EntityFrameworkCore;
 using static Ebt.Api.Infrastructure.Crud;
 
 namespace Ebt.Api.Endpoints;
 
-public record CustomerCompany(string? Document, string? StateRegistration, bool IcmsContributor, string? Street, string? Number, string? Complement, string? District, string? City, string? Uf, string? ZipCode, string? Contact, string? Email, string? Phone, int? PaymentTermId = null, string? PaymentTermName = null, decimal? CreditLimit = null, decimal? IpiPercent = null, decimal? IcmsPercent = null, string? TaxNote = null, bool? RequireCertificate = null);
+public record CustomerCompany(string? Document, string? StateRegistration, bool IcmsContributor, string? Street, string? Number, string? Complement, string? District, string? City, string? Uf, string? ZipCode, string? Contact, string? Email, string? Phone, int? PaymentTermId = null, string? PaymentTermName = null, decimal? CreditLimit = null, decimal? IpiPercent = null, decimal? IcmsPercent = null, string? TaxNote = null, bool? RequireCertificate = null, string? CityIbgeCode = null);
 /// <param name="ClientCode">Code printed on the papers; null keeps what is stored, an empty text clears it.</param>
 public record CustomerIn(string Name, string? TradeName, string? LegacyCode, ConsumerType ConsumerType, bool Active = true, CustomerAddressIn? Address = null, CustomerCompany? Company = null, string? ClientCode = null, string? LegalName = null, string? PoPhrase = null);
 public record CustomerOut(int Id, string Name, string? TradeName, string? LegacyCode, ConsumerType ConsumerType, bool Active, int AddressCount, CustomerAddressOut? DefaultAddress = null, CustomerCompany? Company = null, string? ClientCode = null, string? LegalName = null, string? PoPhrase = null);
@@ -45,7 +46,7 @@ public static class MasterDataEndpoints
                 c.Addresses.OrderBy(a => a.LegacyCode).ThenBy(a => a.Id)
                     .Select(a => new CustomerAddressOut(a.Id, a.CustomerId, a.Document, a.Uf, a.LegacyCode, a.StateRegistration, a.IcmsContributor, a.Street, a.Number, a.Complement, a.District, a.City, a.CityIbgeCode, a.ZipCode, a.DefaultCfop, a.Buyer, a.Email, a.Phone))
                     .FirstOrDefault(),
-                new CustomerCompany(c.Document, c.StateRegistration, c.IcmsContributor, c.Street, c.Number, c.Complement, c.District, c.City, c.Uf, c.ZipCode, c.Contact, c.Email, c.Phone, c.DefaultPaymentTermId, c.DefaultPaymentTerm != null ? c.DefaultPaymentTerm.Name : null, c.CreditLimit, c.IpiPercent, c.IcmsPercent, c.TaxNote, c.RequireCertificateBeforeShip), c.ClientCode, c.LegalName, c.PoPhrase),
+                new CustomerCompany(c.Document, c.StateRegistration, c.IcmsContributor, c.Street, c.Number, c.Complement, c.District, c.City, c.Uf, c.ZipCode, c.Contact, c.Email, c.Phone, c.DefaultPaymentTermId, c.DefaultPaymentTerm != null ? c.DefaultPaymentTerm.Name : null, c.CreditLimit, c.IpiPercent, c.IcmsPercent, c.TaxNote, c.RequireCertificateBeforeShip, c.CityIbgeCode), c.ClientCode, c.LegalName, c.PoPhrase),
             Create = i =>
             {
                 var c = new Customer { Name = i.Name.Trim(), TradeName = Clean(i.TradeName), LegacyCode = Clean(i.LegacyCode), ClientCode = Clean(i.ClientCode), LegalName = Clean(i.LegalName), PoPhrase = Clean(i.PoPhrase), ConsumerType = i.ConsumerType, Active = i.Active };
@@ -68,6 +69,7 @@ public static class MasterDataEndpoints
                     errors.Require(!Has(co.Document) || Digits(co.Document, 11, 14), "company.document", "CPF (11) or CNPJ (14) digits")
                         .Require(!Has(co.Uf) || co.Uf.Trim().Length == 2, "company.uf", "Two-letter state")
                         .Require(!Has(co.ZipCode) || Digits(co.ZipCode, 8), "company.zipCode", "8 digits")
+                        .Require(!Has(co.CityIbgeCode) || Digits(co.CityIbgeCode, 7), "company.cityIbgeCode", "7 digits")
                         .Require(!co.IcmsContributor || Has(co.StateRegistration), "company.stateRegistration", "Required for ICMS contributors")
                         .Require(co.CreditLimit is null or >= 0, "company.creditLimit", "Cannot be negative")
                         .Require(co.IpiPercent is null or (>= 0 and <= 100), "company.ipiPercent", "Between 0 and 100")
@@ -210,6 +212,7 @@ public static class MasterDataEndpoints
     private static void ApplyCompany(CustomerCompany? i, Customer c)
     {
         if (i is null) return;
+        var (cityBefore, ufBefore) = (c.City, c.Uf);
         c.Document = Numeric(i.Document);
         c.StateRegistration = Numeric(i.StateRegistration);
         c.IcmsContributor = i.IcmsContributor;
@@ -219,6 +222,8 @@ public static class MasterDataEndpoints
         c.District = Clean(i.District);
         c.City = Clean(i.City);
         c.Uf = Clean(i.Uf)?.ToUpper();
+        // What was typed wins; an older app that does not send the code keeps the stored one while the city is the same; else the city and state give it.
+        c.CityIbgeCode = Numeric(i.CityIbgeCode) ?? (cityBefore == c.City && ufBefore == c.Uf ? c.CityIbgeCode : null) ?? IbgeMunicipalities.Find(c.City, c.Uf);
         c.ZipCode = Numeric(i.ZipCode);
         c.Contact = Clean(i.Contact);
         c.Email = Clean(i.Email);
@@ -250,7 +255,7 @@ public static class MasterDataEndpoints
                 db.CustomerAddresses.Add(new CustomerAddress
                 {
                     CustomerId = customerId, Document = c.Document!, StateRegistration = c.StateRegistration, IcmsContributor = c.IcmsContributor, Street = c.Street, Number = c.Number,
-                    Complement = c.Complement, District = c.District, City = c.City, Uf = c.Uf!.ToUpperInvariant(), ZipCode = c.ZipCode, Buyer = c.Contact, Email = c.Email, Phone = c.Phone
+                    Complement = c.Complement, District = c.District, City = c.City, CityIbgeCode = c.CityIbgeCode ?? IbgeMunicipalities.Find(c.City, c.Uf), Uf = c.Uf!.ToUpperInvariant(), ZipCode = c.ZipCode, Buyer = c.Contact, Email = c.Email, Phone = c.Phone
                 });
                 await db.SaveChangesAsync(ct);
             }
@@ -300,6 +305,7 @@ public static class MasterDataEndpoints
 
     private static void ApplyAddress(CustomerAddressIn i, CustomerAddress a)
     {
+        var (cityBefore, ufBefore) = (a.City, a.Uf);
         a.Document = Numeric(i.Document)!;
         a.Uf = i.Uf.Trim().ToUpper();
         a.LegacyCode = Clean(i.LegacyCode);
@@ -310,7 +316,7 @@ public static class MasterDataEndpoints
         a.Complement = Clean(i.Complement);
         a.District = Clean(i.District);
         a.City = Clean(i.City);
-        a.CityIbgeCode = Numeric(i.CityIbgeCode);
+        a.CityIbgeCode = Numeric(i.CityIbgeCode) ?? (cityBefore == a.City && ufBefore == a.Uf ? a.CityIbgeCode : null) ?? IbgeMunicipalities.Find(a.City, a.Uf);
         a.ZipCode = Numeric(i.ZipCode);
         a.DefaultCfop = Clean(i.DefaultCfop);
         a.Buyer = Clean(i.Buyer);
@@ -364,10 +370,12 @@ public static class MasterDataEndpoints
     private static Dictionary<string, string[]> ValidateAddress(SupplierAddressIn i) => Errors()
         .Require(i.Document is null || Digits(i.Document, 11, 14), "document", "CPF (11) or CNPJ (14) digits")
         .Require(Has(i.Uf) && i.Uf.Trim().Length == 2, "uf", "Two-letter state")
+        .Require(i.CityIbgeCode is null || Digits(i.CityIbgeCode, 7), "cityIbgeCode", "7 digits")
         .Require(i.ZipCode is null || Digits(i.ZipCode, 8), "zipCode", "8 digits");
 
     private static void ApplyAddress(SupplierAddressIn i, SupplierAddress a)
     {
+        var (cityBefore, ufBefore) = (a.City, a.Uf);
         a.Document = Numeric(i.Document);
         a.Uf = i.Uf.Trim().ToUpper();
         a.LegacyCode = Clean(i.LegacyCode);
@@ -376,7 +384,7 @@ public static class MasterDataEndpoints
         a.Number = Clean(i.Number);
         a.District = Clean(i.District);
         a.City = Clean(i.City);
-        a.CityIbgeCode = Numeric(i.CityIbgeCode);
+        a.CityIbgeCode = Numeric(i.CityIbgeCode) ?? (cityBefore == a.City && ufBefore == a.Uf ? a.CityIbgeCode : null) ?? IbgeMunicipalities.Find(a.City, a.Uf);
         a.ZipCode = Numeric(i.ZipCode);
         a.Email = Clean(i.Email);
         a.Phone = Clean(i.Phone);
